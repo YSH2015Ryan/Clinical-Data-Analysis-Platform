@@ -6,7 +6,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 职责 | 缺失值 → 异常值 → 编码 → 缩放 → 特征选择 → 特征工程，输出训练/验证特征矩阵 |
+| 职责 | （长表→宽表整形）→ 缺失值 → 异常值 → 编码 → 缩放 → 特征选择 → 特征工程，输出训练/验证特征矩阵 |
 | 输入 | DatasetVersion、`preprocess_config`（JSON） |
 | 输出 | 特征矩阵 parquet（S3）、PreprocessSnapshot（步骤+统计量）、预处理报告摘要 |
 | 依赖 | pandas、scikit-learn、ehrapy 思路（见 16 章） |
@@ -20,6 +20,9 @@
 {
   "target": {"time_col": "os_months", "event_col": "death"},
   "steps": [
+    {"type": "reshape", "params": {
+        "mode": "long_to_wide", "index": "患者ID",
+        "columns": "检验名称", "values": "归一化值", "agg": "first"}},
     {"type": "drop_columns", "params": {"columns": ["patient_id"]}},
     {"type": "missing", "params": {
         "default": "median",
@@ -43,6 +46,7 @@
 
 | 步骤 | 实现 | 复用来源 |
 |---|---|---|
+| reshape | 长表(EAV)→宽表透视：一行=一个实体一次观测 → 一行=一个患者；多文件（化验+诊断）按主键 join 后透视 | pandas `pivot_table` / `merge`（见 §3.1 真实数据适配） |
 | missing | median/mode/KNN/多重插补 | sklearn `SimpleImputer`/`KNNImputer`/`IterativeImputer`；策略思想参考 ehrapy `ep.pp` |
 | outlier | IQR clip / Z-score / IsolationForest | sklearn |
 | encode | One-Hot/Ordinal/Target | sklearn / category_encoders |
@@ -51,6 +55,13 @@
 | derive | 受限表达式引擎（白名单函数） | 自研（安全沙箱，禁止 eval 任意代码） |
 
 > derive 表达式用 `simpleeval` 白名单求值，防注入。
+
+### 3.1 真实数据适配（2026-07-29 蓝图修订）
+
+项目真实测试数据（`mysql/{训练,测试,验证}集/样本集*/`）为**长表格式**：
+`化验.csv`（患者ID, 检验名称, 归一化值, …，一行=一项检验）+ `诊断.csv`（患者ID, 诊断, 年龄, 性别）。
+
+因此 `reshape` 是**第一优先级步骤**：宽表数据上传时该步骤自动跳过；检测到长表（存在重复主键 + 名称/值列对）时推荐配置自动插入。校验模块（05 章）相应增加长表结构识别规则。
 
 ## 4. 防泄漏与可复现
 

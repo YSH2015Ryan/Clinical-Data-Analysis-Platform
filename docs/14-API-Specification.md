@@ -506,7 +506,7 @@ components:
       properties:
         type:
           type: string
-          enum: [drop_columns, missing, outlier, encode, scale, feature_select, derive]
+          enum: [reshape, drop_columns, missing, outlier, encode, scale, feature_select, derive]
         params:
           type: object
           description: 各 type 的参数子 schema 在服务端 Pydantic 中定义（06 章 §2），超出公共结构的非法参数返回 400 VALIDATION_ERROR
@@ -637,3 +637,9 @@ components:
 1. 修改本章 → 2. PR 中标注「契约变更」并说明受影响消费方（前端/报告引擎/测试）→ 3. 重新生成前端类型 → 4. 相关模块同 PR 适配。
 - 非破坏性变更（新增端点/可选字段/新错误码）：可直接走上述流程。
 - 破坏性变更（删改字段、收窄枚举、改语义）：冻结期内原则上拒绝；确需变更须升 `/api/v2` 并保留 v1。
+
+**冻结后变更记录**：
+
+| 日期 | 变更 | 类型 | 原因 |
+|---|---|---|---|
+| 2026-07-29 | `PreprocessStep.type` 枚举新增 `reshape` | 非破坏（扩展枚举） | 真实数据为长表（EAV）格式，需长转宽步骤，见 06 章 §3.1、01 章 FR-3.9 |
