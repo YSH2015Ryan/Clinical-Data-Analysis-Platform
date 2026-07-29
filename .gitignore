@@ -37,3 +37,6 @@ Thumbs.db
 pgdata/
 redisdata/
 miniodata/
+
+# 测试产物
+.test_storage/
