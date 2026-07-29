@@ -16,6 +16,7 @@ dependencies = [
     "uvicorn[standard]~=0.30",
     "pydantic~=2.8",
     "pydantic-settings~=2.5",
+    "email-validator~=2.0",  # pydantic EmailStr 依赖（Apache-2.0）
     "python-multipart",
     "httpx~=0.27",
     # DB / 任务队列 / 存储
@@ -25,9 +26,10 @@ dependencies = [
     "redis~=5.0",
     "celery~=5.4",
     "minio~=7.2",
-    # 安全（PyJWT 替代 python-jose：jose 拖入 ecdsa 且 PYSEC-2026-1325 无修复版）
+    # 安全（PyJWT 替代 python-jose：jose 拖入 ecdsa 且 PYSEC-2026-1325 无修复版；
+    # bcrypt 直用替代 passlib：passlib 休眠且与 bcrypt>=4.1 不兼容）
     "pyjwt[crypto]~=2.10",
-    "passlib[bcrypt]~=1.7",
+    "bcrypt~=4.2",
     # 数据处理
     "pandas~=2.2",
     "numpy~=1.26",
@@ -95,8 +97,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S106", "B008"]
+"tests/**" = ["S105", "S106", "B008"]
 "alembic/**" = ["E501"]
+"app/api/**" = ["B008"]  # FastAPI Depends 惯用法
+"app/schemas/**" = ["S105"]  # token_type 字段名误报
 "app/core/config.py" = ["S105"]  # 开发默认值，生产经环境变量覆盖（docs/12 §2.1）
 
 [tool.mypy]
@@ -129,6 +133,7 @@ name = "api 禁止直接操作 ORM（必须经 services）"
 type = "forbidden"
 source_modules = ["app.api"]
 forbidden_modules = ["app.models"]
+allow_indirect_imports = true  # 只禁止直接 import；api→services→models 为合法路径
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -141,6 +146,7 @@ omit = [
     "app/plugins/*",
     "app/models/*",   # 由 T0.4 迁移验证 + M1 集成测试覆盖
     "app/workers/*",  # 由 M2 编排集成测试覆盖
+    "app/scripts/*",  # 运维脚本，由 compose 内手工执行验证
 ]
 
 [tool.coverage.report]

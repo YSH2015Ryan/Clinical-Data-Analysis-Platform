@@ -27,6 +27,19 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: cdap
+          POSTGRES_PASSWORD: cdap
+          POSTGRES_DB: cdap_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cdap"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://cdap:cdap@localhost:5432/cdap_test
     defaults:
       run:
         working-directory: backend

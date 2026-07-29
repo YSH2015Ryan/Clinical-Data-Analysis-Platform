@@ -6,6 +6,8 @@
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 
@@ -38,6 +40,19 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         trace_id = request.headers.get("x-request-id", "")
         return JSONResponse(status_code=exc.status, content=_error_payload(exc, trace_id))
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        trace_id = request.headers.get("x-request-id", "")
+        wrapped = AppError(
+            code="VALIDATION_ERROR",
+            status=400,
+            message="请求参数校验失败",
+            details={"errors": jsonable_encoder(exc.errors())},
+        )
+        return JSONResponse(status_code=400, content=_error_payload(wrapped, trace_id))
 
     @app.exception_handler(Exception)
     async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:

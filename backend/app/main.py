@@ -6,22 +6,14 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from app.api.v1 import auth as auth_api
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
+from app.db import dispose_engine, get_engine
 
 logger = get_logger(__name__)
-
-_engine: AsyncEngine | None = None
-
-
-def get_engine() -> AsyncEngine:
-    global _engine
-    if _engine is None:
-        _engine = create_async_engine(get_settings().database_url, pool_pre_ping=True)
-    return _engine
 
 
 @asynccontextmanager
@@ -30,8 +22,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(settings.log_level)
     logger.info("app_started", app=settings.app_name)
     yield
-    if _engine is not None:
-        await _engine.dispose()
+    await dispose_engine()
     logger.info("app_stopped")
 
 
@@ -41,6 +32,7 @@ def create_app() -> FastAPI:
 
     # 所有端点挂在 /api/v1 下（docs/14 Base URL 约定）
     v1 = APIRouter(prefix="/api/v1")
+    v1.include_router(auth_api.router)
 
     @v1.get("/healthz")
     async def healthz() -> dict[str, str]:
