@@ -80,6 +80,73 @@ dev = [
 where = ["."]
 include = ["app*"]
 
+# ---------- T0.1 代码质量配置（DoD: CI 中全部可运行且通过） ----------
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "S", "ASYNC", "RUF"]
+ignore = [
+    "S101",  # assert 在测试中允许
+    "RUF001", "RUF002", "RUF003",  # 中文注释/docstring 允许全角标点
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S106", "B008"]
+"alembic/**" = ["E501"]
+"app/core/config.py" = ["S105"]  # 开发默认值，生产经环境变量覆盖（docs/12 §2.1）
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "."
+packages = ["app"]
+strict = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["celery.*", "minio.*", "redbeat.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["redis.asyncio", "redis.asyncio.*"]
+disallow_untyped_calls = false
+
+[tool.importlinter]
+root_package = "app"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "engines 禁止依赖 web/任务框架（docs/12 §1 分层纪律）"
+type = "forbidden"
+source_modules = ["app.engines"]
+forbidden_modules = ["fastapi", "celery", "sqlalchemy"]
+
+[[tool.importlinter.contracts]]
+name = "api 禁止直接操作 ORM（必须经 services）"
+type = "forbidden"
+source_modules = ["app.api"]
+forbidden_modules = ["app.models"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["app"]
+omit = [
+    "app/plugins/*",
+    "app/models/*",   # 由 T0.4 迁移验证 + M1 集成测试覆盖
+    "app/workers/*",  # 由 M2 编排集成测试覆盖
+]
+
+[tool.coverage.report]
+fail_under = 70  # M0 骨架阶段；M1 起按 docs/19 提至 80
+
+
 [project.entry-points."cdap.models"]
 # 内置模型插件在此注册（docs/15），实现后取消注释：
 # coxph = "app.plugins.builtin.coxph:CoxPHAdapter"

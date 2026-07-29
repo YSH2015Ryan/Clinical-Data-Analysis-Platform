@@ -1,0 +1,128 @@
+# docs/21 §2；密钥一律经 .env 注入（见 .env.example），禁止提交真实值
+name: cdap
+
+services:
+  frontend:
+    build: ../frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../backend
+      target: prod
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    environment:
+      DATABASE_URL: postgresql+psycopg://cdap:${PG_PASSWORD:?need PG_PASSWORD}@postgres:5432/cdap
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: cdap
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:?}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?}
+      JWT_SECRET: ${JWT_SECRET:?}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../backend
+      target: prod
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    command: celery -A app.workers.celery_app worker -Q default,model,report --concurrency=4
+    environment:
+      DATABASE_URL: postgresql+psycopg://cdap:${PG_PASSWORD}@postgres:5432/cdap
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: cdap
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  beat:
+    build:
+      context: ../backend
+      target: prod
+    command: celery -A app.workers.celery_app beat
+    environment:
+      DATABASE_URL: postgresql+psycopg://cdap:${PG_PASSWORD}@postgres:5432/cdap
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: cdap
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: cdap
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cdap"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "9001:9001"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:

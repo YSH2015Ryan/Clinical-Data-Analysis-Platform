@@ -1,0 +1,78 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install ".[dev]"
+      - name: ruff
+        run: ruff check app tests && ruff format --check app tests
+      - name: mypy
+        run: mypy
+      - name: import-linter（分层纪律 docs/12 §1）
+        run: lint-imports
+
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install ".[dev]"
+      - name: pytest + coverage
+        run: coverage run -m pytest && coverage report
+
+  audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install ".[dev]" pip-audit pip-licenses
+      - name: 漏洞审计（豁免清单见 docs/licenses-report.md §1）
+        run: >
+          pip-audit
+          --ignore-vuln PYSEC-2026-1845
+          --ignore-vuln PYSEC-2026-161
+          --ignore-vuln PYSEC-2026-248
+          --ignore-vuln PYSEC-2026-249
+          --ignore-vuln PYSEC-2026-2280
+          --ignore-vuln PYSEC-2026-2281
+      - name: 许可证审计（新增 GPL 即失败）
+        run: |
+          pip-licenses --from=mixed --with-system \
+            | grep -iE 'GPL|AGPL' \
+            | grep -vE 'LGPL|ecos|scikit-survival|rfc3987' \
+            && exit 1 || echo "license check passed"
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend image
+        run: docker build --target prod backend/
+      - name: Build frontend image
+        run: docker build frontend/
