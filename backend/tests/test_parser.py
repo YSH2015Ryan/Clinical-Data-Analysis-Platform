@@ -52,6 +52,12 @@ class TestDelimiter:
         assert result.delimiter == ";"
         assert result.df.shape == (2, 2)
 
+    def test_raw_columns_preserve_duplicates(self) -> None:
+        # pandas 会把重复列名改写为 a/a.1；raw_columns 保留原始表头供 RV003 判定
+        result = parse_csv("年龄,年龄,death\n55,56,1\n".encode())
+        assert result.raw_columns == ["年龄", "年龄", "death"]
+        assert list(result.df.columns) == ["年龄", "年龄.1", "death"]
+
 
 class TestExcel:
     def test_xlsx_roundtrip(self) -> None:

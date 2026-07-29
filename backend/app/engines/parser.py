@@ -21,6 +21,7 @@ class ParseResult:
     df: pd.DataFrame
     encoding: str | None  # excel 为 None
     delimiter: str | None  # excel 为 None
+    raw_columns: list[str] | None = None  # 原始表头（RV003 重复列名判定；pandas 会改写重名）
     warnings: list[str] = field(default_factory=list)
 
 
@@ -61,6 +62,15 @@ def has_header(sample: str, delimiter: str) -> bool:
         return True
 
 
+def _raw_header(text: str, delimiter: str) -> list[str] | None:
+    """第一行按 csv 语义切分（含引号处理），供 RV003 重复列名判定。"""
+    first_line = text.split("\n", 1)[0]
+    try:
+        return next(csv.reader([first_line], delimiter=delimiter))
+    except StopIteration:
+        return None
+
+
 def parse_csv(data: bytes) -> ParseResult:
     encoding = detect_encoding(data)
     text = data.decode(encoding, errors="replace")
@@ -68,12 +78,15 @@ def parse_csv(data: bytes) -> ParseResult:
     delimiter = detect_delimiter(sample)
     header = 0 if has_header(sample, delimiter) else None
     df = pd.read_csv(io.StringIO(text), sep=delimiter, header=header)
-    return ParseResult(df=df, encoding=encoding, delimiter=delimiter)
+    raw_columns = _raw_header(text, delimiter) if header == 0 else None
+    return ParseResult(df=df, encoding=encoding, delimiter=delimiter, raw_columns=raw_columns)
 
 
 def parse_excel(data: bytes) -> ParseResult:
     df = pd.read_excel(io.BytesIO(data))
-    return ParseResult(df=df, encoding=None, delimiter=None)
+    header_row = pd.read_excel(io.BytesIO(data), header=None, nrows=1)
+    raw_columns = [str(c) for c in header_row.iloc[0].tolist()] if len(header_row) else None
+    return ParseResult(df=df, encoding=None, delimiter=None, raw_columns=raw_columns)
 
 
 def parse(data: bytes, source_type: str) -> ParseResult:

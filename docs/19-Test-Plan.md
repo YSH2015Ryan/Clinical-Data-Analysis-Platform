@@ -16,7 +16,7 @@
 
 | 范围 | 重点用例 |
 |---|---|
-| engines/validation | 18 规则正反例；编码嗅探（UTF-8/GBK/GB18030/BOM）；阻塞/警告分级 |
+| engines/validation | 13 规则正反例（目录见 05 章 §3）；编码嗅探（UTF-8/GBK/GB18030/BOM）；阻塞/警告分级 |
 | engines/preprocessing | 每步骤边界（全缺失列/单值列/未知类别/无穷值）；derive 沙箱拒绝 `__import__`；泄漏断言（scaler 均值仅来自 train fold）；同 config 双跑逐位相等 |
 | engines/task_detection | 4 任务类型 × 词典内列名；歧义列（time 无 event）；失败回退 |
 | engines/modeling | 适配器协议符合性（hypothesis 契约）；统一 metrics 与官方库对拍（C-index vs sksurv、AUC vs sklearn，±1e-6） |
