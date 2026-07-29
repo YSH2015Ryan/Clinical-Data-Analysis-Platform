@@ -9,6 +9,7 @@ from app.core.errors import AppError
 from app.core.security import decode_token
 from app.db import get_db
 from app.schemas.auth import LoginRequest, RefreshRequest, TokenResponse
+from app.services import audit as audit_service
 from app.services import auth as auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -20,7 +21,11 @@ _auth_failed = AppError(code="AUTH_FAILED", status=401, message="认证失败")
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     user = await auth_service.authenticate(db, body.email, body.password)
     if user is None:
+        await audit_service.record(db, "auth.login_failed", detail={"email": body.email})
+        await db.commit()
         raise AppError(code="AUTH_FAILED", status=401, message="邮箱或密码错误")
+    await audit_service.record(db, "auth.login", user_id=user.id)
+    await db.commit()
     return auth_service.issue_tokens(user)
 
 

@@ -10,6 +10,7 @@ from app.core.errors import not_found
 from app.db import get_db
 from app.schemas.auth import CurrentUser
 from app.schemas.project import Project, ProjectCreate, ProjectPage
+from app.services import audit as audit_service
 from app.services import projects as project_service
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -39,6 +40,10 @@ async def create_project(
     db: AsyncSession = Depends(get_db),
 ) -> Project:
     project = await project_service.create_project(db, user, body)
+    await audit_service.record(
+        db, "project.create", user_id=user.id, resource_type="project", resource_id=project.id
+    )
+    await db.commit()
     return Project(
         id=project.id,
         name=project.name,
@@ -56,4 +61,8 @@ async def delete_project(
     project = await project_service.soft_delete_project(db, user, project_id)
     if project is None:
         raise not_found("project", str(project_id))
+    await audit_service.record(
+        db, "project.delete", user_id=user.id, resource_type="project", resource_id=project.id
+    )
+    await db.commit()
     return Response(status_code=204)
