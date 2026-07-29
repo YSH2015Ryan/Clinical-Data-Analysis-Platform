@@ -32,6 +32,7 @@ dependencies = [
     "bcrypt~=4.2",
     # 数据处理
     "pandas~=2.2",
+    "openpyxl~=3.1",  # xlsx 解析（MIT）
     "numpy~=1.26",
     "pyarrow>=23.0.1",  # PYSEC-2026-113 修复版
     "charset-normalizer~=3.3",
@@ -70,6 +71,7 @@ dev = [
     "coverage~=7.6",
     "ruff~=0.6",
     "mypy~=1.11",
+    "pandas-stubs~=2.2",
     "import-linter~=2.0",
     "schemathesis~=3.35",
     "testcontainers~=4.8",
