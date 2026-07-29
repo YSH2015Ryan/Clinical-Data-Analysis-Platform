@@ -9,7 +9,10 @@ description = "Clinical Data Analysis Platform - Backend"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     # Web
-    "fastapi~=0.115",
+    # 注：starlette CVE 修复（PYSEC-2026-161/248/249/2280/2281）仅在 1.x 线，而 fastapi 最新版仍 cap starlette<1.0。
+    # 决策：跟随 fastapi 使用 starlette 0.x，5 个 CVE 在 CI pip-audit 中豁免（--ignore-vuln），
+    # 缓解措施：Nginx 请求大小限制 + 上传白名单（docs/12 §2.5）；fastapi 迁移 starlette 1.x 后立即升级。
+    "fastapi>=0.115",
     "uvicorn[standard]~=0.30",
     "pydantic~=2.8",
     "pydantic-settings~=2.5",
@@ -22,13 +25,13 @@ dependencies = [
     "redis~=5.0",
     "celery~=5.4",
     "minio~=7.2",
-    # 安全
-    "python-jose[cryptography]~=3.3",
+    # 安全（PyJWT 替代 python-jose：jose 拖入 ecdsa 且 PYSEC-2026-1325 无修复版）
+    "pyjwt[crypto]~=2.10",
     "passlib[bcrypt]~=1.7",
     # 数据处理
     "pandas~=2.2",
     "numpy~=1.26",
-    "pyarrow~=17.0",
+    "pyarrow>=23.0.1",  # PYSEC-2026-113 修复版
     "charset-normalizer~=3.3",
     "pandera~=0.20",
     # ML（复用开源，不自研 —— docs/03）
@@ -45,7 +48,7 @@ dependencies = [
     "simpleeval~=1.0",
     # 报告
     "jinja2~=3.1",
-    "weasyprint~=62.3",
+    "weasyprint>=68.0",  # PYSEC-2026-2034 修复版；PYSEC-2026-3412 暂无修复，CI 持续监控
     "python-docx~=1.1",
     # 日志
     "structlog~=24.4",
@@ -58,8 +61,9 @@ deepsurv = [
     "pycox~=0.3",
 ]
 dev = [
-    "pytest~=8.3",
-    "pytest-asyncio~=0.24",
+    "pytest>=8.2,<9",  # pytest 9 生态未就绪（pytest-asyncio/schemathesis 全线 cap <9）；PYSEC-2026-1845 为测试工具漏洞，CI pip-audit 以 --ignore-vuln PYSEC-2026-1845 豁免并每季度复核
+    "pytest-asyncio>=0.24",
+    "anyio>=4.8",
     "hypothesis~=6.112",
     "coverage~=7.6",
     "ruff~=0.6",

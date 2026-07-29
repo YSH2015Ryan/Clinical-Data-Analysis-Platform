@@ -93,4 +93,5 @@ flowchart LR
 | tableone | MIT | ✅ |
 | ehrapy | BSD-3 | ✅（仅参考不依赖） |
 
-> 行动项（进入编码阶段前）：跑 `pip-licenses` 生成完整依赖许可证清单并评审。
+> ~~行动项（进入编码阶段前）：跑 `pip-licenses` 生成完整依赖许可证清单并评审。~~
+> **已完成（2026-07-29）**：完整双审计（漏洞 + 许可证）见 [licenses-report.md](licenses-report.md)。关键结果：ecos(GPLv3) 由 scikit-survival 拖入，与其绑定决策；python-jose 因 ecdsa 无修复漏洞更换为 PyJWT；starlette CVE 修复线与 fastapi 不兼容，豁免 + 缓解措施已登记。
