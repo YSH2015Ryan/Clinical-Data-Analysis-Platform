@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api.v1 import auth as auth_api
+from app.api.v1 import projects as projects_api
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     # 所有端点挂在 /api/v1 下（docs/14 Base URL 约定）
     v1 = APIRouter(prefix="/api/v1")
     v1.include_router(auth_api.router)
+    v1.include_router(projects_api.router)
 
     @v1.get("/healthz")
     async def healthz() -> dict[str, str]:

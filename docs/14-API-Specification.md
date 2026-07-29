@@ -103,6 +103,16 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/Project'}
 
+  /projects/{project_id}:
+    delete:
+      tags: [projects]
+      summary: 删除项目（软删；仅 owner/admin，viewer 403）
+      parameters: [{name: project_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '204': {description: 已删除}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+
   /projects/{project_id}/datasets:
     get:
       tags: [datasets]
@@ -643,3 +653,4 @@ components:
 | 日期 | 变更 | 类型 | 原因 |
 |---|---|---|---|
 | 2026-07-29 | `PreprocessStep.type` 枚举新增 `reshape` | 非破坏（扩展枚举） | 真实数据为长表（EAV）格式，需长转宽步骤，见 06 章 §3.1、01 章 FR-3.9 |
+| 2026-07-29 | 新增 `DELETE /projects/{project_id}`（204 软删） | 非破坏（新增端点） | T1.3 DoD 要求项目可删（软删）；受影响消费方：前端项目列表页 |
