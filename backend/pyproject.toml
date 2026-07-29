@@ -115,6 +115,10 @@ module = ["celery.*", "minio.*", "redbeat.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = ["app.workers.*"]
+disallow_untyped_decorators = false  # celery task 装饰器无类型存根
+
+[[tool.mypy.overrides]]
 module = ["redis.asyncio", "redis.asyncio.*"]
 disallow_untyped_calls = false
 

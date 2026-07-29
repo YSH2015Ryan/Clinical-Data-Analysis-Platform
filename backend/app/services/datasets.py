@@ -1,0 +1,126 @@
+"""数据集服务：上传接收（docs/12 §2.5）+ 落库 + 校验任务入队。
+
+安全纪律：扩展名白名单 + magic bytes 嗅探 + 大小上限（413）；存储 key 服务端生成，
+不信任客户端文件名路径。
+"""
+
+import hashlib
+import io
+import uuid
+from typing import BinaryIO
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.errors import AppError
+from app.models.entities import Dataset, DatasetVersion
+from app.services.storage import StorageBackend
+
+ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".tsv", ".txt"}
+_EXCEL_EXT = {".xlsx", ".xls"}
+
+_ZIP_MAGIC = b"PK\x03\x04"  # xlsx（OOXML zip）
+_OLE2_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"  # xls（OLE2 复合文档）
+_SNIFF_BYTES = 8192
+
+
+def check_extension(filename: str) -> str:
+    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in ALLOWED_EXTENSIONS:
+        raise AppError(
+            code="UNSUPPORTED_FILE_TYPE",
+            status=400,
+            message="文件类型不在白名单（.csv/.xlsx/.xls/.tsv/.txt）",
+            details={"filename": filename},
+        )
+    return ext
+
+
+def sniff_magic(head: bytes, ext: str) -> None:
+    """magic bytes 嗅探，防扩展名伪装（docs/12 §2.5）。"""
+    if ext == ".xlsx":
+        if not head.startswith(_ZIP_MAGIC):
+            raise _disguised(ext)
+    elif ext == ".xls":
+        if not (head.startswith(_OLE2_MAGIC) or head.startswith(_ZIP_MAGIC)):
+            raise _disguised(ext)
+    else:  # 文本类：前 8KB 含 NUL 视为二进制伪装
+        if b"\x00" in head:
+            raise _disguised(ext)
+
+
+def _disguised(ext: str) -> AppError:
+    return AppError(
+        code="UNSUPPORTED_FILE_TYPE",
+        status=400,
+        message="文件内容与扩展名不符（magic bytes 嗅探未通过）",
+        details={"ext": ext},
+    )
+
+
+def storage_key(project_id: uuid.UUID, dataset_id: uuid.UUID, filename: str) -> str:
+    safe_name = filename.replace("/", "_").replace("\\", "_")[-120:]
+    return f"datasets/{project_id}/{dataset_id}/{safe_name}"
+
+
+async def ingest_upload(
+    db: AsyncSession,
+    storage: StorageBackend,
+    *,
+    project_id: uuid.UUID,
+    filename: str,
+    stream: BinaryIO,
+    max_bytes: int,
+    declared_size: int | None = None,
+) -> Dataset:
+    """流式接收上传：校验 → 写存储 → Dataset(status=VALIDATING) + v1 版本落库。
+
+    调用方负责提交事务与入队校验任务。
+    """
+    ext = check_extension(filename)
+    if declared_size is not None and declared_size > max_bytes:
+        raise _too_large(max_bytes)
+
+    hasher = hashlib.sha256()
+    buf = io.BytesIO()
+    size = 0
+    while True:
+        chunk = stream.read(1024 * 1024)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > max_bytes:
+            raise _too_large(max_bytes)
+        hasher.update(chunk)
+        buf.write(chunk)
+
+    buf.seek(0)
+    sniff_magic(buf.read(_SNIFF_BYTES), ext)
+    buf.seek(0)
+
+    dataset = Dataset(
+        project_id=project_id,
+        name=filename,
+        source_type="excel" if ext in _EXCEL_EXT else "csv",
+        storage_uri="",
+        file_hash=hasher.hexdigest(),
+        file_size=size,
+        status="VALIDATING",
+    )
+    db.add(dataset)
+    await db.flush()
+
+    key = storage_key(project_id, dataset.id, filename)
+    uri = storage.put(key, buf, size)
+    dataset.storage_uri = uri
+
+    db.add(DatasetVersion(dataset_id=dataset.id, version_no=1, storage_uri=uri))
+    return dataset
+
+
+def _too_large(max_bytes: int) -> AppError:
+    return AppError(
+        code="FILE_TOO_LARGE",
+        status=413,
+        message="文件超过大小上限",
+        details={"max_mb": max_bytes // (1024 * 1024)},
+    )

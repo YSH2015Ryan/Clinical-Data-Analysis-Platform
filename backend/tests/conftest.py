@@ -14,8 +14,12 @@ from collections.abc import AsyncIterator
 import pytest
 from app.main import create_app
 from app.models.base import Base
+from app.workers.celery_app import celery_app
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+# 测试内同步执行 celery 任务，不触 redis
+celery_app.conf.update(task_always_eager=True)
 
 
 @pytest.fixture()
