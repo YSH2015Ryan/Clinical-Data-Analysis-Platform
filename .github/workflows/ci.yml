@@ -51,7 +51,10 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install
-        run: pip install ".[dev]" pip-audit pip-licenses
+        # 先升级 pip/setuptools：审计对象为全环境，预装版本含已知 CVE（见 docs/licenses-report.md §1）
+        run: |
+          pip install -U pip
+          pip install ".[dev]" pip-audit pip-licenses "setuptools>=83.0.0"
       - name: 漏洞审计（豁免清单见 docs/licenses-report.md §1）
         run: >
           pip-audit

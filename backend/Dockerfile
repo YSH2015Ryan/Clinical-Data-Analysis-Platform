@@ -1,7 +1,7 @@
 FROM python:3.11-slim AS base
 
-# 修复镜像自带 pip/setuptools CVE（docs/licenses-report.md §1）
-RUN pip install --no-cache-dir -U pip setuptools
+# 修复镜像自带 pip/setuptools CVE（docs/licenses-report.md §1；setuptools>=83 = PYSEC-2026-3447 修复版）
+RUN pip install --no-cache-dir -U pip "setuptools>=83.0.0"
 
 WORKDIR /app
 

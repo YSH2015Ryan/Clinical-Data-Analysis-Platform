@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=83"]  # >=83：PYSEC-2026-3447 修复版
 build-backend = "setuptools.build_meta"
 
 [project]
