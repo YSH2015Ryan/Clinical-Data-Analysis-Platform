@@ -3,7 +3,7 @@
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DatasetAccepted(BaseModel):
@@ -41,6 +41,16 @@ class QualityReport(BaseModel):
 class DatasetPage(BaseModel):
     items: list[DatasetDetail]
     next_cursor: str | None = None
+
+
+class QuickFixAction(BaseModel):
+    type: Literal["drop_column", "drop_duplicates", "to_missing", "remap_semantic"]
+    column: str | None = None
+    params: dict[str, Any] = {}
+
+
+class QuickFixRequest(BaseModel):
+    actions: list[QuickFixAction] = Field(min_length=1)
 
 
 class DatasetVersion(BaseModel):

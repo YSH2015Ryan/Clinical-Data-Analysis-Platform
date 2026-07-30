@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.core.logging import get_logger
 from app.engines import parser, validation
 from app.models.entities import Dataset, DatasetVersion, QualityReport
-from app.services.storage import storage_from_settings
+from app.services.storage import key_from_uri, storage_from_settings
 from app.workers.celery_app import celery_app
 from app.workers.db import get_sync_session_factory
 
@@ -40,7 +40,7 @@ def validate_dataset(dataset_id: str) -> None:
             return
         raw: bytes | None = None
         try:
-            raw = storage_from_settings().get(_storage_key_from_uri(dataset.storage_uri))
+            raw = storage_from_settings().get(key_from_uri(dataset.storage_uri))
             result = parser.parse(raw, dataset.source_type)
             report = validation.validate(result.df, raw_columns=result.raw_columns)
             dataset.encoding = result.encoding
@@ -97,12 +97,3 @@ def _encoding_hint(raw: bytes) -> str | None:
         return parser.detect_encoding(raw)
     except Exception:
         return None
-
-
-def _storage_key_from_uri(uri: str) -> str:
-    """S3 uri (s3://bucket/key) → key；local 模式 uri 即路径，key 取相对部分。"""
-    if uri.startswith("s3://"):
-        return uri.split("/", 3)[3]
-    # local: <root>/<key>，key 以 datasets/ 开头
-    idx = uri.find("datasets/")
-    return uri[idx:] if idx >= 0 else uri

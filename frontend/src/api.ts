@@ -161,3 +161,28 @@ export async function getDataset(id: string): Promise<DatasetDetail> {
 export async function getQualityReport(id: string): Promise<QualityReport> {
   return apiFetch<QualityReport>(`/datasets/${id}/quality-report`);
 }
+
+// ---- Quick Fix（docs/14 §3 POST /datasets/{id}/quick-fix） ----
+
+export interface QuickFixAction {
+  type: "drop_column" | "drop_duplicates" | "to_missing" | "remap_semantic";
+  column?: string;
+  params?: Record<string, unknown>;
+}
+
+export interface DatasetVersion {
+  id: string;
+  dataset_id: string;
+  version_no: number;
+  transform_log: { action: string; column: string | null; affected_rows: number }[];
+  created_at: string;
+}
+
+export async function quickFix(datasetId: string, actions: QuickFixAction[]): Promise<DatasetVersion> {
+  return apiFetch<DatasetVersion>(`/datasets/${datasetId}/quick-fix`, {
+    method: "POST",
+    body: JSON.stringify({ actions }),
+  });
+}
+
+export const SEMANTIC_OPTIONS = ["Age", "Gender", "Diagnosis", "FollowUp", "Event", "Label"];

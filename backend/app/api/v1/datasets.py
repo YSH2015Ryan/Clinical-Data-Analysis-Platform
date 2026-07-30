@@ -14,11 +14,20 @@ from app.api.deps import get_current_user, require_role
 from app.core.config import get_settings
 from app.core.errors import AppError, not_found
 from app.db import get_db
+from app.engines.quickfix import QuickFixAction
 from app.schemas.auth import CurrentUser
-from app.schemas.dataset import DatasetAccepted, DatasetDetail, DatasetPage, QualityReport
+from app.schemas.dataset import (
+    DatasetAccepted,
+    DatasetDetail,
+    DatasetPage,
+    DatasetVersion,
+    QualityReport,
+    QuickFixRequest,
+)
 from app.services import audit as audit_service
 from app.services import datasets as dataset_service
 from app.services import projects as project_service
+from app.services import quickfix as quickfix_service
 from app.services.storage import storage_from_settings
 from app.workers.dataset_tasks import validate_dataset
 
@@ -107,3 +116,46 @@ async def get_quality_report(
     if report is None:
         raise not_found("report", str(dataset_id))
     return QualityReport.model_validate(report, from_attributes=True)
+
+
+@dataset_router.post("/{dataset_id}/quick-fix", response_model=DatasetVersion)
+async def quick_fix(
+    dataset_id: uuid.UUID,
+    body: QuickFixRequest,
+    user: CurrentUser = Depends(require_role("researcher")),
+    db: AsyncSession = Depends(get_db),
+) -> DatasetVersion:
+    """在线修复（docs/05 §5）：产生新版本，原文件不变，修复后重新校验。"""
+    dataset = await dataset_service.get_dataset(db, user, dataset_id)
+    if dataset is None:
+        raise not_found("dataset", str(dataset_id))
+    actions = [QuickFixAction(type=a.type, column=a.column, params=a.params) for a in body.actions]
+    try:
+        version = await quickfix_service.apply_quick_fix(
+            db, storage_from_settings(), dataset=dataset, actions=actions
+        )
+    except ValueError as exc:
+        raise AppError(code="VALIDATION_ERROR", status=400, message=str(exc)) from exc
+    await audit_service.record(
+        db,
+        "dataset.quick_fix",
+        user_id=user.id,
+        resource_type="dataset",
+        resource_id=dataset.id,
+        detail={"version_no": version.version_no, "actions": [a.type for a in body.actions]},
+    )
+    await db.commit()
+    return DatasetVersion.model_validate(version, from_attributes=True)
+
+
+@dataset_router.get("/{dataset_id}/versions", response_model=list[DatasetVersion])
+async def list_versions(
+    dataset_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[DatasetVersion]:
+    dataset = await dataset_service.get_dataset(db, user, dataset_id)
+    if dataset is None:
+        raise not_found("dataset", str(dataset_id))
+    versions = await quickfix_service.list_versions(db, dataset_id)
+    return [DatasetVersion.model_validate(v, from_attributes=True) for v in versions]

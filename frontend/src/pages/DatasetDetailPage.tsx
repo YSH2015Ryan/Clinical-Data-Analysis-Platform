@@ -4,6 +4,8 @@ import {
   Card,
   Descriptions,
   List,
+  Popconfirm,
+  Select,
   Space,
   Statistic,
   Table,
@@ -17,11 +19,14 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   getDataset,
   getQualityReport,
+  quickFix,
+  SEMANTIC_OPTIONS,
   type ApiError,
   type ColumnProfile,
   type DatasetDetail,
   type Issue,
   type QualityReport,
+  type QuickFixAction,
 } from "../api";
 
 const SEVERITY_COLOR: Record<Issue["severity"], string> = {
@@ -44,10 +49,21 @@ const REPORT_LABEL: Record<QualityReport["status"], string> = {
 
 const POLL_MS = 2000;
 
+/** 规则 → 一键修复动作映射（docs/05 §5；仅 warning 级显示按钮） */
+function fixActionFor(issue: Issue): QuickFixAction | null {
+  if (issue.rule_id === "RV201" && issue.column)
+    return { type: "drop_column", column: issue.column };
+  if (issue.rule_id === "RV401" && !issue.column) return { type: "drop_duplicates" };
+  if (issue.rule_id === "RV301" && issue.column)
+    return { type: "to_missing", column: issue.column };
+  return null;
+}
+
 export default function DatasetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [dataset, setDataset] = useState<DatasetDetail | null>(null);
   const [report, setReport] = useState<QualityReport | null>(null);
+  const [fixing, setFixing] = useState(false);
   const navigate = useNavigate();
 
   const reload = useCallback(async () => {
@@ -77,6 +93,24 @@ export default function DatasetDetailPage() {
 
   if (!dataset) return null;
   const blocked = (report?.blockers ?? 0) > 0 || dataset.status === "FAILED";
+
+  const onFix = async (action: QuickFixAction) => {
+    if (!id) return;
+    setFixing(true);
+    try {
+      const v = await quickFix(id, [action]);
+      message.success(`已生成新版本 v${v.version_no}（原文件不变）`);
+      await reload();
+    } catch (e) {
+      message.error((e as ApiError).message || "修复失败");
+    } finally {
+      setFixing(false);
+    }
+  };
+
+  const onRemap = async (column: string, semantic: string) => {
+    await onFix({ type: "remap_semantic", column, params: { semantic } });
+  };
 
   return (
     <div style={{ maxWidth: 1080, margin: "24px auto", padding: "0 16px" }}>
@@ -120,35 +154,42 @@ export default function DatasetDetailPage() {
             <List<Issue>
               dataSource={report.issues}
               locale={{ emptyText: "未发现问题" }}
-              renderItem={(issue) => (
-                <List.Item
-                  actions={
-                    issue.severity === "warning"
-                      ? [
-                          <Tooltip key="fix" title="在线修复（生成新版本，原文件不变）">
-                            <Button size="small" disabled>
-                              一键修复
-                            </Button>
-                          </Tooltip>,
-                        ]
-                      : undefined
-                  }
-                >
-                  <List.Item.Meta
-                    title={
-                      <Space>
-                        <Tag color={SEVERITY_COLOR[issue.severity]}>
-                          {SEVERITY_LABEL[issue.severity]}
-                        </Tag>
-                        <Typography.Text code>{issue.rule_id}</Typography.Text>
-                        {issue.column && <Tag>{issue.column}</Tag>}
-                        <span>{issue.message}</span>
-                      </Space>
+              renderItem={(issue) => {
+                const action = issue.severity === "warning" ? fixActionFor(issue) : null;
+                return (
+                  <List.Item
+                    actions={
+                      action
+                        ? [
+                            <Popconfirm
+                              key="fix"
+                              title="一键修复将生成新版本，原文件不变"
+                              onConfirm={() => void onFix(action)}
+                            >
+                              <Button size="small" loading={fixing}>
+                                一键修复
+                              </Button>
+                            </Popconfirm>,
+                          ]
+                        : undefined
                     }
-                    description={issue.suggestion || issue.detail || undefined}
-                  />
-                </List.Item>
-              )}
+                  >
+                    <List.Item.Meta
+                      title={
+                        <Space>
+                          <Tag color={SEVERITY_COLOR[issue.severity]}>
+                            {SEVERITY_LABEL[issue.severity]}
+                          </Tag>
+                          <Typography.Text code>{issue.rule_id}</Typography.Text>
+                          {issue.column && <Tag>{issue.column}</Tag>}
+                          <span>{issue.message}</span>
+                        </Space>
+                      }
+                      description={issue.suggestion || issue.detail || undefined}
+                    />
+                  </List.Item>
+                );
+              }}
             />
           </Card>
 
@@ -163,16 +204,26 @@ export default function DatasetDetailPage() {
                 { title: "推断类型", dataIndex: "inferred_type" },
                 {
                   title: "语义",
-                  render: (_, r) =>
-                    r.semantic ? (
-                      <Tag color="geekblue">
-                        {r.semantic}
-                        {r.semantic_confidence != null &&
-                          ` (${Math.round(r.semantic_confidence * 100)}%)`}
-                      </Tag>
-                    ) : (
-                      "—"
-                    ),
+                  render: (_, r) => (
+                    <Space size={4}>
+                      {r.semantic ? (
+                        <Tag color="geekblue">
+                          {r.semantic}
+                          {r.semantic_confidence != null &&
+                            ` (${Math.round(r.semantic_confidence * 100)}%)`}
+                        </Tag>
+                      ) : (
+                        "—"
+                      )}
+                      <Select
+                        size="small"
+                        placeholder="重映射"
+                        style={{ width: 110 }}
+                        options={SEMANTIC_OPTIONS.map((s) => ({ value: s, label: s }))}
+                        onChange={(v) => void onRemap(r.name, v)}
+                      />
+                    </Space>
+                  ),
                 },
                 {
                   title: "缺失率",
