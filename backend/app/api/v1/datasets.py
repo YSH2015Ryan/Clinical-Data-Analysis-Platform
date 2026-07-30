@@ -6,14 +6,18 @@ GET /datasets/{id}/quality-report 最新质量报告。
 """
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Query, UploadFile
+from fastapi.encoders import jsonable_encoder
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_role
 from app.core.config import get_settings
 from app.core.errors import AppError, not_found
 from app.db import get_db
+from app.engines.preprocessing import validate_dsl
 from app.engines.quickfix import QuickFixAction
 from app.schemas.auth import CurrentUser
 from app.schemas.dataset import (
@@ -159,3 +163,26 @@ async def list_versions(
         raise not_found("dataset", str(dataset_id))
     versions = await quickfix_service.list_versions(db, dataset_id)
     return [DatasetVersion.model_validate(v, from_attributes=True) for v in versions]
+
+
+@dataset_router.post("/{dataset_id}/preprocess/validate")
+async def validate_preprocess_dsl(
+    dataset_id: uuid.UUID,
+    body: dict[str, Any],
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """预处理 DSL 即时校验（docs/14 §3；非法 DSL → 400 VALIDATION_ERROR，T3.1 DoD）。"""
+    dataset = await dataset_service.get_dataset(db, user, dataset_id)
+    if dataset is None:
+        raise not_found("dataset", str(dataset_id))
+    try:
+        cfg = validate_dsl(body)
+    except ValidationError as exc:
+        raise AppError(
+            code="VALIDATION_ERROR",
+            status=400,
+            message="预处理 DSL 校验失败",
+            details={"errors": jsonable_encoder(exc.errors())},
+        ) from exc
+    return {"valid": True, "normalized": cfg.model_dump(mode="json")}
