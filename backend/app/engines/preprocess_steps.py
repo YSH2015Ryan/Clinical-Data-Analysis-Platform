@@ -448,3 +448,63 @@ class DeriveTransformer(BaseEstimator, TransformerMixin):  # type: ignore[misc]
         for item in self.expressions:
             out[item["name"]] = self._evaluate(out, item["expr"])
         return out
+
+
+# ---------- reshape / drop_columns（结构性步骤，docs/06 §3.1 真实数据适配）----------
+
+
+class ReshapeTransformer(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+    """长表(EAV)→宽表：一行=一个患者（pivot_table 复用）。
+
+    fit 记录宽表列集合；transform 透视后 reindex 对齐训练折列，
+    验证折缺失的类别列以 NaN 兜底（交下游 missing 步骤处理）。
+    """
+
+    def __init__(
+        self,
+        mode: Literal["long_to_wide"] = "long_to_wide",
+        index: str = "",
+        columns: str = "",
+        values: str = "",
+        agg: Literal["first", "mean", "sum", "max", "min", "count"] = "first",
+    ) -> None:
+        self.mode = mode
+        self.index = index
+        self.columns = columns
+        self.values = values
+        self.agg = agg
+
+    def _pivot(self, df: pd.DataFrame) -> pd.DataFrame:
+        wide = df.pivot_table(
+            index=self.index, columns=self.columns, values=self.values, aggfunc=self.agg
+        )
+        wide.columns = [str(c) for c in wide.columns]
+        return wide.reset_index()
+
+    def fit(self, df: pd.DataFrame, y: Any = None) -> "ReshapeTransformer":
+        wide = self._pivot(df)
+        self._fit_columns: list[str] = list(wide.columns)
+        self.statistics_ = {
+            "wide_columns": self._fit_columns,
+            "long_rows": len(df),
+            "wide_rows": len(wide),
+        }
+        return self
+
+    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        wide = self._pivot(df)
+        return wide.reindex(columns=self._fit_columns)
+
+
+class DropColumnsTransformer(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+    """删除指定列（存在的才删，幂等）。"""
+
+    def __init__(self, columns: list[str]) -> None:
+        self.columns = columns
+
+    def fit(self, df: pd.DataFrame, y: Any = None) -> "DropColumnsTransformer":
+        self.statistics_ = {"dropped": [c for c in self.columns if c in df.columns]}
+        return self
+
+    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        return df.drop(columns=[c for c in self.columns if c in df.columns])
