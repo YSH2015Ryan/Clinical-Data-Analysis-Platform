@@ -46,7 +46,9 @@ def upgrade() -> None:
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.create_index(
-        "ix_projects_owner_active", "projects", ["owner_id"],
+        "ix_projects_owner_active",
+        "projects",
+        ["owner_id"],
         postgresql_where=sa.text("deleted_at IS NULL"),
     )
 
@@ -101,8 +103,10 @@ def upgrade() -> None:
             "dataset_id", UUID, sa.ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False
         ),
         sa.Column(
-            "dataset_version_id", UUID,
-            sa.ForeignKey("dataset_versions.id", ondelete="CASCADE"), nullable=False,
+            "dataset_version_id",
+            UUID,
+            sa.ForeignKey("dataset_versions.id", ondelete="CASCADE"),
+            nullable=False,
         ),
         sa.Column("status", sa.Text, nullable=False),
         sa.Column("blockers", sa.Integer, nullable=False, server_default="0"),
@@ -116,7 +120,8 @@ def upgrade() -> None:
         ),
     )
     op.create_index(
-        "ix_quality_reports_version_created", "quality_reports",
+        "ix_quality_reports_version_created",
+        "quality_reports",
         ["dataset_version_id", sa.text("created_at DESC")],
     )
 
@@ -127,8 +132,10 @@ def upgrade() -> None:
             "project_id", UUID, sa.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
         ),
         sa.Column(
-            "dataset_version_id", UUID,
-            sa.ForeignKey("dataset_versions.id"), nullable=False,
+            "dataset_version_id",
+            UUID,
+            sa.ForeignKey("dataset_versions.id"),
+            nullable=False,
         ),
         sa.Column("task_type", sa.Text, nullable=False),
         sa.Column("status", sa.Text, nullable=False, server_default="PENDING"),
@@ -151,7 +158,8 @@ def upgrade() -> None:
         ),
     )
     op.create_index(
-        "ix_analysis_runs_project_created", "analysis_runs",
+        "ix_analysis_runs_project_created",
+        "analysis_runs",
         ["project_id", sa.text("created_at DESC")],
     )
     op.create_index("ix_analysis_runs_status", "analysis_runs", ["status"])
@@ -160,8 +168,11 @@ def upgrade() -> None:
         "preprocess_snapshots",
         sa.Column("id", UUID, primary_key=True, server_default=GEN_UUID),
         sa.Column(
-            "run_id", UUID, sa.ForeignKey("analysis_runs.id", ondelete="CASCADE"),
-            nullable=False, unique=True,
+            "run_id",
+            UUID,
+            sa.ForeignKey("analysis_runs.id", ondelete="CASCADE"),
+            nullable=False,
+            unique=True,
         ),
         sa.Column("steps", postgresql.JSONB, nullable=False),
         sa.Column("feature_matrix_uri", sa.Text, nullable=False),
@@ -206,8 +217,11 @@ def upgrade() -> None:
         "comparisons",
         sa.Column("id", UUID, primary_key=True, server_default=GEN_UUID),
         sa.Column(
-            "run_id", UUID, sa.ForeignKey("analysis_runs.id", ondelete="CASCADE"),
-            nullable=False, unique=True,
+            "run_id",
+            UUID,
+            sa.ForeignKey("analysis_runs.id", ondelete="CASCADE"),
+            nullable=False,
+            unique=True,
         ),
         sa.Column("ranking", postgresql.JSONB, nullable=False),
         sa.Column("recommendation", postgresql.JSONB, nullable=False),
@@ -230,9 +244,7 @@ def upgrade() -> None:
         sa.CheckConstraint("format IN ('pdf','html','markdown','docx')", name="ck_reports_format"),
         sa.CheckConstraint("status IN ('PENDING','READY','FAILED')", name="ck_reports_status"),
     )
-    op.create_index(
-        "ix_reports_run_created", "reports", ["run_id", sa.text("created_at DESC")]
-    )
+    op.create_index("ix_reports_run_created", "reports", ["run_id", sa.text("created_at DESC")])
 
     op.create_table(
         "audit_logs",
@@ -245,9 +257,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=NOW),
     )
     op.create_index("ix_audit_logs_user_created", "audit_logs", ["user_id", "created_at"])
-    op.create_index(
-        "ix_audit_logs_resource", "audit_logs", ["resource_type", "resource_id"]
-    )
+    op.create_index("ix_audit_logs_resource", "audit_logs", ["resource_type", "resource_id"])
 
 
 def downgrade() -> None:
