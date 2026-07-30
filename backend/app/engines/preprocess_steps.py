@@ -1,19 +1,24 @@
-"""预处理步骤转换器：missing / outlier / encode / scale（docs/06 §3）。
+"""预处理步骤转换器：missing / outlier / encode / scale / feature_select / derive（docs/06 §3）。
 
 协议：sklearn 兼容（fit(df, y=None) / transform(df)），可嵌入 sklearn.Pipeline；
 fit 阶段把统计量写入 ``self.statistics_``（T3.4 Snapshot 序列化用），transform
 一律使用训练折统计量，保证防泄漏（docs/06 §4）。
 
-分层纪律：engines 只依赖数据处理库（pandas/numpy/sklearn），禁止 import
+分层纪律：engines 只依赖数据处理库（pandas/numpy/sklearn/simpleeval），禁止 import
 fastapi/celery/sqlalchemy。
 """
 
+import ast
+import operator
 from typing import Any, Literal, cast
 
 import numpy as np
 import pandas as pd
+import simpleeval
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.feature_selection import f_classif, f_regression
 from sklearn.impute import KNNImputer
+from sklearn.linear_model import Lasso
 
 ColumnSelector = Literal["continuous"] | list[str]
 
@@ -291,4 +296,155 @@ class ScaleTransformer(BaseEstimator, TransformerMixin):  # type: ignore[misc]
                 out[col] = 0.0
             else:
                 out[col] = (s - p["center"]) / scale
+        return out
+
+
+# ---------- feature_select ----------
+
+
+class FeatureSelectTransformer(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+    """特征选择：variance_threshold / correlation / univariate / lasso（复用 sklearn）。
+
+    只作用于数值列，非数值列原样保留。correlation 的 threshold=0 视为默认 0.95；
+    univariate/lasso 需要 y（fit(df, y)），缺失抛 ValueError。
+    """
+
+    def __init__(
+        self,
+        method: Literal["variance_threshold", "correlation", "univariate", "lasso"] = (
+            "variance_threshold"
+        ),
+        threshold: float = 0.0,
+    ) -> None:
+        self.method = method
+        self.threshold = threshold
+
+    def fit(self, df: pd.DataFrame, y: Any = None) -> "FeatureSelectTransformer":
+        cols = _numeric_columns(df)
+        dropped: list[str] = []
+        scores: dict[str, float] = {}
+
+        if self.method == "variance_threshold":
+            variances = df[cols].var(ddof=0)
+            scores = {c: float(variances[c]) for c in cols}
+            dropped = [c for c in cols if float(variances[c]) <= self.threshold]
+        elif self.method == "correlation":
+            cutoff = self.threshold if self.threshold > 0 else 0.95
+            corr = df[cols].corr().abs().to_numpy(dtype=float)
+            for i, ci in enumerate(cols):
+                if ci in dropped:
+                    continue
+                for j, cj in enumerate(cols[i + 1 :], start=i + 1):
+                    if cj not in dropped and float(corr[i, j]) > cutoff:
+                        dropped.append(cj)
+        else:
+            if y is None:
+                raise ValueError(f"{self.method} 特征选择需要 y：fit(df, y)")
+            y_arr = np.asarray(y)
+            x = df[cols].to_numpy(dtype=float, copy=True)
+            if self.method == "univariate":
+                is_classification = len(np.unique(y_arr[~pd.isna(y_arr)])) <= 10
+                f_values, _ = f_classif(x, y_arr) if is_classification else f_regression(x, y_arr)
+                scores = {c: float(f_values[i]) for i, c in enumerate(cols)}
+                dropped = [c for c in cols if scores[c] < self.threshold]
+            else:  # lasso
+                alpha = self.threshold if self.threshold > 0 else 0.01
+                model = Lasso(alpha=alpha)
+                model.fit(x, y_arr)
+                coef = np.asarray(model.coef_, dtype=float)
+                scores = {c: float(coef[i]) for i, c in enumerate(cols)}
+                dropped = [c for c in cols if scores[c] == 0.0]
+
+        self.statistics_ = {"method": self.method, "dropped": dropped, "scores": scores}
+        return self
+
+    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        dropped = [c for c in self.statistics_["dropped"] if c in df.columns]
+        return df.drop(columns=dropped)
+
+
+# ---------- derive（simpleeval 白名单沙箱，禁止 eval 任意代码 —— docs/06 §3）----------
+
+_DERIVE_FUNCTIONS: dict[str, Any] = {
+    "log": np.log,
+    "log2": np.log2,
+    "log10": np.log10,
+    "sqrt": np.sqrt,
+    "exp": np.exp,
+    "abs": np.abs,
+    "floor": np.floor,
+    "ceil": np.ceil,
+    "round": np.round,
+    "clip": np.clip,
+    "minimum": np.minimum,
+    "maximum": np.maximum,
+}
+
+
+def _string_guarded(guard: Any, plain: Any) -> Any:
+    """simpleeval 的 safe_mult/safe_add 等对带 __len__ 对象做长度检查，
+
+    会把 pandas Series 的比较结果求布尔值而报错；仅字符串操作数走原守卫，
+    其余直接用普通运算符（Series 向量化运算无 DoS 面）。
+    """
+
+    def inner(a: Any, b: Any) -> Any:
+        if isinstance(a, (str, bytes)) or isinstance(b, (str, bytes)):
+            return guard(a, b)
+        return plain(a, b)
+
+    return inner
+
+
+def _series_safe_power(a: Any, b: Any) -> Any:
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return simpleeval.safe_power(a, b)  # 纯标量保留指数 DoS 守卫
+    return a**b
+
+
+_DERIVE_OPERATORS: dict[Any, Any] = {
+    **simpleeval.DEFAULT_OPERATORS,
+    ast.Mult: _string_guarded(simpleeval.safe_mult, operator.mul),
+    ast.Add: _string_guarded(simpleeval.safe_add, operator.add),
+    ast.LShift: _string_guarded(simpleeval.safe_lshift, operator.lshift),
+    ast.RShift: _string_guarded(simpleeval.safe_rshift, operator.rshift),
+    ast.Pow: _series_safe_power,
+}
+
+
+class DeriveTransformer(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+    """派生列：simpleeval 白名单求值（安全红线 CLAUDE.md §7）。
+
+    可用变量 = 数据列名；可用函数 = _DERIVE_FUNCTIONS 白名单；
+    属性访问 / 导入 / lambda / 内建函数一律拒绝（simpleeval 默认策略）。
+    fit 时即对训练数据试算，非法表达式在 fit 阶段抛 ValueError。
+    """
+
+    def __init__(self, expressions: list[dict[str, str]]) -> None:
+        self.expressions = expressions
+
+    def _evaluate(self, df: pd.DataFrame, expr: str) -> Any:
+        evaluator = simpleeval.SimpleEval(
+            names={c: df[c] for c in df.columns},
+            functions=_DERIVE_FUNCTIONS,
+            operators=_DERIVE_OPERATORS,
+        )
+        try:
+            return evaluator.eval(expr)
+        except Exception as exc:  # simpleeval.InvalidExpression / SyntaxError / 数值错误
+            raise ValueError(f"派生表达式 {expr!r} 非法或求值失败：{exc}") from exc
+
+    def fit(self, df: pd.DataFrame, y: Any = None) -> "DeriveTransformer":
+        for item in self.expressions:
+            self._evaluate(df, item["expr"])  # 试算验证，失败即拒
+        self.statistics_ = {
+            "derived": [item["name"] for item in self.expressions],
+            "expressions": list(self.expressions),
+        }
+        return self
+
+    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        out = df.copy()
+        for item in self.expressions:
+            out[item["name"]] = self._evaluate(out, item["expr"])
         return out
