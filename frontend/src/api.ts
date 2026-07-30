@@ -186,3 +186,65 @@ export async function quickFix(datasetId: string, actions: QuickFixAction[]): Pr
 }
 
 export const SEMANTIC_OPTIONS = ["Age", "Gender", "Diagnosis", "FollowUp", "Event", "Label"];
+
+// ---- 预处理 DSL（docs/14 §3 PreprocessConfig；docs/06 §2） ----
+
+export type StepType =
+  | "reshape"
+  | "drop_columns"
+  | "missing"
+  | "outlier"
+  | "encode"
+  | "scale"
+  | "feature_select"
+  | "derive";
+
+export interface PreprocessStep {
+  type: StepType;
+  params: Record<string, unknown>;
+}
+
+export interface PreprocessConfig {
+  target: { time_col?: string | null; event_col?: string | null; label_col?: string | null };
+  steps: PreprocessStep[];
+  validation: {
+    strategy: "stratified_kfold" | "kfold";
+    n_splits: number;
+    test_size?: number;
+    seed: number;
+  };
+}
+
+export interface ValidateResult {
+  valid: boolean;
+  normalized: PreprocessConfig;
+}
+
+export async function validatePreprocess(
+  datasetId: string,
+  config: PreprocessConfig,
+): Promise<ValidateResult> {
+  return apiFetch<ValidateResult>(`/datasets/${datasetId}/preprocess/validate`, {
+    method: "POST",
+    body: JSON.stringify(config),
+  });
+}
+
+export async function recommendPreprocess(datasetId: string): Promise<PreprocessConfig> {
+  const resp = await apiFetch<{ config: PreprocessConfig }>(
+    `/datasets/${datasetId}/preprocess/recommend`,
+    { method: "POST" },
+  );
+  return resp.config;
+}
+
+export const DEFAULT_STEP_PARAMS: Record<StepType, Record<string, unknown>> = {
+  reshape: { mode: "long_to_wide", index: "", columns: "", values: "", agg: "first" },
+  drop_columns: { columns: [] },
+  missing: { default: "median", per_column: {}, drop_threshold: 0.5 },
+  outlier: { method: "iqr", action: "clip", columns: "continuous", zscore_threshold: 3.0 },
+  encode: { method: "auto", onehot_max_cardinality: 10, ordinal_columns: {} },
+  scale: { method: "standard", columns: "continuous" },
+  feature_select: { method: "variance_threshold", threshold: 0.0 },
+  derive: { expressions: [{ name: "", expr: "" }] },
+};

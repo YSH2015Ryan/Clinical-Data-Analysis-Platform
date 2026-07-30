@@ -251,6 +251,20 @@ paths:
                   normalized: {$ref: '#/components/schemas/PreprocessConfig'}
         '400': {$ref: '#/components/responses/Error'}
 
+  /datasets/{dataset_id}/preprocess/recommend:
+    post:
+      tags: [datasets]
+      summary: 推荐默认预处理配置（按列类型/语义生成，docs/06 §2「推荐配置」按钮数据源）
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config: {$ref: '#/components/schemas/PreprocessConfig'}
+        '404': {$ref: '#/components/responses/Error'}
+
   /datasets/{dataset_id}/detect-task:
     post:
       tags: [analysis]
@@ -674,3 +688,4 @@ components:
 | 2026-07-29 | `PreprocessStep.type` 枚举新增 `reshape` | 非破坏（扩展枚举） | 真实数据为长表（EAV）格式，需长转宽步骤，见 06 章 §3.1、01 章 FR-3.9 |
 | 2026-07-29 | 新增 `DELETE /projects/{project_id}`（204 软删） | 非破坏（新增端点） | T1.3 DoD 要求项目可删（软删）；受影响消费方：前端项目列表页 |
 | 2026-07-30 | 新增 `POST /datasets/{dataset_id}/preprocess/validate` | 非破坏（新增端点） | T3.1 DoD「非法 DSL 400」前置落地 + T3.6 前端配置面板即时校验；受影响消费方：前端预处理面板 |
+| 2026-07-30 | 新增 `POST /datasets/{dataset_id}/preprocess/recommend` | 非破坏（新增端点） | T3.5 推荐配置生成器落地 + T3.6 前端「推荐配置」一键填充；受影响消费方：前端预处理面板 |

@@ -28,6 +28,7 @@ import {
   type QualityReport,
   type QuickFixAction,
 } from "../api";
+import PreprocessPanel from "./PreprocessPanel";
 
 const SEVERITY_COLOR: Record<Issue["severity"], string> = {
   blocker: "error",
@@ -240,6 +241,13 @@ export default function DatasetDetailPage() {
             />
           </Card>
         </>
+      )}
+
+      {dataset.status === "VALIDATED" && !blocked && id && (
+        <PreprocessPanel
+          datasetId={id}
+          columns={report?.column_profiles.map((c) => c.name) ?? []}
+        />
       )}
     </div>
   );
