@@ -9,10 +9,14 @@ import io
 import uuid
 from typing import BinaryIO
 
+from sqlalchemy import select, true
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.errors import AppError
-from app.models.entities import Dataset, DatasetVersion
+from app.models.entities import Dataset, DatasetVersion, Project, QualityReport
+from app.schemas.auth import CurrentUser
+from app.services.projects import _decode_cursor, _encode_cursor
 from app.services.storage import StorageBackend
 
 ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".tsv", ".txt"}
@@ -124,3 +128,61 @@ def _too_large(max_bytes: int) -> AppError:
         message="文件超过大小上限",
         details={"max_mb": max_bytes // (1024 * 1024)},
     )
+
+
+# ---------- 查询（T2.5：项目级隔离，越权返回 None → api 层 404） ----------
+
+
+def _owner_filter(user: CurrentUser) -> ColumnElement[bool]:
+    """非 admin 强制 owner_id == current_user.id（docs/12 §2.2）。"""
+    if user.role == "admin":
+        return true()
+    return Project.owner_id == user.id
+
+
+async def get_dataset(db: AsyncSession, user: CurrentUser, dataset_id: uuid.UUID) -> Dataset | None:
+    stmt = (
+        select(Dataset)
+        .join(Project, Dataset.project_id == Project.id)
+        .where(
+            Dataset.id == dataset_id,
+            Dataset.deleted_at.is_(None),
+            Project.deleted_at.is_(None),
+            _owner_filter(user),
+        )
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def list_datasets(
+    db: AsyncSession, user: CurrentUser, project_id: uuid.UUID, cursor: str | None, limit: int
+) -> tuple[list[Dataset], str | None]:
+    offset = _decode_cursor(cursor) if cursor else 0
+    stmt = (
+        select(Dataset)
+        .join(Project, Dataset.project_id == Project.id)
+        .where(
+            Dataset.project_id == project_id,
+            Dataset.deleted_at.is_(None),
+            Project.deleted_at.is_(None),
+            _owner_filter(user),
+        )
+        .order_by(Dataset.created_at.desc(), Dataset.id)
+        .offset(offset)
+        .limit(limit + 1)
+    )
+    rows = list((await db.execute(stmt)).scalars().all())
+    items, next_cursor = rows[:limit], None
+    if len(rows) > limit:
+        next_cursor = _encode_cursor(offset + limit)
+    return items, next_cursor
+
+
+async def get_latest_report(db: AsyncSession, dataset_id: uuid.UUID) -> QualityReport | None:
+    stmt = (
+        select(QualityReport)
+        .where(QualityReport.dataset_id == dataset_id)
+        .order_by(QualityReport.created_at.desc())
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()

@@ -81,6 +81,10 @@ export default function ProjectsPage() {
         loading={loading}
         dataSource={items}
         pagination={false}
+        onRow={(record) => ({
+          onClick: () => navigate(`/projects/${record.id}`),
+          style: { cursor: "pointer" },
+        })}
         columns={[
           { title: "名称", dataIndex: "name" },
           { title: "描述", dataIndex: "description" },
@@ -92,11 +96,13 @@ export default function ProjectsPage() {
           {
             title: "操作",
             render: (_, record) => (
-              <Popconfirm title="确认删除该项目？" onConfirm={() => void onDelete(record.id)}>
-                <Button danger size="small">
-                  删除
-                </Button>
-              </Popconfirm>
+              <span onClick={(e) => e.stopPropagation()}>
+                <Popconfirm title="确认删除该项目？" onConfirm={() => void onDelete(record.id)}>
+                  <Button danger size="small">
+                    删除
+                  </Button>
+                </Popconfirm>
+              </span>
             ),
           },
         ]}

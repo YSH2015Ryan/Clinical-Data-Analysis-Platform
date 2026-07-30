@@ -2,7 +2,9 @@ import { ConfigProvider } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { getToken } from "./api";
+import DatasetDetailPage from "./pages/DatasetDetailPage";
 import LoginPage from "./pages/LoginPage";
+import ProjectDetailPage from "./pages/ProjectDetailPage";
 import ProjectsPage from "./pages/ProjectsPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -20,6 +22,22 @@ export default function App() {
             element={
               <RequireAuth>
                 <ProjectsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/projects/:id"
+            element={
+              <RequireAuth>
+                <ProjectDetailPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/datasets/:id"
+            element={
+              <RequireAuth>
+                <DatasetDetailPage />
               </RequireAuth>
             }
           />

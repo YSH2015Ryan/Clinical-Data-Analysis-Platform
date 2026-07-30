@@ -25,8 +25,9 @@ class Issue(BaseModel):
     severity: Literal["blocker", "warning", "info"]
     column: str | None = None
     message: str
-    affected_rows: int
-    suggestion: str
+    detail: str | None = None
+    suggestion: str = ""
+    affected_rows: int | None = None
 
 
 class QualityReport(BaseModel):
@@ -35,6 +36,11 @@ class QualityReport(BaseModel):
     warnings: int
     issues: list[Issue]
     column_profiles: list[dict[str, Any]]
+
+
+class DatasetPage(BaseModel):
+    items: list[DatasetDetail]
+    next_cursor: str | None = None
 
 
 class DatasetVersion(BaseModel):

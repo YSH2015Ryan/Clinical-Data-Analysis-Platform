@@ -37,6 +37,7 @@ def create_app() -> FastAPI:
     v1.include_router(auth_api.router)
     v1.include_router(projects_api.router)
     v1.include_router(datasets_api.router)
+    v1.include_router(datasets_api.dataset_router)
 
     @v1.get("/healthz")
     async def healthz() -> dict[str, str]:
