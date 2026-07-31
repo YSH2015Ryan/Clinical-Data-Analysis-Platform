@@ -113,7 +113,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "minio.*", "redbeat.*", "sklearn.*", "simpleeval", "simpleeval.*", "sksurv.*", "lifelines.*", "catboost.*"]
+module = ["celery.*", "minio.*", "redbeat.*", "sklearn.*", "simpleeval", "simpleeval.*", "sksurv.*", "lifelines.*", "catboost.*", "torch", "torch.*", "pycox.*", "torchtuples.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -176,3 +176,4 @@ lasso = "app.plugins.builtin.regression:LassoAdapter"
 elasticnet = "app.plugins.builtin.regression:ElasticnetAdapter"
 rf_reg = "app.plugins.builtin.regression:RfRegressorAdapter"
 xgboost_reg = "app.plugins.builtin.regression:XgboostRegressorAdapter"
+deepsurv = "app.plugins.builtin.deepsurv:DeepsurvAdapter"
