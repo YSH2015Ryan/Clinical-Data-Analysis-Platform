@@ -43,6 +43,29 @@ def _surv_matrix(step_functions: Any, grid: np.ndarray[Any, Any]) -> np.ndarray[
     return matrix
 
 
+def _km_by_risk(
+    risk: np.ndarray[Any, Any],
+    event: np.ndarray[Any, Any],
+    time: np.ndarray[Any, Any],
+) -> dict[str, Any]:
+    """按中位风险分层的 KM 曲线（docs/09 §3）；50 点分位数网格控制 JSON 体积。"""
+    median = float(np.median(risk))
+    groups = []
+    for name, mask in (("低风险", risk <= median), ("高风险", risk > median)):
+        if not mask.any():
+            continue
+        kmf = KaplanMeierFitter().fit(durations=time[mask], event_observed=event[mask])
+        grid = _time_grid(time[mask])
+        groups.append(
+            {
+                "name": name,
+                "times": grid.tolist(),
+                "survival": kmf.survival_function_at_times(grid).to_numpy().tolist(),
+            }
+        )
+    return {"groups": groups, "split": "median", "median_risk": median}
+
+
 class KmAdapter:
     """Kaplan-Meier 总体基线：无协变量，所有样本同一条生存曲线（C-index≈0.5）。"""
 
@@ -152,6 +175,8 @@ class CoxphAdapter:
         return {"type": "coefficients", "table": table}
 
     def predict_artifacts(self, X_val: Any, y_val: Any) -> dict[str, Any]:
+        event, time = _split_y(y_val)
+        risk = self._model.predict_partial_hazard(pd.DataFrame(X_val)).to_numpy()
         summary = self._model.summary
         forest = [
             {
@@ -163,7 +188,7 @@ class CoxphAdapter:
             }
             for feature, row in summary.iterrows()
         ]
-        return {"hr_forest": forest}
+        return {"hr_forest": forest, "km_by_risk": _km_by_risk(risk, event, time)}
 
 
 class RsfAdapter:
@@ -221,7 +246,9 @@ class RsfAdapter:
         return {"type": "feature_importance", "importances": importances}
 
     def predict_artifacts(self, X_val: Any, y_val: Any) -> dict[str, Any]:
-        return {}
+        event, time = _split_y(y_val)
+        risk = np.asarray(self._model.predict(pd.DataFrame(X_val)), dtype=float)
+        return {"km_by_risk": _km_by_risk(risk, event, time)}
 
 
 class GbsAdapter:
@@ -276,4 +303,6 @@ class GbsAdapter:
         return {"type": "feature_importance", "importances": importances}
 
     def predict_artifacts(self, X_val: Any, y_val: Any) -> dict[str, Any]:
-        return {}
+        event, time = _split_y(y_val)
+        risk = np.asarray(self._model.predict(pd.DataFrame(X_val)), dtype=float)
+        return {"km_by_risk": _km_by_risk(risk, event, time)}

@@ -346,7 +346,11 @@ class TestComparison:
         assert logreg["error"] is None
         assert body["ranking"]  # compare 已落库
         assert body["recommendation"]["primary_metric"] == "auc"
-        assert body["charts"] == []
+        # T6.2：compare 装配对比图表（dummy 无产物 → roc 等只含 logreg 系列）
+        kinds = {c["kind"] for c in body["charts"]}
+        assert {"roc", "calibration", "dca"} <= kinds
+        roc = next(c for c in body["charts"] if c["kind"] == "roc")
+        assert [s["model_key"] for s in roc["data"]["series"]] == ["logreg"]
 
     async def test_failed_model_annotated(
         self,

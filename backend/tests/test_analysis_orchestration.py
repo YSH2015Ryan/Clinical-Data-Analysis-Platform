@@ -173,6 +173,12 @@ class TestOrchestration:
         assert rec["top"][0]["model_key"] == comparison.ranking[0]
         assert "auc=" in rec["top"][0]["reason"]
 
+        # 对比图表齐备（docs/09 §3，T6.2）：DCA 需 prevalence（从 target.parquet 读取）
+        kinds = {c["kind"] for c in comparison.comparison_charts}
+        assert kinds == {"roc", "calibration", "dca", "confusion_matrix", "feature_importance"}
+        for c in comparison.comparison_charts:
+            assert c["title"] and c["image_uri"] is None
+
         # 进度终态 100
         progress = analysis_service.compute_progress(done, results)
         assert progress["percent"] == 100

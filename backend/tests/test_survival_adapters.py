@@ -167,6 +167,34 @@ class TestGbsAdapter:
         assert set(exp["importances"]) == {"age", "treatment", "biomarker", "noise"}
 
 
+class TestKmByRiskArtifacts:
+    """km_by_risk 产物：中位风险分层 KM 曲线（docs/09 §3，T6.2）。"""
+
+    @pytest.mark.parametrize("key", ["coxph", "rsf", "gbs"])
+    def test_km_by_risk_groups(self, key: str) -> None:
+        d = _survival_data()
+        adapter = _load_adapter(key)
+        adapter.fit(d["X"], d["y"], {})
+        art = adapter.predict_artifacts(d["X"], d["y"])
+        km = art["km_by_risk"]
+        names = {g["name"] for g in km["groups"]}
+        assert names == {"低风险", "高风险"}
+        for g in km["groups"]:
+            assert len(g["times"]) == len(g["survival"]) >= 2
+            assert all(0.0 <= s <= 1.0 for s in g["survival"])
+        json.dumps(art)
+
+    def test_coxph_hr_forest_artifact(self) -> None:
+        d = _survival_data()
+        adapter = _load_adapter("coxph")
+        adapter.fit(d["X"], d["y"], {})
+        art = adapter.predict_artifacts(d["X"], d["y"])
+        rows = {r["feature"]: r for r in art["hr_forest"]}
+        assert rows["treatment"]["hr"] > 1.0
+        assert rows["treatment"]["ci_lower"] <= rows["treatment"]["hr"]
+        assert rows["treatment"]["ci_upper"] >= rows["treatment"]["hr"]
+
+
 class TestProtocolCompliance:
     @pytest.mark.parametrize("key", ["km", "coxph", "rsf", "gbs"])
     def test_fit_evaluate_roundtrip_with_param_override(self, key: str) -> None:

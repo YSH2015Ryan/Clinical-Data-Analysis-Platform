@@ -120,6 +120,23 @@ class TestArtifacts:
         assert all(0.0 <= p <= 1.0 for p in cal["prob_pred"])
         json.dumps(art)
 
+    @pytest.mark.parametrize("key", KEYS)
+    def test_thresholds_and_confusion(self, key: str) -> None:
+        """roc thresholds 供 DCA 使用（inf→None 合法 JSONB）；混淆矩阵阈值 0.5。"""
+        d = _classification_data()
+        adapter = _load_adapter(key)
+        adapter.fit(d["X"], d["y"], {})
+        art = adapter.predict_artifacts(d["X"], d["y"])
+        roc = art["roc_curve"]
+        assert len(roc["thresholds"]) == len(roc["fpr"])
+        assert roc["thresholds"][0] is None  # sklearn 首元素 inf → None（JSONB 合法）
+        finite = [t for t in roc["thresholds"] if t is not None]
+        assert all(0.0 <= t <= 1.0 for t in finite)
+        cm = art["confusion_matrix"]
+        assert cm["labels"] == [0, 1]
+        assert sum(sum(r) for r in cm["matrix"]) == len(d["y"])
+        json.dumps(art)
+
 
 class TestProtocolCompliance:
     @pytest.mark.parametrize("key", KEYS)

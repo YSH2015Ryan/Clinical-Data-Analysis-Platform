@@ -283,15 +283,44 @@ def compare_run(results: Any, run_id: str) -> None:
             "primary_metric": primary,
         }
         db.execute(delete(Comparison).where(Comparison.run_id == run.id))
+        charts = _build_charts(run, succeeded)
         db.add(
             Comparison(
-                run_id=run.id, ranking=ranking, recommendation=recommendation, comparison_charts=[]
+                run_id=run.id,
+                ranking=ranking,
+                recommendation=recommendation,
+                comparison_charts=charts,
             )
         )
         run.status = "COMPLETED"
         run.finished_at = func_now(db)
         db.commit()
         logger.info("run_completed", run_id=run_id, ranking=ranking)
+
+
+def _build_charts(run: AnalysisRun, succeeded: list[ModelResult]) -> list[dict[str, Any]]:
+    """对比图表装配（docs/09 §3 单数据源）；图表失败不阻断 compare（降级为空图表列表）。"""
+    from app.engines.comparison.charts import build_comparison_charts
+
+    try:
+        prevalence: float | None = None
+        if run.task_type == "classification":
+            storage = storage_from_settings()
+            target = _get_df(storage, f"runs/{run.id}/target.parquet")
+            prevalence = float(target["label"].mean())
+        payload = [
+            {
+                "model_key": r.model_key,
+                "metrics": r.metrics or {},
+                "artifacts": (r.artifacts or [{}])[0],
+                "explainability": r.explainability,
+            }
+            for r in succeeded
+        ]
+        return build_comparison_charts(run.task_type, payload, prevalence=prevalence)
+    except Exception as exc:
+        logger.error("charts_build_failed", run_id=str(run.id), error=str(exc))
+        return []
 
 
 def func_now(db: Any) -> Any:

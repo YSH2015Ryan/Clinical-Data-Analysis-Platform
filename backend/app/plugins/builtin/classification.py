@@ -14,7 +14,7 @@ from sklearn.calibration import calibration_curve
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.inspection import permutation_importance
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_curve
+from sklearn.metrics import confusion_matrix, roc_curve
 from sklearn.svm import SVC
 
 from app.engines.comparison.metrics import classification_metrics
@@ -78,14 +78,21 @@ class _BaseClassifier:
     def predict_artifacts(self, X_val: Any, y_val: Any) -> dict[str, Any]:
         y = np.asarray(y_val).astype(int)
         prob = self._predict_proba(X_val)
-        fpr, tpr, _ = roc_curve(y, prob)
+        fpr, tpr, thresholds = roc_curve(y, prob)
         prob_true, prob_pred = calibration_curve(y, prob, n_bins=10)
+        cm = confusion_matrix(y, (prob >= 0.5).astype(int), labels=[0, 1])
         return {
-            "roc_curve": {"fpr": fpr.tolist(), "tpr": tpr.tolist()},
+            "roc_curve": {
+                "fpr": fpr.tolist(),
+                "tpr": tpr.tolist(),
+                # DCA 净获益计算需要（09 §3）；首元素 inf 非合法 JSONB 值 → None
+                "thresholds": [float(t) if np.isfinite(t) else None for t in thresholds],
+            },
             "calibration_curve": {
                 "prob_true": prob_true.tolist(),
                 "prob_pred": prob_pred.tolist(),
             },
+            "confusion_matrix": {"labels": [0, 1], "matrix": cm.tolist()},
         }
 
 
