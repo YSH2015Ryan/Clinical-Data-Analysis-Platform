@@ -172,6 +172,10 @@ class TestOrchestration:
         assert rec["primary_metric"] == "auc"
         assert rec["top"][0]["model_key"] == comparison.ranking[0]
         assert "auc=" in rec["top"][0]["reason"]
+        # T6.3：加权排名 + 公式披露（docs/09 §4）
+        assert rec["formula"].startswith("score = 0.6×主指标归一化")
+        assert [s["model_key"] for s in rec["scores"]] == comparison.ranking
+        assert isinstance(rec["not_recommended"], list)
 
         # 对比图表齐备（docs/09 §3，T6.2）：DCA 需 prevalence（从 target.parquet 读取）
         kinds = {c["kind"] for c in comparison.comparison_charts}

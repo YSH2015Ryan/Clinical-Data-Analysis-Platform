@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     model_timeout_s: int = 900
     max_upload_mb: int = 200
 
+    # 排名权重（docs/09 §4.1）
+    ranking_weight_primary: float = 0.6
+    ranking_weight_stability: float = 0.2
+    ranking_weight_secondary: float = 0.2
+
 
 @lru_cache
 def get_settings() -> Settings:

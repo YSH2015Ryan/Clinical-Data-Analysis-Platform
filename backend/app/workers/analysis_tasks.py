@@ -42,8 +42,6 @@ logger = get_logger(__name__)
 
 _registry: ModelRegistry | None = None
 
-_PRIMARY_METRIC = {"survival": "c_index", "classification": "auc", "regression": "rmse"}
-
 
 def get_registry() -> ModelRegistry:
     """进程级注册表单例（entry_points 扫描一次）。"""
@@ -259,29 +257,19 @@ def compare_run(results: Any, run_id: str) -> None:
         run.status = "COMPARING"
         db.commit()
 
-        primary = _PRIMARY_METRIC[run.task_type]
-        reverse = primary != "rmse"  # rmse 越小越好，其余越大越好
+        # 加权排名 + 理由模板（docs/09 §4）；权重取配置
+        from app.core.config import get_settings
+        from app.engines.comparison.ranking import build_recommendation
 
-        def _key(r: ModelResult) -> float:
-            return float((r.metrics or {}).get(primary, {}).get("mean", float("nan")))
-
-        ranked = sorted(succeeded, key=_key, reverse=reverse)
-        ranking = [r.model_key for r in ranked]
-        recommendation = {
-            "ranking": ranking,
-            "top": [
-                {
-                    "model_key": r.model_key,
-                    "rank": i + 1,
-                    "reason": (
-                        f"{primary}={_key(r):.4f}±"
-                        f"{(r.metrics or {}).get(primary, {}).get('std', 0.0):.4f}"
-                    ),
-                }
-                for i, r in enumerate(ranked[:3])
-            ],
-            "primary_metric": primary,
+        settings = get_settings()
+        weights = {
+            "primary": settings.ranking_weight_primary,
+            "stability": settings.ranking_weight_stability,
+            "secondary": settings.ranking_weight_secondary,
         }
+        payload = [{"model_key": r.model_key, "metrics": r.metrics or {}} for r in succeeded]
+        recommendation = build_recommendation(run.task_type, payload, weights=weights)
+        ranking: list[str] = recommendation["ranking"]
         db.execute(delete(Comparison).where(Comparison.run_id == run.id))
         charts = _build_charts(run, succeeded)
         db.add(

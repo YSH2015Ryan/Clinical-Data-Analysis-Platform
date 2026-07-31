@@ -169,12 +169,20 @@ erDiagram
 {
   "ranking": ["rsf", "coxph", "deepsurv"],
   "top": [
-    {"model_key": "rsf", "rank": 1, "reason": "C-index 最高(0.78±0.03)，且校准误差最低"},
-    {"model_key": "coxph", "rank": 2, "reason": "C-index 次高，可解释性最好，适合论文展示"}
+    {"model_key": "rsf", "rank": 1, "reason": "主指标最高（c_index=0.780±0.030），校准/拟合优度最优（ibs=0.120）"},
+    {"model_key": "coxph", "rank": 2, "reason": "主指标接近首位（c_index=0.760±0.020，差距 0.020），交叉验证最稳定（std=0.020）"}
   ],
-  "primary_metric": "c_index"
+  "not_recommended": [
+    {"model_key": "deepsurv", "reason": "交叉验证波动最大（std=0.090）"}
+  ],
+  "primary_metric": "c_index",
+  "formula": "score = 0.6×主指标归一化 + 0.2×稳定性归一化 + 0.2×次级指标归一化（docs/09 §4.1）",
+  "scores": [
+    {"model_key": "rsf", "score": 0.91, "components": {"primary": 1.0, "stability": 0.6, "secondary": 1.0}}
+  ]
 }
 ```
+理由由模板引擎基于指标事实生成，只引用真实计算值（docs/09 §4.2）。
 
 ## 4. 数据保留与隐私
 
