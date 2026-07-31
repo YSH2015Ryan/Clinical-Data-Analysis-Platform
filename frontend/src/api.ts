@@ -248,3 +248,30 @@ export const DEFAULT_STEP_PARAMS: Record<StepType, Record<string, unknown>> = {
   feature_select: { method: "variance_threshold", threshold: 0.0 },
   derive: { expressions: [{ name: "", expr: "" }] },
 };
+
+// ---- 任务识别（docs/14 §3 TaskDetectionResult；docs/08 §1.3） ----
+
+export type TaskType = "survival" | "classification" | "regression";
+
+export interface TaskCandidate {
+  column: string;
+  confidence: number;
+}
+
+export interface TaskDetectionResult {
+  recommended_task: TaskType | null;
+  confidence: number;
+  reason: string;
+  candidates: {
+    time_col?: TaskCandidate[];
+    event_col?: TaskCandidate[];
+    label_col?: TaskCandidate[];
+  };
+  user_override: string | null;
+}
+
+export async function detectTask(datasetId: string): Promise<TaskDetectionResult> {
+  return apiFetch<TaskDetectionResult>(`/datasets/${datasetId}/detect-task`, {
+    method: "POST",
+  });
+}

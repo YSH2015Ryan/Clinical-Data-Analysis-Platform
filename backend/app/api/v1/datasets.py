@@ -21,6 +21,7 @@ from app.engines import parser
 from app.engines.preprocessing import validate_dsl
 from app.engines.quickfix import QuickFixAction
 from app.engines.recommender import recommend_config
+from app.engines.task_detection import detect_task
 from app.schemas.auth import CurrentUser
 from app.schemas.dataset import (
     DatasetAccepted,
@@ -203,3 +204,26 @@ async def recommend_preprocess_dsl(
     raw = storage_from_settings().get(key_from_uri(dataset.storage_uri))
     result = parser.parse(raw, dataset.source_type)
     return {"config": recommend_config(result.df)}
+
+
+@dataset_router.post("/{dataset_id}/detect-task")
+async def detect_dataset_task(
+    dataset_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """任务类型自动识别（docs/14 §3 TaskDetectionResult；识别失败 422，docs/08 §1.1）。"""
+    dataset = await dataset_service.get_dataset(db, user, dataset_id)
+    if dataset is None:
+        raise not_found("dataset", str(dataset_id))
+    raw = storage_from_settings().get(key_from_uri(dataset.storage_uri))
+    result = parser.parse(raw, dataset.source_type)
+    detection = detect_task(result.df)
+    if detection.recommended_task is None:
+        raise AppError(
+            code="TASK_DETECTION_FAILED",
+            status=422,
+            message=detection.reason,
+            details={"candidates": detection.to_dict()["candidates"]},
+        )
+    return detection.to_dict()
