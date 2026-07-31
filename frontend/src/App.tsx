@@ -2,6 +2,7 @@ import { ConfigProvider } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { getToken } from "./api";
+import ComparisonPage from "./pages/ComparisonPage";
 import DatasetDetailPage from "./pages/DatasetDetailPage";
 import LoginPage from "./pages/LoginPage";
 import ProjectDetailPage from "./pages/ProjectDetailPage";
@@ -47,6 +48,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <RunMonitorPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/runs/:id/comparison"
+            element={
+              <RequireAuth>
+                <ComparisonPage />
               </RequireAuth>
             }
           />

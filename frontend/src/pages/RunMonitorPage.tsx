@@ -94,6 +94,11 @@ export default function RunMonitorPage() {
           运行监控 {run && <RunStatusTag status={run.status} />}
         </Typography.Title>
         <Space>
+          {progress?.status === "COMPLETED" && (
+            <Button type="primary" onClick={() => navigate(`/runs/${id}/comparison`)}>
+              查看比较结果
+            </Button>
+          )}
           {cancellable && (
             <Popconfirm title="确认取消该运行？" onConfirm={() => void onCancel()}>
               <Button danger loading={acting}>

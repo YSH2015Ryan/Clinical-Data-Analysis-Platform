@@ -330,3 +330,46 @@ export async function cancelRun(runId: string): Promise<{ status: string }> {
 export async function rerunModel(runId: string, modelKey: string): Promise<{ status: string }> {
   return apiFetch(`/analysis-runs/${runId}/models/${modelKey}/rerun`, { method: "POST" });
 }
+
+// ---- 比较结果（docs/14 §3 ComparisonResult；docs/09 §5） ----
+
+export interface ModelMetricsRow {
+  model_key: string;
+  status: ModelTaskStatus;
+  metrics: Record<string, { mean: number; std: number; folds?: number[] }> | null;
+  error: string | null;
+  duration_ms: number | null;
+}
+
+export interface ChartAsset {
+  kind: string;
+  title: string;
+  data: Record<string, unknown>;
+  image_uri: string | null;
+}
+
+export interface RecommendationTop {
+  model_key: string;
+  rank: number;
+  reason: string;
+}
+
+export interface Recommendation {
+  ranking: string[];
+  top: RecommendationTop[];
+  not_recommended?: { model_key: string; reason: string }[];
+  primary_metric: string;
+  formula?: string;
+  scores?: { model_key: string; score: number; components: Record<string, number> }[];
+}
+
+export interface ComparisonResult {
+  table: ModelMetricsRow[];
+  ranking: string[];
+  recommendation: Recommendation;
+  charts: ChartAsset[];
+}
+
+export async function getComparison(runId: string): Promise<ComparisonResult> {
+  return apiFetch<ComparisonResult>(`/analysis-runs/${runId}/comparison`);
+}
