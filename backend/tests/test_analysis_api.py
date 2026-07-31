@@ -94,13 +94,17 @@ def _auth(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_token(str(user.id), user.role, 'access')}"}
 
 
-def _body(version_id: uuid.UUID, models: list[str]) -> dict[str, object]:
+def _body(
+    version_id: uuid.UUID,
+    models: list[str],
+    model_params: dict[str, dict[str, object]] | None = None,
+) -> dict[str, object]:
     return {
         "dataset_version_id": str(version_id),
         "task_type": "classification",
         "preprocess_config": CLF_CONFIG,
         "selected_models": models,
-        "model_params": {},
+        "model_params": model_params or {},
     }
 
 
@@ -296,4 +300,97 @@ class TestRunQueries:
 
     async def test_not_found_404(self, client: AsyncClient, researcher: User) -> None:
         resp = await client.get(f"/api/v1/analysis-runs/{uuid.uuid4()}", headers=_auth(researcher))
+        assert resp.status_code == 404
+
+
+class TestComparison:
+    """T6.1：GET /analysis-runs/{id}/comparison（docs/14 ComparisonResult）。"""
+
+    async def _create(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        researcher: User,
+        version: DatasetVersion,
+        models: list[str],
+        model_params: dict[str, dict[str, object]] | None = None,
+    ) -> str:
+        resp = await client.post(
+            "/api/v1/analysis-runs",
+            json=_body(version.id, models, model_params),
+            headers=_auth(researcher),
+        )
+        assert resp.status_code == 202
+        db_session.expunge_all()
+        return str(resp.json()["id"])
+
+    async def test_comparison_completed(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        researcher: User,
+        version: DatasetVersion,
+    ) -> None:
+        run_id = await self._create(client, db_session, researcher, version, ["logreg", "dummy"])
+
+        resp = await client.get(
+            f"/api/v1/analysis-runs/{run_id}/comparison", headers=_auth(researcher)
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert [row["model_key"] for row in body["table"]] == ["logreg", "dummy"]
+        logreg = body["table"][0]
+        assert logreg["status"] == "SUCCESS"
+        assert set(logreg["metrics"]["auc"]) == {"mean", "std", "folds"}
+        assert logreg["duration_ms"] is not None
+        assert logreg["error"] is None
+        assert body["ranking"]  # compare 已落库
+        assert body["recommendation"]["primary_metric"] == "auc"
+        assert body["charts"] == []
+
+    async def test_failed_model_annotated(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        researcher: User,
+        version: DatasetVersion,
+    ) -> None:
+        run_id = await self._create(
+            client, db_session, researcher, version, ["logreg", "dummy"], {"logreg": {"C": -1.0}}
+        )
+
+        resp = await client.get(
+            f"/api/v1/analysis-runs/{run_id}/comparison", headers=_auth(researcher)
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        logreg = next(r for r in body["table"] if r["model_key"] == "logreg")
+        assert logreg["status"] == "FAILED"
+        assert logreg["metrics"] is None  # 失败模型标注（T6.1 DoD）
+        assert logreg["error"]
+        assert body["ranking"] == ["dummy"]
+
+    async def test_comparison_cross_owner_403(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        researcher: User,
+        version: DatasetVersion,
+    ) -> None:
+        run_id = await self._create(client, db_session, researcher, version, ["dummy"])
+        other = User(
+            email="cmp-other@example.com",
+            password_hash=hash_password("o-pass"),
+            role="researcher",
+            display_name="O",
+        )
+        db_session.add(other)
+        await db_session.commit()
+        resp = await client.get(f"/api/v1/analysis-runs/{run_id}/comparison", headers=_auth(other))
+        assert resp.status_code == 403
+
+    async def test_comparison_not_found_404(self, client: AsyncClient, researcher: User) -> None:
+        resp = await client.get(
+            f"/api/v1/analysis-runs/{uuid.uuid4()}/comparison", headers=_auth(researcher)
+        )
         assert resp.status_code == 404

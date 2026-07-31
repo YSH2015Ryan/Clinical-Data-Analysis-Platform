@@ -16,6 +16,7 @@ from app.engines.model_registry import ModelRegistry
 from app.engines.preprocessing import validate_dsl
 from app.models.entities import (
     AnalysisRun,
+    Comparison,
     Dataset,
     DatasetVersion,
     ModelPlugin,
@@ -152,6 +153,39 @@ async def list_runs(
         )
     ).scalars()
     return list(rows)
+
+
+async def get_comparison(db: AsyncSession, user: CurrentUser, run_id: uuid.UUID) -> dict[str, Any]:
+    """ComparisonResult 聚合（docs/14）：性能表（含失败标注）+ 排名/推荐/图表。
+
+    Comparison 行仅在 compare 完成后存在；未完成/失败 run 返回空 ranking，
+    性能表照常返回（失败模型 metrics=None + error 标注，T6.1 DoD）。
+    """
+    run = await get_run(db, user, run_id)
+    results = (
+        (await db.execute(select(ModelResult).where(ModelResult.run_id == run.id))).scalars().all()
+    )
+    by_key = {r.model_key: r for r in results}
+    table = [
+        {
+            "model_key": r.model_key,
+            "status": r.status,
+            "metrics": r.metrics if r.status == "SUCCESS" else None,
+            "error": r.error,
+            "duration_ms": r.duration_ms,
+        }
+        for key in run.selected_models
+        if (r := by_key.get(key)) is not None
+    ]
+    comparison = (
+        await db.execute(select(Comparison).where(Comparison.run_id == run.id))
+    ).scalar_one_or_none()
+    return {
+        "table": table,
+        "ranking": list(comparison.ranking) if comparison else [],
+        "recommendation": dict(comparison.recommendation) if comparison else {},
+        "charts": list(comparison.comparison_charts) if comparison else [],
+    }
 
 
 async def run_progress(db: AsyncSession, user: CurrentUser, run_id: uuid.UUID) -> dict[str, Any]:

@@ -21,6 +21,7 @@ from app.schemas.analysis import (
     AnalysisRunCreate,
     AnalysisRunDetail,
     AnalysisRunOut,
+    ComparisonResult,
     RunProgress,
 )
 from app.schemas.auth import CurrentUser
@@ -101,6 +102,15 @@ async def get_run_progress(
     db: AsyncSession = Depends(get_db),
 ) -> RunProgress:
     return RunProgress(**await analysis_service.run_progress(db, user, run_id))
+
+
+@router.get("/analysis-runs/{run_id}/comparison", response_model=ComparisonResult)
+async def get_run_comparison(
+    run_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ComparisonResult:
+    return ComparisonResult(**await analysis_service.get_comparison(db, user, run_id))
 
 
 @router.post("/analysis-runs/{run_id}/cancel")
