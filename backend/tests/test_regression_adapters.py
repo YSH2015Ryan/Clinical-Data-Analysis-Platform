@@ -91,7 +91,8 @@ class TestExplain:
         adapter = _load_adapter(key)
         adapter.fit(d["X"], d["y"], {})
         exp = adapter.explain(d["X"])
-        assert exp is not None and exp["type"] == "feature_importance"
+        # 树模型走 SHAP 摘要（T5.7）；SHAP 异常时回退内置重要性
+        assert exp is not None and exp["type"] in ("shap_summary", "feature_importance")
         assert set(exp["importances"]) == {"f1", "f2", "f3", "f4", "f5"}
         assert max(exp["importances"].values()) > 0.0
         json.dumps(exp)

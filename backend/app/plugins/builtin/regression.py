@@ -47,11 +47,27 @@ class _BaseRegressor:
     def evaluate(self, X_val: Any, y_val: Any) -> dict[str, Any]:
         return regression_metrics(y_val, self._predict(X_val))
 
-    def explain(self, X_val: Any) -> dict[str, Any] | None:
+    def _explain_shap_or_builtin(self, X_val: Any) -> dict[str, Any]:
+        """树模型 SHAP 摘要；SHAP 计算失败回退内置重要性（docs/07 §6）。"""
+        try:
+            from app.plugins.builtin.explain import shap_importance
+
+            return {
+                "type": "shap_summary",
+                "method": "mean_abs_shap",
+                "importances": shap_importance(self._model, pd.DataFrame(X_val)),
+            }
+        except Exception:
+            return self._builtin_importance()
+
+    def _builtin_importance(self) -> dict[str, Any]:
         return {
             "type": "feature_importance",
             "importances": _importances_dict(self._X.columns, self._model.feature_importances_),
         }
+
+    def explain(self, X_val: Any) -> dict[str, Any] | None:
+        return self._builtin_importance()
 
     def predict_artifacts(self, X_val: Any, y_val: Any) -> dict[str, Any]:
         return {
@@ -107,6 +123,9 @@ class RfRegressorAdapter(_BaseRegressor):
     def _build(self, params: dict[str, Any]) -> Any:
         return RandomForestRegressor(**params)
 
+    def explain(self, X_val: Any) -> dict[str, Any] | None:
+        return self._explain_shap_or_builtin(X_val)
+
 
 class XgboostRegressorAdapter(_BaseRegressor):
     key = "xgboost_reg"
@@ -126,3 +145,6 @@ class XgboostRegressorAdapter(_BaseRegressor):
         from xgboost import XGBRegressor
 
         return XGBRegressor(**params)
+
+    def explain(self, X_val: Any) -> dict[str, Any] | None:
+        return self._explain_shap_or_builtin(X_val)

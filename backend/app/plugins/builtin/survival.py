@@ -152,7 +152,18 @@ class CoxphAdapter:
         return {"type": "coefficients", "table": table}
 
     def predict_artifacts(self, X_val: Any, y_val: Any) -> dict[str, Any]:
-        return {}
+        summary = self._model.summary
+        forest = [
+            {
+                "feature": str(feature),
+                "hr": float(row["exp(coef)"]),
+                "ci_lower": float(row["exp(coef) lower 95%"]),
+                "ci_upper": float(row["exp(coef) upper 95%"]),
+                "p_value": float(row["p"]),
+            }
+            for feature, row in summary.iterrows()
+        ]
+        return {"hr_forest": forest}
 
 
 class RsfAdapter:

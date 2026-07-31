@@ -59,6 +59,19 @@ class _BaseClassifier:
     def _feature_importances(self) -> dict[str, float]:
         return _importances_dict(self._X.columns, self._model.feature_importances_)
 
+    def _explain_shap_or_builtin(self, X_val: Any) -> dict[str, Any]:
+        """树模型 SHAP 摘要；SHAP 计算失败回退内置重要性（docs/07 §6，不中断分析）。"""
+        try:
+            from app.plugins.builtin.explain import shap_importance
+
+            return {
+                "type": "shap_summary",
+                "method": "mean_abs_shap",
+                "importances": shap_importance(self._model, pd.DataFrame(X_val)),
+            }
+        except Exception:
+            return {"type": "feature_importance", "importances": self._feature_importances()}
+
     def explain(self, X_val: Any) -> dict[str, Any] | None:
         return {"type": "feature_importance", "importances": self._feature_importances()}
 
@@ -105,6 +118,9 @@ class RfClassifierAdapter(_BaseClassifier):
     def _build(self, params: dict[str, Any]) -> Any:
         return RandomForestClassifier(**params)
 
+    def explain(self, X_val: Any) -> dict[str, Any] | None:
+        return self._explain_shap_or_builtin(X_val)
+
 
 class SvmAdapter(_BaseClassifier):
     """SVM(probability=True)；无内置重要性 → permutation importance 兜底。"""
@@ -144,6 +160,9 @@ class XgboostAdapter(_BaseClassifier):
 
         return XGBClassifier(**params)
 
+    def explain(self, X_val: Any) -> dict[str, Any] | None:
+        return self._explain_shap_or_builtin(X_val)
+
 
 class LightgbmAdapter(_BaseClassifier):
     key = "lightgbm"
@@ -163,6 +182,9 @@ class LightgbmAdapter(_BaseClassifier):
         from lightgbm import LGBMClassifier
 
         return LGBMClassifier(**params)
+
+    def explain(self, X_val: Any) -> dict[str, Any] | None:
+        return self._explain_shap_or_builtin(X_val)
 
 
 class CatboostAdapter(_BaseClassifier):
@@ -184,3 +206,6 @@ class CatboostAdapter(_BaseClassifier):
         from catboost import CatBoostClassifier
 
         return CatBoostClassifier(**params)
+
+    def explain(self, X_val: Any) -> dict[str, Any] | None:
+        return self._explain_shap_or_builtin(X_val)

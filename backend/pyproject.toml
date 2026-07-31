@@ -113,7 +113,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "minio.*", "redbeat.*", "sklearn.*", "simpleeval", "simpleeval.*", "sksurv.*", "lifelines.*", "catboost.*", "torch", "torch.*", "pycox.*", "torchtuples.*"]
+module = ["celery.*", "minio.*", "redbeat.*", "sklearn.*", "simpleeval", "simpleeval.*", "sksurv.*", "lifelines.*", "catboost.*", "torch", "torch.*", "pycox.*", "torchtuples.*", "shap", "shap.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
