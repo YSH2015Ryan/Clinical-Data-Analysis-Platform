@@ -4,10 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   listDatasets,
+  listProjectRuns,
   uploadDataset,
+  type AnalysisRun,
   type ApiError,
   type DatasetDetail,
 } from "../api";
+import { RunStatusTag } from "../components/RunProgressBoard";
 
 const STATUS_COLOR: Record<DatasetDetail["status"], string> = {
   UPLOADED: "default",
@@ -20,6 +23,7 @@ const STATUS_COLOR: Record<DatasetDetail["status"], string> = {
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [items, setItems] = useState<DatasetDetail[]>([]);
+  const [runs, setRuns] = useState<AnalysisRun[]>([]);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -29,6 +33,7 @@ export default function ProjectDetailPage() {
     try {
       const page = await listDatasets(id);
       setItems(page.items);
+      setRuns((await listProjectRuns(id)).items);
     } catch (e) {
       message.error((e as ApiError).message || "加载失败");
     } finally {
@@ -91,6 +96,33 @@ export default function ProjectDetailPage() {
           {
             title: "行数",
             render: (_, r) => r.preview?.total_rows ?? "—",
+          },
+        ]}
+      />
+
+      <Typography.Title level={4} style={{ marginTop: 32 }}>
+        分析运行
+      </Typography.Title>
+      <Table<AnalysisRun>
+        rowKey="id"
+        dataSource={runs}
+        pagination={false}
+        locale={{ emptyText: "暂无分析运行" }}
+        onRow={(record) => ({
+          onClick: () => navigate(`/runs/${record.id}`),
+          style: { cursor: "pointer" },
+        })}
+        columns={[
+          {
+            title: "创建时间",
+            dataIndex: "created_at",
+            render: (v: string) => new Date(v).toLocaleString(),
+          },
+          { title: "任务类型", dataIndex: "task_type" },
+          {
+            title: "状态",
+            dataIndex: "status",
+            render: (v: AnalysisRun["status"]) => <RunStatusTag status={v} />,
           },
         ]}
       />

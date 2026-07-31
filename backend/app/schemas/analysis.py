@@ -34,3 +34,4 @@ class RunProgress(BaseModel):
     percent: int = Field(ge=0, le=100)
     current_step: str | None = None
     models: dict[str, str]
+    errors: dict[str, str] = {}  # 失败模型错误信息（14 章 2026-07-29 新增可选字段）

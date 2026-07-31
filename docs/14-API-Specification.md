@@ -585,6 +585,10 @@ components:
         models:
           type: object
           additionalProperties: {$ref: '#/components/schemas/ModelTaskStatus'}
+        errors:
+          type: object
+          additionalProperties: {type: string}
+          description: 失败模型的错误信息（model_key → error），仅 FAILED 模型出现；前端失败原因 tooltip 数据源
     ComparisonResult:
       type: object
       required: [table, ranking, recommendation, charts]
@@ -687,5 +691,6 @@ components:
 |---|---|---|---|
 | 2026-07-29 | `PreprocessStep.type` 枚举新增 `reshape` | 非破坏（扩展枚举） | 真实数据为长表（EAV）格式，需长转宽步骤，见 06 章 §3.1、01 章 FR-3.9 |
 | 2026-07-29 | 新增 `DELETE /projects/{project_id}`（204 软删） | 非破坏（新增端点） | T1.3 DoD 要求项目可删（软删）；受影响消费方：前端项目列表页 |
+| 2026-07-29 | `RunProgress` 新增可选 `errors`（model_key → 错误信息） | 非破坏（新增可选字段） | T5.10 运行监控页「失败原因 tooltip」需逐模型错误文本；受影响消费方：前端 RunProgressBoard |
 | 2026-07-30 | 新增 `POST /datasets/{dataset_id}/preprocess/validate` | 非破坏（新增端点） | T3.1 DoD「非法 DSL 400」前置落地 + T3.6 前端配置面板即时校验；受影响消费方：前端预处理面板 |
 | 2026-07-30 | 新增 `POST /datasets/{dataset_id}/preprocess/recommend` | 非破坏（新增端点） | T3.5 推荐配置生成器落地 + T3.6 前端「推荐配置」一键填充；受影响消费方：前端预处理面板 |

@@ -210,10 +210,16 @@ async def prepare_model_rerun(
 
 
 def compute_progress(run: AnalysisRun, results: list[ModelResult]) -> dict[str, Any]:
-    """进度聚合（docs/08 §3-4）：percent = preprocess 20% + 每模型 70%/N + comparison 10%。"""
+    """进度聚合（docs/08 §3-4）：percent = preprocess 20% + 每模型 70%/N + comparison 10%。
+
+    errors：FAILED 模型的错误信息（docs/14 RunProgress.errors，前端失败 tooltip）。
+    """
     models: dict[str, str] = {k: "PENDING" for k in run.selected_models}
+    errors: dict[str, str] = {}
     for r in results:
         models[r.model_key] = r.status
+        if r.status == "FAILED" and r.error:
+            errors[r.model_key] = r.error
 
     n = max(len(run.selected_models), 1)
     done = sum(1 for k in run.selected_models if models.get(k) in _FINISHED_MODEL)
@@ -238,4 +244,5 @@ def compute_progress(run: AnalysisRun, results: list[ModelResult]) -> dict[str, 
         "percent": min(percent, 100),
         "current_step": current_step,
         "models": models,
+        "errors": errors,
     }

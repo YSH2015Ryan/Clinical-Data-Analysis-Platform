@@ -202,6 +202,11 @@ class TestOrchestration:
             ).scalar_one()
         assert comparison.ranking == ["dummy"]  # 失败模型不参与排名
 
+        # RunProgress.errors：失败模型错误信息（docs/14 2026-07-29 可选字段）
+        progress = analysis_service.compute_progress(done, results)
+        assert set(progress["errors"]) == {"logreg"}
+        assert progress["errors"]["logreg"]
+
     async def test_all_models_failed_run_failed(
         self, db_session: AsyncSession, seeded: tuple[User, DatasetVersion]
     ) -> None:

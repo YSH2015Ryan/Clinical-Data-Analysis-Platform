@@ -275,3 +275,58 @@ export async function detectTask(datasetId: string): Promise<TaskDetectionResult
     method: "POST",
   });
 }
+
+// ---- 分析运行（docs/14 §3 /analysis-runs；docs/08 §3 状态机） ----
+
+export type RunStatus =
+  | "PENDING"
+  | "PREPROCESSING"
+  | "MODELING"
+  | "COMPARING"
+  | "COMPLETED"
+  | "FAILED"
+  | "CANCELED";
+
+export type ModelTaskStatus = "PENDING" | "RUNNING" | "SUCCESS" | "FAILED" | "SKIPPED";
+
+export interface AnalysisRun {
+  id: string;
+  status: RunStatus;
+  task_type: TaskType;
+  created_at: string;
+}
+
+export interface AnalysisRunDetail extends AnalysisRun {
+  task_detection: Record<string, unknown> | null;
+  error: string | null;
+}
+
+export interface RunProgress {
+  status: RunStatus;
+  percent: number;
+  current_step: string | null;
+  models: Record<string, ModelTaskStatus>;
+  errors: Record<string, string>;
+}
+
+export async function listProjectRuns(
+  projectId: string,
+): Promise<{ items: AnalysisRun[]; next_cursor: string | null }> {
+  return apiFetch(`/projects/${projectId}/analysis-runs`);
+}
+
+export async function getRun(runId: string): Promise<AnalysisRunDetail> {
+  return apiFetch<AnalysisRunDetail>(`/analysis-runs/${runId}`);
+}
+
+export async function getRunProgress(runId: string): Promise<RunProgress> {
+  return apiFetch<RunProgress>(`/analysis-runs/${runId}/progress`);
+}
+
+export async function cancelRun(runId: string): Promise<{ status: string }> {
+  return apiFetch(`/analysis-runs/${runId}/cancel`, { method: "POST" });
+}
+
+export async function rerunModel(runId: string, modelKey: string): Promise<{ status: string }> {
+  return apiFetch(`/analysis-runs/${runId}/models/${modelKey}/rerun`, { method: "POST" });
+}

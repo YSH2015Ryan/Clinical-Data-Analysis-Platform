@@ -6,6 +6,7 @@ import DatasetDetailPage from "./pages/DatasetDetailPage";
 import LoginPage from "./pages/LoginPage";
 import ProjectDetailPage from "./pages/ProjectDetailPage";
 import ProjectsPage from "./pages/ProjectsPage";
+import RunMonitorPage from "./pages/RunMonitorPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   return getToken() ? children : <Navigate to="/login" replace />;
@@ -38,6 +39,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <DatasetDetailPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/runs/:id"
+            element={
+              <RequireAuth>
+                <RunMonitorPage />
               </RequireAuth>
             }
           />
