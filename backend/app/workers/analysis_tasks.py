@@ -312,3 +312,83 @@ def dispatch_analysis_run(run_id: str, model_keys: list[str]) -> str:
     )
     result = workflow.apply_async()
     return str(result.id)
+
+
+def dispatch_model_rerun(run_id: str, model_key: str) -> str:
+    """单模型重跑：chain(run_model → compare_run) 入队（08 §3 重跑后重算比较）。"""
+    workflow = chain(run_model.si(run_id, model_key), compare_run.s(run_id))
+    result = workflow.apply_async()
+    return str(result.id)
+
+
+@celery_app.task(name="app.workers.analysis_tasks.janitor_sweep")
+def janitor_sweep() -> dict[str, int]:
+    """巡检（docs/12 §3 beat 每 5min；docs/20 R1）：
+
+    - 超时 RUNNING 模型结果 → FAILED（worker kill -9 恢复）；
+    - MODELING 且全部模型终态但回调未触发 → 手动补触发 compare；
+    - 陈旧 PREPROCESSING / COMPARING / MODELING（无终态）→ FAILED。
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from app.core.config import get_settings
+
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+        seconds=get_settings().model_timeout_s
+    )
+    stats = {"stale_models_failed": 0, "compare_recovered": 0, "runs_failed": 0}
+    factory = get_sync_session_factory()
+    recovered: list[str] = []
+    with factory() as db:
+        stale_results = (
+            db.execute(
+                select(ModelResult).where(
+                    ModelResult.status == "RUNNING", ModelResult.created_at < cutoff
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for r in stale_results:
+            r.status = "FAILED"
+            r.error = "janitor：任务超时（worker 可能已宕机）"
+            stats["stale_models_failed"] += 1
+
+        active_runs = (
+            db.execute(
+                select(AnalysisRun).where(
+                    AnalysisRun.status.in_(("PREPROCESSING", "MODELING", "COMPARING"))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for run in active_runs:
+            stale = bool(run.created_at < cutoff)
+            if run.status != "MODELING":
+                if stale:
+                    run.status = "FAILED"
+                    run.error = "janitor：运行超时"
+                    run.finished_at = func_now(db)
+                    stats["runs_failed"] += 1
+                continue
+            rows = (
+                db.execute(select(ModelResult).where(ModelResult.run_id == run.id)).scalars().all()
+            )
+            states = {r.model_key: r.status for r in rows}
+            terminal = ("SUCCESS", "FAILED", "SKIPPED")
+            if all(states.get(k) in terminal for k in run.selected_models):
+                recovered.append(str(run.id))  # R1 降级：回调未触发，提交后手动 compare
+                stats["compare_recovered"] += 1
+            elif stale:
+                run.status = "FAILED"
+                run.error = "janitor：运行超时"
+                run.finished_at = func_now(db)
+                stats["runs_failed"] += 1
+        db.commit()
+
+    for rid in recovered:
+        compare_run.apply_async(args=[[], rid])
+    if any(stats.values()):
+        logger.warning("janitor_sweep", **stats)
+    return stats

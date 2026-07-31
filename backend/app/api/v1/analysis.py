@@ -3,7 +3,8 @@
 创建：POST /analysis-runs → 202（落库 PENDING + dispatch chain(preprocess→chord)）；
 查询：GET /projects/{id}/analysis-runs 列表、GET /analysis-runs/{id} 详情、
 GET /analysis-runs/{id}/progress 进度（docs/08 §3 公式推导）。
-取消/单模型重跑/comparison 见 T5.9/T6.x。
+T5.9：POST /{id}/cancel（取消，DB 状态闸 + best-effort revoke）、
+POST /{id}/models/{key}/rerun（单模型重跑 → 重算 comparison）。comparison 见 T6.x。
 """
 
 import uuid
@@ -13,6 +14,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_registry, require_role
+from app.core.logging import get_logger
 from app.db import get_db
 from app.engines.model_registry import ModelRegistry
 from app.schemas.analysis import (
@@ -24,7 +26,10 @@ from app.schemas.analysis import (
 from app.schemas.auth import CurrentUser
 from app.services import analysis as analysis_service
 from app.services import audit as audit_service
-from app.workers.analysis_tasks import dispatch_analysis_run
+from app.workers.analysis_tasks import dispatch_analysis_run, dispatch_model_rerun
+from app.workers.celery_app import celery_app
+
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["analysis"])
 
@@ -96,3 +101,44 @@ async def get_run_progress(
     db: AsyncSession = Depends(get_db),
 ) -> RunProgress:
     return RunProgress(**await analysis_service.run_progress(db, user, run_id))
+
+
+@router.post("/analysis-runs/{run_id}/cancel")
+async def cancel_analysis_run(
+    run_id: uuid.UUID,
+    user: CurrentUser = Depends(require_role("researcher")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    run = await analysis_service.cancel_run(db, user, run_id)
+    await audit_service.record(
+        db, "analysis.cancel", user_id=user.id, resource_type="analysis_run", resource_id=run.id
+    )
+    await db.commit()
+    if run.celery_chain_id:
+        try:  # best-effort：DB CANCELED 状态才是即时生效闸（worker 入口检查）
+            celery_app.control.revoke(run.celery_chain_id, terminate=True)
+        except Exception as exc:
+            logger.warning("revoke_failed", run_id=str(run_id), error=str(exc))
+    return {"status": "CANCELED"}
+
+
+@router.post("/analysis-runs/{run_id}/models/{model_key}/rerun", status_code=202)
+async def rerun_model(
+    run_id: uuid.UUID,
+    model_key: str,
+    user: CurrentUser = Depends(require_role("researcher")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    run = await analysis_service.prepare_model_rerun(db, user, run_id, model_key)
+    await audit_service.record(
+        db,
+        "analysis.rerun_model",
+        user_id=user.id,
+        resource_type="analysis_run",
+        resource_id=run.id,
+        detail={"model_key": model_key},
+    )
+    await db.commit()  # 先落 MODELING 状态：worker 以独立会话读取
+    run.celery_chain_id = dispatch_model_rerun(str(run.id), model_key)
+    await db.commit()
+    return {"status": "MODELING"}

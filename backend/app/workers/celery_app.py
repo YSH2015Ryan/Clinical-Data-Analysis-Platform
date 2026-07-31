@@ -27,4 +27,11 @@ celery_app.conf.update(
         "app.workers.report_tasks.*": {"queue": "report"},
     },
     result_expires=86400,
+    beat_schedule={
+        # docs/12 §3：janitor 巡检超时 RUNNING → FAILED（kill -9 恢复）
+        "janitor-sweep": {
+            "task": "app.workers.analysis_tasks.janitor_sweep",
+            "schedule": 300.0,
+        },
+    },
 )

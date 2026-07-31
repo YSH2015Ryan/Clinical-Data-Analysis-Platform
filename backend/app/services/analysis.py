@@ -163,6 +163,52 @@ async def run_progress(db: AsyncSession, user: CurrentUser, run_id: uuid.UUID) -
     return compute_progress(run, list(results))
 
 
+async def cancel_run(db: AsyncSession, user: CurrentUser, run_id: uuid.UUID) -> AnalysisRun:
+    """取消运行（docs/08 §3）：终态拒绝；非终态模型结果置 SKIPPED。
+
+    worker 各任务入口检查 run.status == "CANCELED" 提前返回（取消即时生效的 DB 闸）；
+    revoke 由调用方（api 层）best-effort 执行。
+    """
+    run = await get_run(db, user, run_id)
+    if run.status in TERMINAL_STATUSES:
+        raise AppError("INVALID_RUN_STATE", 400, f"状态 {run.status} 不可取消")
+    run.status = "CANCELED"
+    run.finished_at = (await db.execute(select(func.now()))).scalar_one()
+    running = (
+        (
+            await db.execute(
+                select(ModelResult).where(
+                    ModelResult.run_id == run.id, ModelResult.status.in_(("PENDING", "RUNNING"))
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for r in running:
+        r.status = "SKIPPED"
+        r.error = "运行已取消"
+    return run
+
+
+async def prepare_model_rerun(
+    db: AsyncSession, user: CurrentUser, run_id: uuid.UUID, model_key: str
+) -> AnalysisRun:
+    """单模型重跑前置（docs/08 §3）：仅终态 run 且 model_key 在所选列表内。
+
+    状态拨回 MODELING 供进度聚合；编排（run_model → compare）由调用方 dispatch。
+    """
+    run = await get_run(db, user, run_id)
+    if run.status not in TERMINAL_STATUSES:
+        raise AppError("INVALID_RUN_STATE", 400, f"状态 {run.status} 不可单模型重跑")
+    if model_key not in run.selected_models:
+        raise AppError("VALIDATION_ERROR", 400, f"模型 {model_key} 不在所选模型列表")
+    run.status = "MODELING"
+    run.error = None
+    run.finished_at = None
+    return run
+
+
 def compute_progress(run: AnalysisRun, results: list[ModelResult]) -> dict[str, Any]:
     """进度聚合（docs/08 §3-4）：percent = preprocess 20% + 每模型 70%/N + comparison 10%。"""
     models: dict[str, str] = {k: "PENDING" for k in run.selected_models}
