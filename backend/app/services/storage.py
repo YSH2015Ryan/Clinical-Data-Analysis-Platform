@@ -111,8 +111,11 @@ def storage_from_settings() -> StorageBackend:
 
 
 def key_from_uri(uri: str) -> str:
-    """S3 uri (s3://bucket/key) → key；local 模式 uri 即路径，key 取 datasets/ 起的相对部分。"""
+    """S3 uri (s3://bucket/key) → key；local 模式 uri 即路径，key 取顶层目录起的相对部分。"""
     if uri.startswith("s3://"):
         return uri.split("/", 3)[3]
-    idx = uri.find("datasets/")
-    return uri[idx:] if idx >= 0 else uri
+    for prefix in ("datasets/", "runs/"):
+        idx = uri.find(prefix)
+        if idx >= 0:
+            return uri[idx:]
+    return uri

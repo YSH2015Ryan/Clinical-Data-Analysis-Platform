@@ -7,6 +7,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.api.v1 import analysis as analysis_api
 from app.api.v1 import auth as auth_api
 from app.api.v1 import datasets as datasets_api
 from app.api.v1 import projects as projects_api
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     v1.include_router(projects_api.router)
     v1.include_router(datasets_api.router)
     v1.include_router(datasets_api.dataset_router)
+    v1.include_router(analysis_api.router)
 
     @v1.get("/healthz")
     async def healthz() -> dict[str, str]:

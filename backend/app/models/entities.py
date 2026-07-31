@@ -156,6 +156,7 @@ class AnalysisRun(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="PENDING")
     preprocess_config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     selected_models: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    model_params: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     task_detection: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     celery_chain_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

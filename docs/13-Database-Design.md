@@ -73,6 +73,7 @@ CREATE TABLE analysis_runs (
     CHECK (status IN ('PENDING','PREPROCESSING','MODELING','COMPARING','COMPLETED','FAILED','CANCELED')),
   preprocess_config JSONB NOT NULL,
   selected_models JSONB NOT NULL,
+  model_params JSONB, -- 按模型 key 覆盖默认参数（docs/14 AnalysisRunCreate；2026-07-29 补列）
   task_detection JSONB,
   celery_chain_id TEXT,
   error TEXT,

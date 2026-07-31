@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import AppError, forbidden
 from app.core.security import decode_token
 from app.db import get_db
+from app.engines.model_registry import ModelRegistry
 from app.schemas.auth import CurrentUser
 from app.services import auth as auth_service
 
@@ -50,3 +51,16 @@ def require_role(
         return user
 
     return checker
+
+
+_registry: ModelRegistry | None = None
+
+
+def get_registry() -> ModelRegistry:
+    """进程级注册表依赖（entry_points 扫描一次；与 worker 侧同一约定）。"""
+    global _registry
+    if _registry is None:
+        registry = ModelRegistry()
+        registry.load()
+        _registry = registry
+    return _registry

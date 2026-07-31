@@ -13,7 +13,7 @@ celery_app = Celery(
     "cdap",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.workers.dataset_tasks"],  # 任务模块注册（worker 启动时 import）
+    include=["app.workers.dataset_tasks", "app.workers.analysis_tasks"],  # 任务模块注册
 )
 
 celery_app.conf.update(
@@ -22,6 +22,7 @@ celery_app.conf.update(
     task_time_limit=settings.model_timeout_s,
     task_default_queue="default",
     task_routes={
+        "app.workers.analysis_tasks.run_model": {"queue": "model"},
         "app.workers.model_tasks.*": {"queue": "model"},
         "app.workers.report_tasks.*": {"queue": "report"},
     },
