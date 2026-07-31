@@ -1,0 +1,128 @@
+"""内置回归模型插件（docs/07 §3）：lasso / elasticnet / rf_reg / xgboost_reg。
+
+- 指标一律经 engines.comparison.metrics 计算（RMSE/MAE/R²），适配器只输出预测值；
+- rf/xgboost 的分类同名 key 已被占用（注册表 key 全局唯一），回归变体以 _reg 后缀注册；
+- 产物：预测值-真实值散点数据（prediction_scatter）。
+"""
+
+from typing import Any, ClassVar
+
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import ElasticNet, Lasso
+
+from app.engines.comparison.metrics import regression_metrics
+from app.plugins.builtin.classification import _importances_dict
+
+
+class _BaseRegressor:
+    """回归适配器公共骨架：fit → _build(params)；evaluate 走统一 metrics。"""
+
+    key: str
+    name: str
+    version = "0.1.0"
+    task_types: ClassVar[list[str]] = ["regression"]
+    capabilities: ClassVar[dict[str, Any]] = {
+        "shap": False,
+        "feature_importance": True,
+        "calibration": False,
+    }
+    default_params: ClassVar[dict[str, Any]] = {}
+
+    def _build(self, params: dict[str, Any]) -> Any:  # pragma: no cover - 子类实现
+        raise NotImplementedError
+
+    def fit(self, X: Any, y: Any, params: dict[str, Any]) -> None:
+        p = {**self.default_params, **params}
+        self._X = pd.DataFrame(X)
+        self._y = np.asarray(y, dtype=float)
+        self._model = self._build(p)
+        self._model.fit(self._X, self._y)
+
+    def _predict(self, X: Any) -> np.ndarray[Any, Any]:
+        pred: np.ndarray[Any, Any] = self._model.predict(pd.DataFrame(X))
+        return pred
+
+    def evaluate(self, X_val: Any, y_val: Any) -> dict[str, Any]:
+        return regression_metrics(y_val, self._predict(X_val))
+
+    def explain(self, X_val: Any) -> dict[str, Any] | None:
+        return {
+            "type": "feature_importance",
+            "importances": _importances_dict(self._X.columns, self._model.feature_importances_),
+        }
+
+    def predict_artifacts(self, X_val: Any, y_val: Any) -> dict[str, Any]:
+        return {
+            "prediction_scatter": {
+                "y_true": np.asarray(y_val, dtype=float).tolist(),
+                "y_pred": self._predict(X_val).tolist(),
+            }
+        }
+
+
+class LassoAdapter(_BaseRegressor):
+    key = "lasso"
+    name = "LASSO"
+    default_params: ClassVar[dict[str, Any]] = {"alpha": 0.01, "max_iter": 5000}
+
+    def _build(self, params: dict[str, Any]) -> Any:
+        return Lasso(**params)
+
+    def explain(self, X_val: Any) -> dict[str, Any] | None:
+        table = [
+            {"feature": str(col), "coef": float(coef)}
+            for col, coef in zip(self._X.columns, self._model.coef_, strict=True)
+        ]
+        return {"type": "coefficients", "table": table}
+
+
+class ElasticnetAdapter(_BaseRegressor):
+    key = "elasticnet"
+    name = "ElasticNet"
+    default_params: ClassVar[dict[str, Any]] = {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 5000}
+
+    def _build(self, params: dict[str, Any]) -> Any:
+        return ElasticNet(**params)
+
+    def explain(self, X_val: Any) -> dict[str, Any] | None:
+        table = [
+            {"feature": str(col), "coef": float(coef)}
+            for col, coef in zip(self._X.columns, self._model.coef_, strict=True)
+        ]
+        return {"type": "coefficients", "table": table}
+
+
+class RfRegressorAdapter(_BaseRegressor):
+    key = "rf_reg"
+    name = "Random Forest (regression)"
+    capabilities: ClassVar[dict[str, Any]] = {
+        "shap": True,
+        "feature_importance": True,
+        "calibration": False,
+    }
+    default_params: ClassVar[dict[str, Any]] = {"n_estimators": 100, "random_state": 42}
+
+    def _build(self, params: dict[str, Any]) -> Any:
+        return RandomForestRegressor(**params)
+
+
+class XgboostRegressorAdapter(_BaseRegressor):
+    key = "xgboost_reg"
+    name = "XGBoost (regression)"
+    capabilities: ClassVar[dict[str, Any]] = {
+        "shap": True,
+        "feature_importance": True,
+        "calibration": False,
+    }
+    default_params: ClassVar[dict[str, Any]] = {
+        "n_estimators": 100,
+        "max_depth": 3,
+        "random_state": 42,
+    }
+
+    def _build(self, params: dict[str, Any]) -> Any:
+        from xgboost import XGBRegressor
+
+        return XGBRegressor(**params)
