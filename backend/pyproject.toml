@@ -113,7 +113,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "minio.*", "redbeat.*", "sklearn.*", "simpleeval", "simpleeval.*", "sksurv.*", "lifelines.*"]
+module = ["celery.*", "minio.*", "redbeat.*", "sklearn.*", "simpleeval", "simpleeval.*", "sksurv.*", "lifelines.*", "catboost.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -166,3 +166,9 @@ km = "app.plugins.builtin.survival:KmAdapter"
 coxph = "app.plugins.builtin.survival:CoxphAdapter"
 rsf = "app.plugins.builtin.survival:RsfAdapter"
 gbs = "app.plugins.builtin.survival:GbsAdapter"
+logreg = "app.plugins.builtin.classification:LogregAdapter"
+rf = "app.plugins.builtin.classification:RfClassifierAdapter"
+svm = "app.plugins.builtin.classification:SvmAdapter"
+xgboost = "app.plugins.builtin.classification:XgboostAdapter"
+lightgbm = "app.plugins.builtin.classification:LightgbmAdapter"
+catboost = "app.plugins.builtin.classification:CatboostAdapter"
