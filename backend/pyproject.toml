@@ -113,7 +113,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "minio.*", "redbeat.*", "sklearn.*", "simpleeval", "simpleeval.*"]
+module = ["celery.*", "minio.*", "redbeat.*", "sklearn.*", "simpleeval", "simpleeval.*", "sksurv.*", "lifelines.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -162,3 +162,4 @@ fail_under = 70  # M0 骨架阶段；M1 起按 docs/19 提至 80
 [project.entry-points."cdap.models"]
 # 内置模型插件在此注册（docs/15），实现后取消注释：
 # coxph = "app.plugins.builtin.coxph:CoxPHAdapter"
+dummy = "app.plugins.builtin.dummy:DummyAdapter"
