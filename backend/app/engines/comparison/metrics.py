@@ -1,0 +1,114 @@
+"""统一指标计算（docs/07 §5）：指标不收在各模型内，模型只输出预测值。
+
+- classification：AUC（主）、Accuracy、Precision、Recall、F1、Brier、PR-AUC
+- survival：C-index（主）、IBS（提供生存函数预测时）
+- regression：RMSE（主）、MAE、R²
+
+一律调用官方库实现（sklearn / scikit-survival），不自研公式（CLAUDE.md 规则 2；
+docs/19：与官方实现对拍 ±1e-6）。
+"""
+
+from typing import Any
+
+import numpy as np
+from sklearn.metrics import (
+    accuracy_score,
+    average_precision_score,
+    brier_score_loss,
+    f1_score,
+    mean_absolute_error,
+    mean_squared_error,
+    precision_score,
+    r2_score,
+    recall_score,
+    roc_auc_score,
+)
+from sksurv.metrics import concordance_index_censored, integrated_brier_score
+from sksurv.util import Surv
+
+
+def _as_float_array(values: Any, name: str) -> np.ndarray[Any, Any]:
+    arr = np.asarray(values, dtype=float)
+    if arr.ndim != 1:
+        raise ValueError(f"{name} 须为一维数组，当前 shape={arr.shape}")
+    return arr
+
+
+def classification_metrics(y_true: Any, y_prob: Any) -> dict[str, float]:
+    """二分类指标：y_prob 为正类概率；硬预测取 0.5 阈值。"""
+    y_t = _as_float_array(y_true, "y_true")
+    y_p = _as_float_array(y_prob, "y_prob")
+    if y_t.shape[0] != y_p.shape[0]:
+        raise ValueError(f"y_true 与 y_prob 长度不一致：{y_t.shape[0]} vs {y_p.shape[0]}")
+    if not set(np.unique(y_t)) <= {0.0, 1.0}:
+        raise ValueError(f"classification_metrics 仅支持二分类（0/1），当前取值 {np.unique(y_t)!r}")
+    y_pred = (y_p >= 0.5).astype(int)
+    return {
+        "auc": float(roc_auc_score(y_t, y_p)),
+        "accuracy": float(accuracy_score(y_t, y_pred)),
+        "precision": float(precision_score(y_t, y_pred, zero_division=0)),
+        "recall": float(recall_score(y_t, y_pred, zero_division=0)),
+        "f1": float(f1_score(y_t, y_pred, zero_division=0)),
+        "brier": float(brier_score_loss(y_t, y_p)),
+        "pr_auc": float(average_precision_score(y_t, y_p)),
+    }
+
+
+def regression_metrics(y_true: Any, y_pred: Any) -> dict[str, float]:
+    """回归指标：RMSE（主）、MAE、R²。"""
+    y_t = _as_float_array(y_true, "y_true")
+    y_p = _as_float_array(y_pred, "y_pred")
+    if y_t.shape[0] != y_p.shape[0]:
+        raise ValueError(f"y_true 与 y_pred 长度不一致：{y_t.shape[0]} vs {y_p.shape[0]}")
+    return {
+        "rmse": float(np.sqrt(mean_squared_error(y_t, y_p))),
+        "mae": float(mean_absolute_error(y_t, y_p)),
+        "r2": float(r2_score(y_t, y_p)),
+    }
+
+
+def survival_metrics(
+    *,
+    event_test: Any,
+    time_test: Any,
+    risk: Any,
+    event_train: Any | None = None,
+    time_train: Any | None = None,
+    surv_pred: Any | None = None,
+    times: Any | None = None,
+) -> dict[str, float]:
+    """生存指标：C-index（主，risk 越大风险越高）；提供生存函数矩阵时附 IBS。
+
+    surv_pred：shape (n_test, n_times) 的生存概率 S(t|x)；IBS 需要训练集
+    （估计删失分布），缺训练集时抛 ValueError。
+    IBS 评估前过滤 time_test > max(time_train) 的样本：训练删失 KM 无法外推
+    至训练集最大观测时间之后（sksurv 约束）。
+    """
+    e_test = _as_float_array(event_test, "event_test").astype(bool)
+    t_test = _as_float_array(time_test, "time_test")
+    r = _as_float_array(risk, "risk")
+    if not (e_test.shape[0] == t_test.shape[0] == r.shape[0]):
+        raise ValueError("event_test/time_test/risk 长度不一致")
+
+    result = {
+        "c_index": float(concordance_index_censored(e_test, t_test, r)[0]),
+    }
+
+    if surv_pred is None and times is None:
+        return result
+    if event_train is None or time_train is None:
+        raise ValueError("计算 IBS 须提供训练集 event_train/time_train（估计删失分布）")
+    if surv_pred is None or times is None:
+        raise ValueError("计算 IBS 须同时提供 surv_pred 与 times")
+
+    e_train = _as_float_array(event_train, "event_train").astype(bool)
+    t_train = _as_float_array(time_train, "time_train")
+    estimate = np.asarray(surv_pred, dtype=float)
+
+    in_range = t_test <= t_train.max()
+    if not in_range.any():
+        raise ValueError("IBS 不可计算：全部测试样本时间超出训练集最大观测时间")
+    surv_train = Surv.from_arrays(e_train, t_train)
+    surv_test = Surv.from_arrays(e_test[in_range], t_test[in_range])
+    result["ibs"] = float(integrated_brier_score(surv_train, surv_test, estimate[in_range], times))
+    return result
