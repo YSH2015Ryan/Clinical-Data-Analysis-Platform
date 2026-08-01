@@ -185,6 +185,10 @@ export async function quickFix(datasetId: string, actions: QuickFixAction[]): Pr
   });
 }
 
+export async function listDatasetVersions(datasetId: string): Promise<DatasetVersion[]> {
+  return apiFetch<DatasetVersion[]>(`/datasets/${datasetId}/versions`);
+}
+
 export const SEMANTIC_OPTIONS = ["Age", "Gender", "Diagnosis", "FollowUp", "Event", "Label"];
 
 // ---- 预处理 DSL（docs/14 §3 PreprocessConfig；docs/06 §2） ----
@@ -325,6 +329,23 @@ export async function getRunProgress(runId: string): Promise<RunProgress> {
 
 export async function cancelRun(runId: string): Promise<{ status: string }> {
   return apiFetch(`/analysis-runs/${runId}/cancel`, { method: "POST" });
+}
+
+export interface AnalysisRunCreate {
+  dataset_version_id: string;
+  task_type: TaskType;
+  preprocess_config: PreprocessConfig;
+  selected_models: string[];
+  model_params?: Record<string, Record<string, unknown>>;
+}
+
+export async function createRun(body: AnalysisRunCreate): Promise<AnalysisRun> {
+  return apiFetch<AnalysisRun>("/analysis-runs", { method: "POST", body: JSON.stringify(body) });
+}
+
+/** GET /models?task_type=（docs/14）：启用且支持该任务类型的插件。 */
+export async function listModels(taskType: TaskType): Promise<ModelPlugin[]> {
+  return apiFetch<ModelPlugin[]>(`/models?task_type=${taskType}`);
 }
 
 export async function rerunModel(runId: string, modelKey: string): Promise<{ status: string }> {

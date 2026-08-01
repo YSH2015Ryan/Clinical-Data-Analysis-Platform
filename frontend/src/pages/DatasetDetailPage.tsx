@@ -15,7 +15,7 @@ import {
   message,
 } from "antd";
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   getDataset,
   getQualityReport,
@@ -67,6 +67,8 @@ export default function DatasetDetailPage() {
   const [report, setReport] = useState<QualityReport | null>(null);
   const [fixing, setFixing] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const projectId = (location.state as { projectId?: string } | null)?.projectId;
 
   const reload = useCallback(async () => {
     if (!id) return;
@@ -121,8 +123,22 @@ export default function DatasetDetailPage() {
           {dataset.name}
         </Typography.Title>
         <Space>
-          <Tooltip title={blocked ? "存在阻塞级质量问题，禁止提交分析" : undefined}>
-            <Button type="primary" disabled={blocked || dataset.status !== "VALIDATED"}>
+          <Tooltip
+            title={
+              blocked
+                ? "存在阻塞级质量问题，禁止提交分析"
+                : projectId
+                  ? undefined
+                  : "请从项目页进入以开始分析"
+            }
+          >
+            <Button
+              type="primary"
+              disabled={blocked || dataset.status !== "VALIDATED" || !projectId}
+              onClick={() =>
+                projectId && navigate(`/projects/${projectId}/analysis/new?dataset=${id}`)
+              }
+            >
               开始分析
             </Button>
           </Tooltip>

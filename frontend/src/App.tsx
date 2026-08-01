@@ -3,6 +3,7 @@ import zhCN from "antd/locale/zh_CN";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { getRole, getToken } from "./api";
 import AdminPluginsPage from "./pages/AdminPluginsPage";
+import AnalysisWizardPage from "./pages/AnalysisWizardPage";
 import ComparisonPage from "./pages/ComparisonPage";
 import DatasetDetailPage from "./pages/DatasetDetailPage";
 import LoginPage from "./pages/LoginPage";
@@ -71,6 +72,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <ReportsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/projects/:id/analysis/new"
+            element={
+              <RequireAuth>
+                <AnalysisWizardPage />
               </RequireAuth>
             }
           />

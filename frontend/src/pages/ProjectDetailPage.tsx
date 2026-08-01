@@ -51,7 +51,7 @@ export default function ProjectDetailPage() {
       const resp = await uploadDataset(id, file);
       message.success("上传成功，校验中");
       void reload();
-      navigate(`/datasets/${resp.dataset_id}`);
+      navigate(`/datasets/${resp.dataset_id}`, { state: { projectId: id } });
     } catch (e) {
       message.error((e as ApiError).message || "上传失败");
     }
@@ -64,6 +64,7 @@ export default function ProjectDetailPage() {
           数据集
         </Typography.Title>
         <Space>
+          <Button onClick={() => navigate(`/projects/${id}/analysis/new`)}>新建分析</Button>
           <Upload
             accept=".csv,.xlsx,.xls,.tsv,.txt"
             showUploadList={false}
@@ -82,7 +83,7 @@ export default function ProjectDetailPage() {
         dataSource={items}
         pagination={false}
         onRow={(record) => ({
-          onClick: () => navigate(`/datasets/${record.id}`),
+          onClick: () => navigate(`/datasets/${record.id}`, { state: { projectId: id } }),
           style: { cursor: "pointer" },
         })}
         columns={[

@@ -18,7 +18,7 @@ import {
   Typography,
   message,
 } from "antd";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DEFAULT_STEP_PARAMS,
   recommendPreprocess,
@@ -46,6 +46,8 @@ interface Props {
   datasetId: string;
   columns: string[];
   onChange?: (config: PreprocessConfig) => void;
+  /** 外部注入的初始配置（如推荐配置）；变化时整体替换当前表单。 */
+  initialConfig?: PreprocessConfig | null;
 }
 
 const EMPTY_CONFIG: PreprocessConfig = {
@@ -54,8 +56,8 @@ const EMPTY_CONFIG: PreprocessConfig = {
   validation: { strategy: "kfold", n_splits: 5, seed: 42 },
 };
 
-export default function PreprocessPanel({ datasetId, columns, onChange }: Props) {
-  const [config, setConfig] = useState<PreprocessConfig>(EMPTY_CONFIG);
+export default function PreprocessPanel({ datasetId, columns, onChange, initialConfig }: Props) {
+  const [config, setConfig] = useState<PreprocessConfig>(initialConfig ?? EMPTY_CONFIG);
   const [jsonDraft, setJsonDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
@@ -65,6 +67,12 @@ export default function PreprocessPanel({ datasetId, columns, onChange }: Props)
     setErrors([]);
     onChange?.(next);
   };
+
+  // 推荐配置等外部注入到达后整体替换（向导场景：进入步骤即自动推荐）
+  useEffect(() => {
+    if (initialConfig) update(initialConfig);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialConfig]);
 
   const setStep = (index: number, step: PreprocessStep) => {
     const steps = config.steps.map((s, i) => (i === index ? step : s));
