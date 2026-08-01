@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<title>临床数据分析报告</title>
+<style>
+  body { font-family: "Noto Sans CJK SC", "Microsoft YaHei", sans-serif; color: #222;
+         max-width: 800px; margin: 0 auto; padding: 24px; line-height: 1.6; }
+  h1 { font-size: 22px; text-align: center; border-bottom: 2px solid #1677ff; padding-bottom: 8px; }
+  h2 { font-size: 17px; color: #1677ff; border-left: 4px solid #1677ff; padding-left: 8px; margin-top: 28px; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
+  th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; }
+  th { background: #f0f5ff; }
+  .na { color: #999; font-style: italic; }
+  .notice { background: #fffbe6; border: 1px solid #ffe58f; padding: 8px; font-size: 13px; }
+  .disclaimer { background: #fff1f0; border: 1px solid #ffa39e; padding: 10px;
+                font-weight: bold; margin-top: 16px; }
+  .meta { color: #666; font-size: 12px; text-align: center; }
+  img.chart { max-width: 100%; }
+</style>
+</head>
+<body>
+<h1>临床数据分析报告</h1>
+<p class="meta">
+  数据集：{{ dataset.name or "—" }} ｜ 任务类型：{{ run.task_type or "—" }} ｜
+  运行时间：{{ run.created_at or "—" }}
+</p>
+
+{% for s in sections %}
+<h2>{{ s.title }}</h2>
+{% if not s.applicable %}
+<p class="na">{{ s.data.note }}</p>
+
+{% elif s.key == "overview" %}
+<p>样本量：{{ s.data.n_samples }}；变量数：{{ s.data.n_features }}。
+{% if s.data.prevalence is not none %}阳性 {{ s.data.positives }} 例（阳性率 {{ '%.2f%%' | format(s.data.prevalence * 100) }}）。{% endif %}
+{% if s.data.events is not none %}事件数：{{ s.data.events }}；中位随访时间：{{ s.data.median_followup }}。{% endif %}</p>
+{% if s.data.columns %}
+<table>
+  <caption>表 1 变量概况</caption>
+  <tr><th>变量</th><th>类型</th><th>缺失率</th><th>唯一值</th><th>最小值</th><th>最大值</th></tr>
+  {% for c in s.data.columns %}
+  <tr><td>{{ c.name }}</td><td>{{ c.inferred_type }}</td>
+      <td>{{ '%.1f%%' | format(c.missing_rate * 100) }}</td><td>{{ c.unique }}</td>
+      <td>{{ c.min if c.min is not none else "—" }}</td>
+      <td>{{ c.max if c.max is not none else "—" }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% elif s.key == "quality" %}
+<p>校验结论：{{ s.data.status }}（阻塞 {{ s.data.blockers }} 项，警告 {{ s.data.warnings }} 项）。</p>
+{% if s.data.issues %}
+<table>
+  <tr><th>级别</th><th>列</th><th>问题</th><th>建议</th></tr>
+  {% for i in s.data.issues %}
+  <tr><td>{{ i.severity }}</td><td>{{ i.column or "—" }}</td>
+      <td>{{ i.message }}</td><td>{{ i.suggestion }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% if s.data.transform_log %}
+<table>
+  <caption>处理动作</caption>
+  <tr><th>动作</th><th>列</th><th>影响行数</th></tr>
+  {% for t in s.data.transform_log %}
+  <tr><td>{{ t.action }}</td><td>{{ t.column or "—" }}</td><td>{{ t.affected_rows }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% elif s.key == "preprocessing" %}
+<table>
+  <tr><th>#</th><th>步骤</th><th>参数</th></tr>
+  {% for step in s.data.steps %}
+  <tr><td>{{ loop.index }}</td><td>{{ step.type }}</td>
+      <td><code>{{ step.params | tojson }}</code></td></tr>
+  {% endfor %}
+</table>
+
+{% elif s.key == "methods" %}
+<p>任务类型：{{ s.data.task_type }}；模型：{{ s.data.selected_models | join("、") }}。</p>
+{% if s.data.validation %}
+<p>验证方案：{{ s.data.validation.strategy }}，n_splits={{ s.data.validation.n_splits }}，
+   seed={{ s.data.validation.seed }}。</p>
+{% endif %}
+
+{% elif s.key == "performance" %}
+<table>
+  <tr><th>模型</th><th>状态</th>
+    {% set ns = namespace(names=[]) %}
+    {% for row in s.data.table %}{% for k in (row.metrics or {}) %}
+      {% if k not in ns.names %}{% set ns.names = ns.names + [k] %}{% endif %}
+    {% endfor %}{% endfor %}
+    {% for name in ns.names %}<th>{{ name }}</th>{% endfor %}
+  </tr>
+  {% for row in s.data.table %}
+  <tr><td>{{ row.model_key }}</td><td>{{ row.status }}</td>
+    {% for name in ns.names %}
+      {% set cell = (row.metrics or {}).get(name) %}
+      <td>{% if cell %}{{ '%.4f±%.4f' | format(cell.mean, cell.std) }}{% else %}—{% endif %}</td>
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+{% for c in s.data.charts %}
+  {% if c.image_b64 %}<img class="chart" src="data:image/png;base64,{{ c.image_b64 }}" alt="{{ c.title }}"/>
+  {% else %}<p class="na">[图表] {{ c.title }}</p>{% endif %}
+{% endfor %}
+
+{% elif s.key == "explainability" %}
+{% for c in s.data.charts %}
+  {% if c.image_b64 %}<img class="chart" src="data:image/png;base64,{{ c.image_b64 }}" alt="{{ c.title }}"/>
+  {% else %}<p class="na">[图表] {{ c.title }}</p>{% endif %}
+{% endfor %}
+
+{% elif s.key == "comparison" %}
+<p>排名：{{ s.data.ranking | join(" > ") }}</p>
+{% for t in s.data.top %}
+<p><strong>Top{{ t.rank }} {{ t.model_key }}</strong>：{{ t.reason }}</p>
+{% endfor %}
+{% for n in s.data.not_recommended %}
+<p>不推荐 {{ n.model_key }}：{{ n.reason }}</p>
+{% endfor %}
+{% if s.data.formula %}<p class="meta">排名公式披露：{{ s.data.formula }}</p>{% endif %}
+
+{% elif s.key == "clinical_interpretation" %}
+<p class="notice">{{ s.data.notice }}</p>
+<ul>{% for st in s.data.statements %}<li>{{ st }}</li>{% endfor %}</ul>
+
+{% elif s.key == "limitations" %}
+<ul>{% for item in s.data["items"] %}<li>{{ item }}</li>{% endfor %}</ul>
+
+{% elif s.key == "conclusion" %}
+<p>{{ s.data.text }}</p>
+{% endif %}
+{% endfor %}
+
+<h2>附录：可复现性信息</h2>
+<table>
+  <tr><th>数据输入哈希</th><td><code>{{ appendix.input_hash or "—" }}</code></td></tr>
+  <tr><th>预处理步骤数</th><td>{{ appendix.preprocess_steps | length }}</td></tr>
+  {% if appendix.validation %}
+  <tr><th>验证参数</th><td><code>{{ appendix.validation | tojson }}</code></td></tr>
+  {% endif %}
+</table>
+<table>
+  <tr><th>软件</th><th>版本</th></tr>
+  {% for name, ver in appendix.software.items() %}
+  <tr><td>{{ name }}</td><td>{{ ver }}</td></tr>
+  {% endfor %}
+</table>
+<p class="disclaimer">{{ appendix.disclaimer }}</p>
+</body>
+</html>
