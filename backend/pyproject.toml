@@ -53,6 +53,7 @@ dependencies = [
     "jinja2~=3.1",
     "weasyprint>=68.0",  # PYSEC-2026-2034 修复版；PYSEC-2026-3412 暂无修复，CI 持续监控
     "python-docx~=1.1",
+    "matplotlib~=3.9",  # 报告 PNG 渲染（docs/10 §1 依赖清单；ChartAsset JSON 单数据源派生）
     # 日志
     "structlog~=24.4",
 ]

@@ -114,7 +114,7 @@ def key_from_uri(uri: str) -> str:
     """S3 uri (s3://bucket/key) → key；local 模式 uri 即路径，key 取顶层目录起的相对部分。"""
     if uri.startswith("s3://"):
         return uri.split("/", 3)[3]
-    for prefix in ("datasets/", "runs/"):
+    for prefix in ("datasets/", "runs/", "reports/"):
         idx = uri.find(prefix)
         if idx >= 0:
             return uri[idx:]

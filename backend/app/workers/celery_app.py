@@ -13,7 +13,11 @@ celery_app = Celery(
     "cdap",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.workers.dataset_tasks", "app.workers.analysis_tasks"],  # 任务模块注册
+    include=[
+        "app.workers.dataset_tasks",
+        "app.workers.analysis_tasks",
+        "app.workers.report_tasks",
+    ],  # 任务模块注册
 )
 
 celery_app.conf.update(

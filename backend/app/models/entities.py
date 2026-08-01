@@ -270,6 +270,9 @@ class Report(Base):
     )
     format: Mapped[str] = mapped_column(Text, nullable=False)
     template_key: Mapped[str] = mapped_column(Text, nullable=False, default="clinical_report_zh")
+    template_version: Mapped[str] = mapped_column(
+        Text, nullable=False, default="1.0.0", server_default="1.0.0"
+    )
     storage_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="PENDING")
     created_by: Mapped[uuid.UUID] = mapped_column(

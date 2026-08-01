@@ -129,6 +129,7 @@ CREATE TABLE reports (
   run_id UUID NOT NULL REFERENCES analysis_runs(id) ON DELETE CASCADE,
   format TEXT NOT NULL CHECK (format IN ('pdf','html','markdown','docx')),
   template_key TEXT NOT NULL DEFAULT 'clinical_report_zh',
+  template_version TEXT NOT NULL DEFAULT '1.0.0',  -- 模板版本化（docs/10 §3）
   storage_uri TEXT,
   status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','READY','FAILED')),
   created_by UUID NOT NULL REFERENCES users(id),
