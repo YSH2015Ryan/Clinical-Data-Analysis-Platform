@@ -17,6 +17,8 @@ from sqlalchemy import select
 from app.core.logging import get_logger
 from app.engines.reporting.chart_png import chart_to_b64
 from app.engines.reporting.context import build_report_context
+from app.engines.reporting.docx_export import context_to_docx
+from app.engines.reporting.markdown_export import html_to_markdown
 from app.engines.reporting.pdf import html_to_pdf
 from app.engines.reporting.render import TEMPLATE_KEY, TEMPLATE_VERSION, render_html
 from app.models.entities import (
@@ -44,6 +46,7 @@ _SOFTWARE_PACKAGES = [
     "matplotlib",
     "jinja2",
     "weasyprint",
+    "python-docx",
 ]
 
 
@@ -170,11 +173,16 @@ def _embed_images(context: dict[str, Any]) -> None:
                 chart["image_b64"] = b64
 
 
-def render_report_html(db: Any, run: AnalysisRun) -> str:
-    """装配 + 渲染主入口（worker 与契约测试共用）。"""
+def build_context(db: Any, run: AnalysisRun) -> dict[str, Any]:
+    """装配 ReportContext 并注入 PNG base64（html/pdf/markdown/docx 共用）。"""
     context = build_report_context(assemble_report_payload(db, run))
     _embed_images(context)
-    return render_html(context)
+    return context
+
+
+def render_report_html(db: Any, run: AnalysisRun) -> str:
+    """装配 + 渲染主入口（worker 与契约测试共用）。"""
+    return render_html(build_context(db, run))
 
 
 @celery_app.task(name="app.workers.report_tasks.generate_report")
@@ -190,17 +198,27 @@ def generate_report(report_id: str) -> None:
                 raise ValueError("仅 COMPLETED 运行可生成报告")
             report.template_key = TEMPLATE_KEY
             report.template_version = TEMPLATE_VERSION
-            if report.format in ("html", "pdf"):
-                html = render_report_html(db, run)
+            supported = ("html", "pdf", "markdown", "docx")
+            if report.format in supported:
+                context = build_context(db, run)
+                # docs/10 §3：HTML 主产物派生 PDF/Markdown；docx 由同一 Context 填充
+                if report.format == "docx":
+                    payload = context_to_docx(context)
+                else:
+                    html = render_html(context)
+                    if report.format == "html":
+                        payload = html.encode("utf-8")
+                    elif report.format == "pdf":
+                        payload = html_to_pdf(html)
+                    else:
+                        payload = html_to_markdown(html).encode("utf-8")
                 storage = storage_from_settings()
-                # docs/10 §3：HTML 主产物派生 PDF
-                payload = html.encode("utf-8") if report.format == "html" else html_to_pdf(html)
                 uri = storage.put(
                     f"reports/{report_id}/report.{report.format}", io.BytesIO(payload)
                 )
                 report.storage_uri = str(uri)
             else:
-                raise ValueError(f"格式 {report.format} 暂不支持（T7.6）")
+                raise ValueError(f"格式 {report.format} 不支持（允许：{supported}）")
             report.status = "READY"
             db.commit()
             logger.info("report_ready", report_id=report_id, format=report.format)

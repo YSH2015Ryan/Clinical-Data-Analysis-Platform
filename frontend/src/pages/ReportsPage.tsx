@@ -132,8 +132,18 @@ export default function ReportsPage() {
           <Button loading={creating === "pdf"} onClick={() => void onCreate("pdf")}>
             生成 PDF 报告
           </Button>
-          <Tooltip title="Word/Markdown 导出开发中（T7.6）">
-            <Button disabled>Word / Markdown</Button>
+          <Tooltip title="Word 文档（章节与 HTML 版同源）">
+            <Button loading={creating === "docx"} onClick={() => void onCreate("docx")}>
+              生成 Word
+            </Button>
+          </Tooltip>
+          <Tooltip title="Markdown（图表以占位标注）">
+            <Button
+              loading={creating === "markdown"}
+              onClick={() => void onCreate("markdown")}
+            >
+              生成 Markdown
+            </Button>
           </Tooltip>
           <Button onClick={() => navigate(`/runs/${id}/comparison`)}>返回比较</Button>
         </Space>
