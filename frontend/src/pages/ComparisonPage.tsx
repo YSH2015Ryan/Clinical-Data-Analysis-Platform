@@ -256,11 +256,13 @@ export default function ComparisonPage() {
           结果比较 {run && <RunStatusTag status={run.status} />}
         </Typography.Title>
         <Space>
-          <Tooltip title="报告功能开发中（M3 报告引擎）">
-            <Button type="primary" disabled>
-              生成报告
-            </Button>
-          </Tooltip>
+          <Button
+            type="primary"
+            disabled={run?.status !== "COMPLETED"}
+            onClick={() => navigate(`/runs/${id}/reports`)}
+          >
+            生成报告
+          </Button>
           <Button onClick={() => navigate(`/runs/${id}`)}>返回监控</Button>
         </Space>
       </Space>

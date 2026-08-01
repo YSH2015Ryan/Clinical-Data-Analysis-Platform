@@ -11,6 +11,7 @@ from app.api.v1 import analysis as analysis_api
 from app.api.v1 import auth as auth_api
 from app.api.v1 import datasets as datasets_api
 from app.api.v1 import projects as projects_api
+from app.api.v1 import reports as reports_api
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
     v1.include_router(datasets_api.router)
     v1.include_router(datasets_api.dataset_router)
     v1.include_router(analysis_api.router)
+    v1.include_router(reports_api.router)
 
     @v1.get("/healthz")
     async def healthz() -> dict[str, str]:

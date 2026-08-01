@@ -7,6 +7,7 @@ import DatasetDetailPage from "./pages/DatasetDetailPage";
 import LoginPage from "./pages/LoginPage";
 import ProjectDetailPage from "./pages/ProjectDetailPage";
 import ProjectsPage from "./pages/ProjectsPage";
+import ReportsPage from "./pages/ReportsPage";
 import RunMonitorPage from "./pages/RunMonitorPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -56,6 +57,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <ComparisonPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/runs/:id/reports"
+            element={
+              <RequireAuth>
+                <ReportsPage />
               </RequireAuth>
             }
           />

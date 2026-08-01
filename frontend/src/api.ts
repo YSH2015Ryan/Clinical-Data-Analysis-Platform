@@ -373,3 +373,48 @@ export interface ComparisonResult {
 export async function getComparison(runId: string): Promise<ComparisonResult> {
   return apiFetch<ComparisonResult>(`/analysis-runs/${runId}/comparison`);
 }
+
+// ---- 报告（docs/14 /reports；docs/10 §4 预览与下载） ----
+
+export type ReportFormat = "pdf" | "html" | "markdown" | "docx";
+export type ReportStatus = "PENDING" | "READY" | "FAILED";
+
+export interface ReportItem {
+  id: string;
+  run_id: string;
+  status: ReportStatus;
+  format: ReportFormat;
+  template_key: string;
+  created_at: string;
+}
+
+export async function createReport(runId: string, format: ReportFormat): Promise<ReportItem> {
+  return apiFetch<ReportItem>("/reports", {
+    method: "POST",
+    body: JSON.stringify({ run_id: runId, format }),
+  });
+}
+
+export async function listRunReports(runId: string): Promise<ReportItem[]> {
+  return apiFetch<ReportItem[]>(`/analysis-runs/${runId}/reports`);
+}
+
+/** 下载/预览均经 download 端点（302 → 预签名），需带 Bearer，故 fetch → Blob URL。 */
+export async function fetchReportBlob(reportId: string): Promise<Blob> {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const resp = await fetch(`${BASE}/reports/${reportId}/download`, { headers });
+  if (!resp.ok) throw await parseError(resp);
+  return resp.blob();
+}
+
+export async function downloadReport(report: ReportItem): Promise<void> {
+  const blob = await fetchReportBlob(report.id);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `report-${report.id.slice(0, 8)}.${report.format}`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
