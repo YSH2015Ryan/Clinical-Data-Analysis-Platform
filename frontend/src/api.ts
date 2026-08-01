@@ -418,3 +418,40 @@ export async function downloadReport(report: ReportItem): Promise<void> {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ---- 插件管理（docs/14 /admin/plugins、/models；docs/15 §1） ----
+
+export interface ModelPlugin {
+  key: string;
+  name: string;
+  version: string;
+  task_types: string[];
+  capability: Record<string, unknown>;
+  enabled: boolean;
+}
+
+export async function listAdminPlugins(): Promise<ModelPlugin[]> {
+  return apiFetch<ModelPlugin[]>("/admin/plugins");
+}
+
+export async function updateAdminPlugin(
+  key: string,
+  patch: { enabled?: boolean; default_params?: Record<string, unknown> },
+): Promise<ModelPlugin> {
+  return apiFetch<ModelPlugin>(`/admin/plugins/${key}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+/** 从 access token 解出角色（UI 门控；服务端仍做 RBAC 强校验）。 */
+export function getRole(): string | null {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1])) as { role?: string };
+    return payload.role ?? null;
+  } catch {
+    return null;
+  }
+}

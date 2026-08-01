@@ -4,6 +4,7 @@ import {
   clearTokens,
   createProject,
   deleteProject,
+  getRole,
   listProjects,
   type ApiError,
   type Project,
@@ -63,6 +64,9 @@ export default function ProjectsPage() {
           我的项目
         </Typography.Title>
         <Space>
+          {getRole() === "admin" && (
+            <Button onClick={() => navigate("/admin/plugins")}>插件管理</Button>
+          )}
           <Button type="primary" onClick={() => setModalOpen(true)}>
             新建项目
           </Button>

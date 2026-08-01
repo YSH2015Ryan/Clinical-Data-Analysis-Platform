@@ -1,7 +1,8 @@
 import { ConfigProvider } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { getToken } from "./api";
+import { getRole, getToken } from "./api";
+import AdminPluginsPage from "./pages/AdminPluginsPage";
 import ComparisonPage from "./pages/ComparisonPage";
 import DatasetDetailPage from "./pages/DatasetDetailPage";
 import LoginPage from "./pages/LoginPage";
@@ -12,6 +13,11 @@ import RunMonitorPage from "./pages/RunMonitorPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   return getToken() ? children : <Navigate to="/login" replace />;
+}
+
+function RequireAdmin({ children }: { children: JSX.Element }) {
+  if (!getToken()) return <Navigate to="/login" replace />;
+  return getRole() === "admin" ? children : <Navigate to="/projects" replace />;
 }
 
 export default function App() {
@@ -66,6 +72,14 @@ export default function App() {
               <RequireAuth>
                 <ReportsPage />
               </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/plugins"
+            element={
+              <RequireAdmin>
+                <AdminPluginsPage />
+              </RequireAdmin>
             }
           />
           <Route path="*" element={<Navigate to="/projects" replace />} />
