@@ -1,8 +1,13 @@
 FROM python:3.11-slim AS base
 
 # LightGBM 运行时依赖 OpenMP 库（slim 镜像不含 libgomp，import 即 OSError）
+# WeasyPrint PDF 渲染依赖 pango/gdk-pixbuf；Noto Sans CJK 打包进镜像
+# （docs/10 §5 中文 PDF 无缺字 —— T7.4）
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 \
+    && apt-get install -y --no-install-recommends \
+       libgomp1 \
+       libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
+       fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 # 修复镜像自带 pip/setuptools CVE（docs/licenses-report.md §1；setuptools>=83 = PYSEC-2026-3447 修复版）

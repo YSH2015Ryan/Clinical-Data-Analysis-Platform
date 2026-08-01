@@ -17,6 +17,7 @@ from sqlalchemy import select
 from app.core.logging import get_logger
 from app.engines.reporting.chart_png import chart_to_b64
 from app.engines.reporting.context import build_report_context
+from app.engines.reporting.pdf import html_to_pdf
 from app.engines.reporting.render import TEMPLATE_KEY, TEMPLATE_VERSION, render_html
 from app.models.entities import (
     AnalysisRun,
@@ -41,6 +42,8 @@ _SOFTWARE_PACKAGES = [
     "numpy",
     "pandas",
     "matplotlib",
+    "jinja2",
+    "weasyprint",
 ]
 
 
@@ -187,15 +190,17 @@ def generate_report(report_id: str) -> None:
                 raise ValueError("仅 COMPLETED 运行可生成报告")
             report.template_key = TEMPLATE_KEY
             report.template_version = TEMPLATE_VERSION
-            if report.format == "html":
+            if report.format in ("html", "pdf"):
                 html = render_report_html(db, run)
                 storage = storage_from_settings()
+                # docs/10 §3：HTML 主产物派生 PDF
+                payload = html.encode("utf-8") if report.format == "html" else html_to_pdf(html)
                 uri = storage.put(
-                    f"reports/{report_id}/report.html", io.BytesIO(html.encode("utf-8"))
+                    f"reports/{report_id}/report.{report.format}", io.BytesIO(payload)
                 )
                 report.storage_uri = str(uri)
             else:
-                raise ValueError(f"格式 {report.format} 暂不支持（T7.4/T7.6）")
+                raise ValueError(f"格式 {report.format} 暂不支持（T7.6）")
             report.status = "READY"
             db.commit()
             logger.info("report_ready", report_id=report_id, format=report.format)
