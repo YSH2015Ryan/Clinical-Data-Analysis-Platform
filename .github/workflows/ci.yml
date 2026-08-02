@@ -50,6 +50,8 @@ jobs:
           python-version: "3.11"
       - name: Install
         run: pip install ".[dev]"
+      - name: 安装 Noto CJK 字体（PDF 中文嵌入测试，docs/10 §5；与 prod 镜像一致）
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-cjk
       - name: pytest + coverage
         run: coverage run -m pytest && coverage report
 
