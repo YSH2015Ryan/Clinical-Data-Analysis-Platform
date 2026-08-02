@@ -26,6 +26,7 @@ services:
       S3_ACCESS_KEY: ${MINIO_ROOT_USER:?}
       S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?}
       JWT_SECRET: ${JWT_SECRET:?}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       postgres:

@@ -158,7 +158,7 @@ docker compose exec api alembic upgrade head   # 应用数据库变更
 | 浏览器打不开 8080 | `docker compose ps` 看 frontend 是否 running；服务器防火墙/安全组放行 8080 端口 |
 | 登录一直转圈/502 | `docker compose logs api` 看 api 是否启动；确认第 5 步 `alembic upgrade head` 已执行 |
 | api 容器反复重启 | 多为 `.env` 缺值或含中文引号：对照 `.env.example` 检查三个密码已填写 |
-| 上传大文件失败 | 上限默认 200MB（`MAX_UPLOAD_MB` 可调）；磁盘不足时 `docker system df` 清理 |
+| 上传大文件失败 | 上限默认 200MB：在 `deploy/.env` 加 `MAX_UPLOAD_MB=500` 后 `docker compose up -d api` 即生效（Nginx 天花板 1024MB，超过需同步改 `frontend/nginx.conf` 的 `client_max_body_size` 并重建 frontend）；磁盘不足时 `docker system df` 清理；大文件需更多 worker 内存 |
 | 分析卡住不动 | `docker compose logs -f worker` 看任务日志；单模型超时会自动标记失败（默认 15 分钟），不影响其他模型 |
 | 忘记管理员密码 | 用第 5 步命令**新建**一个 admin 账号登录即可（旧账号可由新管理员禁用） |
 | MinIO 文件管理台 | 浏览器访问 `http://服务器IP:9001`，账号密码为 `.env` 中的 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD |
