@@ -24,6 +24,9 @@ flowchart TD
 
 Pydantic Settings，环境变量驱动：`DATABASE_URL / REDIS_URL / S3_ENDPOINT / S3_BUCKET / JWT_SECRET / MODEL_TIMEOUT_S / MAX_UPLOAD_MB / LOG_LEVEL`。分 `Settings(BaseSettings)` + `.env` 本地覆盖；禁止代码内硬编码默认值之外的密钥。
 
+**生产密钥强制（T8.4）**：`ENVIRONMENT=prod` 时若 `JWT_SECRET` 仍为开发默认值，应用启动即拒绝
+（fail-fast，防「默认密钥上线」）；`ENVIRONMENT` 缺省为 `dev`（本地/测试不受影响）。
+
 ### 2.2 鉴权（core/security.py）
 
 - 登录：`POST /auth/login` → JWT access(2h) + refresh(7d)。

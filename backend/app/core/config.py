@@ -2,7 +2,10 @@
 
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_DEV_JWT_SECRET = "dev-only-insecure-secret"
 
 
 class Settings(BaseSettings):
@@ -11,6 +14,7 @@ class Settings(BaseSettings):
     # 服务
     app_name: str = "cdap-backend"
     log_level: str = "INFO"
+    environment: str = "dev"  # dev | prod；prod 下禁止默认密钥（docs/12 §2.1，T8.4）
 
     # 基础设施
     database_url: str = "postgresql+psycopg://cdap:cdap@localhost:5432/cdap"
@@ -26,7 +30,7 @@ class Settings(BaseSettings):
     s3_secure: bool = False
 
     # 安全（部署时必须经环境变量覆盖）
-    jwt_secret: str = "dev-only-insecure-secret"
+    jwt_secret: str = _DEV_JWT_SECRET
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 120
     refresh_token_expire_days: int = 7
@@ -39,6 +43,13 @@ class Settings(BaseSettings):
     ranking_weight_primary: float = 0.6
     ranking_weight_stability: float = 0.2
     ranking_weight_secondary: float = 0.2
+
+    @model_validator(mode="after")
+    def _prod_secret_guard(self) -> "Settings":
+        """ENVIRONMENT=prod 时拒绝开发默认 JWT 密钥（fail-fast，T8.4 安全审查）。"""
+        if self.environment == "prod" and self.jwt_secret == _DEV_JWT_SECRET:
+            raise ValueError("ENVIRONMENT=prod 时必须经 JWT_SECRET 环境变量设置非默认密钥")
+        return self
 
 
 @lru_cache

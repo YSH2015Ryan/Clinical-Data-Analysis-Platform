@@ -45,3 +45,7 @@
 
 - 每次依赖变更：CI 自动重跑双审计
 - 每季度：人工复核豁免清单（pytest/starlette/weasyprint 无修复版项）是否已有上游修复
+
+## 5. 复扫记录
+
+- **2026-08-01（T8.4 安全审查复扫）**：pip-audit 结论 `No known vulnerabilities found`（沿用 §1 豁免 7 项）；pip-licenses GPL 集合不变（scikit-survival + ecos + dev-only rfc3987）。结论与本报告一致，无新增处置。
