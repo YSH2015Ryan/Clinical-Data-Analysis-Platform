@@ -114,17 +114,20 @@ class RfRegressorAdapter(_BaseRegressor):
     key = "rf_reg"
     name = "Random Forest (regression)"
     capabilities: ClassVar[dict[str, Any]] = {
-        "shap": True,
+        "shap": False,  # sklearn 森林 SHAP Python 慢路径不可行（docs/07 §6.1）
         "feature_importance": True,
         "calibration": False,
     }
-    default_params: ClassVar[dict[str, Any]] = {"n_estimators": 100, "random_state": 42}
+    default_params: ClassVar[dict[str, Any]] = {
+        "n_estimators": 100,
+        "random_state": 42,
+        "n_jobs": -1,  # NFR 4C8G（T8.3 调优）
+    }
 
     def _build(self, params: dict[str, Any]) -> Any:
         return RandomForestRegressor(**params)
 
-    def explain(self, X_val: Any) -> dict[str, Any] | None:
-        return self._explain_shap_or_builtin(X_val)
+    # sklearn 森林：SHAP Python 慢路径不可行 → 内置重要性（docs/07 §6.1）；继承基类 explain
 
 
 class XgboostRegressorAdapter(_BaseRegressor):

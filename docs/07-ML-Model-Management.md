@@ -84,10 +84,24 @@ flowchart TD
 
 ## 6. 可解释性
 
-- 树模型：SHAP TreeExplainer 摘要图 + Top20 特征重要性。
+- GBDT 树模型（XGBoost/LightGBM/CatBoost）：SHAP TreeExplainer（C++ 快路径）摘要图 + Top20 特征重要性。
+- sklearn 原生森林（RF/RSF）：内置 `feature_importances_`（SHAP 对 sklearn 树走 Python 慢路径，
+  深度树 10w 行规模不可行——T8.3 实测 RF SHAP >20min；见 §6.1）。
 - 线性/Cox：系数/HR 表与森林图。
-- 不支持 SHAP 的模型：permutation importance 兜底。
+- 不支持内置重要性的模型（SVM）：permutation importance 兜底。
 - 解释产物存 `ModelResult.explainability`（数据）+ PNG（S3，供报告引用）。
+
+### 6.1 大样本保护（T8.3 性能调优；NFR：10w×50 十二模型 ≤10min）
+
+指标计算**始终在全量验证折上**（结果真实，不采样）；以下仅为拟合/解释的工程上限，
+均为确定性子采样（seed=42），并在适配器文档与报告中如实标注：
+
+| 环节 | 上限 | 说明 |
+|---|---|---|
+| SVM 拟合 | `max_train_rows=10000`（默认，可参数覆盖） | SVC 复杂度 ≥O(n²)，全量 10w 不可行；分层子采样拟合 |
+| SVM permutation importance | ≤2000 行 | n_repeats=5 全量 predict 代价过高 |
+| 树模型 SHAP 摘要 | ≤2000 行；仅 GBDT 快路径 | mean(|SHAP|) 在子样本上估计；sklearn 森林走内置重要性（SHAP Python 慢路径深度树不可行） |
+| RF/RSF 拟合 | `n_jobs=-1`（默认参数） | sklearn 系默认单核；NFR 4C8G 须吃满可用核 |
 
 ## 7. DoD
 

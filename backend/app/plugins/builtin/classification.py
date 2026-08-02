@@ -25,6 +25,24 @@ def _importances_dict(columns: Any, values: Any) -> dict[str, float]:
     return {str(col): float(v) for col, v in pairs}
 
 
+def _stratified_subsample(
+    X: Any, y: Any, max_rows: int, seed: int = 42
+) -> tuple[pd.DataFrame, np.ndarray[Any, Any]]:
+    """确定性分层子采样（docs/07 §6.1 大样本保护）；n ≤ max_rows 时原样返回。"""
+    X_df = pd.DataFrame(X)
+    y_arr = np.asarray(y).astype(int)
+    if len(X_df) <= max_rows:
+        return X_df, y_arr
+    rng = np.random.default_rng(seed)
+    take: list[np.ndarray[Any, Any]] = []
+    for cls in np.unique(y_arr):
+        idx = np.flatnonzero(y_arr == cls)
+        k = max(1, round(max_rows * len(idx) / len(y_arr)))
+        take.append(rng.choice(idx, size=min(k, len(idx)), replace=False))
+    chosen = np.sort(np.concatenate(take))
+    return X_df.iloc[chosen], y_arr[chosen]
+
+
 class _BaseClassifier:
     """分类适配器公共骨架：fit → _build(params)；evaluate 走统一 metrics。"""
 
@@ -60,14 +78,20 @@ class _BaseClassifier:
         return _importances_dict(self._X.columns, self._model.feature_importances_)
 
     def _explain_shap_or_builtin(self, X_val: Any) -> dict[str, Any]:
-        """树模型 SHAP 摘要；SHAP 计算失败回退内置重要性（docs/07 §6，不中断分析）。"""
+        """树模型 SHAP 摘要；SHAP 计算失败回退内置重要性（docs/07 §6，不中断分析）。
+
+        大样本保护：mean(|SHAP|) 在 ≤2000 行确定性子样本上估计（docs/07 §6.1）。
+        """
         try:
             from app.plugins.builtin.explain import shap_importance
 
+            X_df = pd.DataFrame(X_val)
+            if len(X_df) > 2000:
+                X_df = X_df.sample(n=2000, random_state=42)
             return {
                 "type": "shap_summary",
                 "method": "mean_abs_shap",
-                "importances": shap_importance(self._model, pd.DataFrame(X_val)),
+                "importances": shap_importance(self._model, X_df),
             }
         except Exception:
             return {"type": "feature_importance", "importances": self._feature_importances()}
@@ -116,31 +140,51 @@ class RfClassifierAdapter(_BaseClassifier):
     key = "rf"
     name = "Random Forest"
     capabilities: ClassVar[dict[str, Any]] = {
-        "shap": True,
+        "shap": False,  # sklearn 森林 SHAP Python 慢路径不可行（docs/07 §6.1）
         "feature_importance": True,
         "calibration": True,
     }
-    default_params: ClassVar[dict[str, Any]] = {"n_estimators": 100, "random_state": 42}
+    default_params: ClassVar[dict[str, Any]] = {
+        "n_estimators": 100,
+        "random_state": 42,
+        "n_jobs": -1,  # NFR 4C8G：吃满可用核（T8.3 调优）
+    }
 
     def _build(self, params: dict[str, Any]) -> Any:
         return RandomForestClassifier(**params)
 
-    def explain(self, X_val: Any) -> dict[str, Any] | None:
-        return self._explain_shap_or_builtin(X_val)
+    # explain 继承基类：内置 feature_importances_（docs/07 §6.1）
 
 
 class SvmAdapter(_BaseClassifier):
-    """SVM(probability=True)；无内置重要性 → permutation importance 兜底。"""
+    """SVM(probability=True)；无内置重要性 → permutation importance 兜底。
+
+    大样本保护（docs/07 §6.1）：拟合在分层子样本上（max_train_rows，默认 10000）；
+    permutation importance 在 ≤2000 行子样本上计算。指标仍在全量验证折计算。
+    """
 
     key = "svm"
     name = "Support Vector Machine (probability)"
-    default_params: ClassVar[dict[str, Any]] = {"probability": True, "random_state": 42}
+    default_params: ClassVar[dict[str, Any]] = {
+        "probability": True,
+        "random_state": 42,
+        "max_train_rows": 10000,
+    }
+
+    def fit(self, X: Any, y: Any, params: dict[str, Any]) -> None:
+        p = {**self.default_params, **params}
+        max_rows = int(p.pop("max_train_rows"))
+        self._X, self._y = _stratified_subsample(X, y, max_rows)
+        self._model = self._build(p)
+        self._model.fit(self._X, self._y)
 
     def _build(self, params: dict[str, Any]) -> Any:
         return SVC(**params)
 
     def explain(self, X_val: Any) -> dict[str, Any] | None:
-        result = permutation_importance(self._model, self._X, self._y, n_repeats=5, random_state=42)
+        # 训练子样本（≤10k）配对再抽 ≤2k：permutation 需要 (X, y) 对齐
+        X_sub, y_sub = _stratified_subsample(self._X, self._y, 2000)
+        result = permutation_importance(self._model, X_sub, y_sub, n_repeats=5, random_state=42)
         return {
             "type": "feature_importance",
             "importances": _importances_dict(self._X.columns, result.importances_mean),

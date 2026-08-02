@@ -41,3 +41,4 @@ miniodata/
 
 # 测试产物
 .test_storage/
+.perf_storage/

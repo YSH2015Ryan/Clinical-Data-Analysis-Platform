@@ -211,6 +211,7 @@ class RsfAdapter:
         "n_estimators": 100,
         "min_samples_split": 10,
         "random_state": 42,
+        "n_jobs": -1,  # NFR 4C8G（T8.3 调优）
     }
 
     def fit(self, X: Any, y: Any, params: dict[str, Any]) -> None:

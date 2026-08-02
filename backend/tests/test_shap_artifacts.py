@@ -13,8 +13,9 @@ import pytest
 from app.engines.model_registry import ModelRegistry
 from sklearn.datasets import make_classification
 
-TREE_CLASSIFIERS = ["rf", "xgboost", "lightgbm", "catboost"]
-TREE_REGRESSORS = ["rf_reg", "xgboost_reg"]
+TREE_CLASSIFIERS = ["xgboost", "lightgbm", "catboost"]  # GBDT 快路径 TreeSHAP（docs/07 §6）
+SKLEARN_FORESTS = ["rf", "rf_reg"]  # sklearn 森林：内置重要性（§6.1 大样本保护）
+TREE_REGRESSORS = ["xgboost_reg"]
 
 
 def _classification_data() -> dict[str, Any]:
@@ -55,7 +56,7 @@ class TestShapSummary:
 
         monkeypatch.setattr(explain_mod, "shap_importance", _boom)
         d = _classification_data()
-        adapter = _load_adapter("rf")
+        adapter = _load_adapter("xgboost")  # GBDT 快路径才走 SHAP（docs/07 §6.1）
         adapter.fit(d["X"], d["y"], {})
         exp = adapter.explain(d["X"])
         assert exp["type"] == "feature_importance"
@@ -72,6 +73,19 @@ class TestShapSummary:
         exp = adapter.explain(X)
         assert exp["type"] == "shap_summary"
         assert all(v >= 0.0 for v in exp["importances"].values())
+
+    @pytest.mark.parametrize("key", SKLEARN_FORESTS)
+    def test_sklearn_forest_builtin_importance(self, key: str) -> None:
+        """sklearn 原生森林走内置 feature_importances_（docs/07 §6.1，SHAP 慢路径不用）。"""
+        d = _classification_data()
+        y = d["y"] if key == "rf" else d["y"].astype(float) + 0.1
+        adapter = _load_adapter(key)
+        adapter.fit(d["X"], y, {})
+        exp = adapter.explain(d["X"])
+        assert exp["type"] == "feature_importance"
+        assert set(exp["importances"]) == {"f1", "f2", "f3", "f4", "f5"}
+        assert max(exp["importances"].values()) > 0.0
+        json.dumps(exp)
 
 
 class TestCoxHrForest:
