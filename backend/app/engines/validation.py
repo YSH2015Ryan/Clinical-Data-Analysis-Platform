@@ -1,4 +1,4 @@
-"""校验规则引擎（docs/05 §3 共 13 条规则）+ 质量报告（docs/14 QualityReport 契约）。
+"""校验规则引擎（docs/05 §3 共 17 条规则）+ 质量报告（docs/14 QualityReport 契约）。
 
 流水线位置：解析（engines/parser）→ 列类型/语义（engines/columns）→ 本模块规则
 执行 → 列质量画像 → QualityReport 落库（workers/dataset_tasks）。
@@ -25,6 +25,8 @@ class ValidationConfig:
     high_cardinality: int = 50  # RV601
     imbalance_ratio: float = 0.05  # RV701
     iqr_k: float = 1.5  # RV501 IQR 系数
+    extreme_abs: float = 1e6  # RV804 极端值阈值（绝对值）
+    susceptibility_min_rows: int = 5  # RV802 药敏判定最少行数
 
 
 # ---------- 输出结构（14 章 QualityReport 契约） ----------
@@ -104,6 +106,24 @@ _AGE_RANGE = (0.0, 120.0)
 _ID_NAME_RE = re.compile(
     r"(^|[^a-z0-9一-鿿])(id|no|num)([^a-z0-9一-鿿]|$)|编号|住院号|病历号", re.I
 )
+
+# ---------- RV8xx 临床数据模式（docs/05 §3，2026-08-03 新增） ----------
+# 仅当对应列名模式存在时触发；宽表上传不受影响。
+
+_ITEM_COLS = {"检验名称", "检验项目", "项目名称", "检查项目", "项目", "test_name", "item_name"}
+_VALUE_COLS = {"结果", "检验结果", "测定值", "result", "value"}
+_UNIT_COLS = {"化验单位", "检验单位", "单位", "unit"}
+_SUS_COLS = {"异常", "药敏", "结果判定", "判定", "susceptibility"}
+_SUS_VALUE_RE = re.compile(r"敏感|耐药|中介")
+
+
+def _find_col(df: pd.DataFrame, candidates: set[str]) -> int | None:
+    """按列名（去空格，英文小写）找第一个匹配列的位置索引；无则 None。"""
+    for i, c in enumerate(df.columns):
+        name = str(c).strip()
+        if name in candidates or name.lower() in candidates:
+            return i
+    return None
 
 
 def _tokens(name: str) -> set[str]:
@@ -222,27 +242,103 @@ def validate(
 
     found = {v for v in semantics.values() if v}
 
+    # ---- RV8xx 临床数据模式（先于人话版 RV101，解释「为什么这张表没法直接分析」） ----
+    item_idx = _find_col(df, _ITEM_COLS)
+    value_idx = _find_col(df, _VALUE_COLS)
+    unit_idx = _find_col(df, _UNIT_COLS)
+    sus_idx = _find_col(df, _SUS_COLS)
+
+    # RV801 长表结构（检验名称 + 结果 列组合）
+    if n_rows > 0 and item_idx is not None and value_idx is not None:
+        issues.append(
+            Issue(
+                "RV801",
+                "warning",
+                "检测到「一行一条记录」的长表结构",
+                detail=f"列 {df.columns[item_idx]} + {df.columns[value_idx]} "
+                "表明每行是一条检验/检查记录，而非一行一个患者",
+                suggestion="平台分析需要「一行一个患者」的宽表：请先将各检验项目透视为列"
+                "（数据准备向导，见 docs/05 §8），或用 Excel 数据透视表转换后重新上传",
+            )
+        )
+
+    # RV802 疑似药敏试验记录（判定列含 敏感/耐药/中介）
+    if n_rows > 0 and sus_idx is not None:
+        sus_vals = df.iloc[:, sus_idx].dropna().astype(str)
+        n_sus = int(sus_vals.str.contains(_SUS_VALUE_RE).sum())
+        if n_sus >= cfg.susceptibility_min_rows:
+            issues.append(
+                Issue(
+                    "RV802",
+                    "warning",
+                    "检测到疑似药敏试验记录",
+                    detail=f"列 {df.columns[sus_idx]} 含 敏感/耐药/中介 判定值 {n_sus} 行",
+                    affected_rows=n_sus,
+                    suggestion="药敏结果不是检验指标，直接入模会干扰分析；"
+                    "建议剔除这些记录，或单独整理为「耐药史」特征",
+                )
+            )
+
+    # RV803 同一检验项目多种单位
+    if n_rows > 0 and item_idx is not None and unit_idx is not None:
+        tmp = df.iloc[:, [item_idx, unit_idx]].dropna()
+        tmp.columns = pd.Index(["item", "unit"])
+        unit_counts = tmp.groupby("item")["unit"].nunique().sort_values(ascending=False)
+        multi = unit_counts[unit_counts > 1]
+        if len(multi):
+            top = "、".join(f"{k}（{v} 种）" for k, v in multi.head(3).items())
+            issues.append(
+                Issue(
+                    "RV803",
+                    "warning",
+                    "同一检验项目存在多种单位",
+                    detail=f"如：{top}",
+                    suggestion="单位不统一会导致数值无法直接比较；请统一单位，或改用归一化值列",
+                )
+            )
+
+    # RV804 数值列极端值（复用列画像 min/max，零额外开销）
+    for p in profiles:
+        if p.get("inferred_type") == "continuous" and p.get("min") is not None:
+            extreme = max(abs(p["min"]), abs(p["max"]))
+            if extreme > cfg.extreme_abs:
+                issues.append(
+                    Issue(
+                        "RV804",
+                        "warning",
+                        f"列 {p['name']} 存在极端值（绝对值达 {extreme:g}），疑似单位或录入错误",
+                        column=p["name"],
+                        suggestion="请核对单位与录入；分析前建议剔除或修正这些值",
+                    )
+                )
+
     # RV101 任务必需字段缺失
     if n_rows > 0 and not ({"Event", "Label", "FollowUp"} & found):
         issues.append(
             Issue(
                 "RV101",
                 "blocker",
-                "未检测到结局列，示例：death(0/1) 或 os_months+event",
-                detail=f"已扫描 {n_cols} 列，未匹配到生存时间/事件/标签",
-                suggestion="请添加如 death(0/1) 或 os_months+death 列；参考模板下载",
+                "未找到要预测的结果列（结局列）",
+                detail=f"已扫描 {n_cols} 列，未识别到结局/事件/随访时间列。"
+                "平台需要知道您想预测什么结果才能开始分析",
+                suggestion="请在数据表中补充一列要预测的结果"
+                "（如 是否复发 0/1，列名：复发/recurrence/death）；"
+                "或在本页下方「列画像」中把对应列的角色改为 Label/Event",
             )
         )
 
     # RV102 推荐字段缺失
-    for field_name, advice in (("Age", "以支持年龄分层"), ("Gender", "以支持性别分层")):
+    for field_name, zh, advice in (
+        ("Age", "年龄", "可支持按年龄段分层分析（如不同年龄组的风险差异）"),
+        ("Gender", "性别", "可支持按性别分层分析"),
+    ):
         if field_name not in found:
             issues.append(
                 Issue(
                     "RV102",
                     "warning",
                     f"推荐字段缺失：{field_name}",
-                    suggestion=f"建议补充 {field_name} 列{advice}",
+                    suggestion=f"建议补充{zh}（{field_name}）列，{advice}",
                 )
             )
 

@@ -61,6 +61,13 @@ class TestRV101RequiredFieldMissing:
         assert issue.severity == "blocker"
         assert "结局" in issue.message
 
+    def test_message_human_readable(self) -> None:
+        """P0-3：文案面向非技术用户（docs/05 §3，2026-08-03 修订）。"""
+        df = _clean_df().drop(columns=["os_months", "death"])
+        issue = _rules(validate(df), "RV101")[0]
+        assert "要预测的结果" in issue.message
+        assert "列画像" in issue.suggestion  # 指引手动指定角色
+
     def test_negative(self) -> None:
         assert _rules(validate(_clean_df()), "RV101") == []
 
@@ -201,6 +208,94 @@ class TestRV701LabelImbalance:
 
     def test_negative(self) -> None:
         assert _rules(validate(_clean_df()), "RV701") == []
+
+
+class TestRV801LongTable:
+    """P0-2（docs/05 §3 RV801）：检验名称+结果 列组合 → 长表结构警告。"""
+
+    def _long_df(self, n: int = 60) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "患者ID": [f"P{i % 10:03d}" for i in range(n)],
+                "检验名称": (["白细胞计数", "葡萄糖"] * (n // 2 + 1))[:n],
+                "结果": [f"{5.0 + i % 5}" for i in range(n)],
+            }
+        )
+
+    def test_positive(self) -> None:
+        issue = _rules(validate(self._long_df()), "RV801")[0]
+        assert issue.severity == "warning"
+        assert "长表" in issue.message
+
+    def test_negative_wide_table(self) -> None:
+        assert _rules(validate(_clean_df()), "RV801") == []
+
+
+class TestRV802Susceptibility:
+    """P0-2（docs/05 §3 RV802）：判定列含 敏感/耐药/中介 → 疑似药敏警告。"""
+
+    def test_positive(self) -> None:
+        n = 60
+        df = pd.DataFrame(
+            {
+                "患者ID": [f"P{i % 10:03d}" for i in range(n)],
+                "检验名称": (["万古霉素", "白细胞计数"] * (n // 2 + 1))[:n],
+                "结果": ["", "5.0"] * (n // 2),
+                "异常": (["敏感（S）", "耐药（R）", "正常（N）"] * (n // 3 + 1))[:n],
+            }
+        )
+        issue = _rules(validate(df), "RV802")[0]
+        assert issue.severity == "warning"
+        assert "药敏" in issue.message
+        assert issue.affected_rows is not None and issue.affected_rows >= 5
+
+    def test_negative(self) -> None:
+        assert _rules(validate(_clean_df()), "RV802") == []
+
+
+class TestRV803MultiUnit:
+    """P0-2（docs/05 §3 RV803）：长表中同一检验项目多种单位。"""
+
+    def test_positive(self) -> None:
+        n = 60
+        df = pd.DataFrame(
+            {
+                "患者ID": [f"P{i % 10:03d}" for i in range(n)],
+                "检验名称": ["白细胞计数"] * n,
+                "结果": ["5.0"] * n,
+                "化验单位": (["10^9/L", "10^12/L"] * (n // 2 + 1))[:n],
+            }
+        )
+        issue = _rules(validate(df), "RV803")[0]
+        assert issue.severity == "warning"
+        assert "白细胞计数" in issue.detail
+
+    def test_negative_single_unit(self) -> None:
+        n = 60
+        df = pd.DataFrame(
+            {
+                "患者ID": [f"P{i % 10:03d}" for i in range(n)],
+                "检验名称": ["白细胞计数"] * n,
+                "结果": ["5.0"] * n,
+                "化验单位": ["10^9/L"] * n,
+            }
+        )
+        assert _rules(validate(df), "RV803") == []
+
+
+class TestRV804ExtremeValue:
+    """P0-2（docs/05 §3 RV804）：数值列极端值（默认阈值 1e6）。"""
+
+    def test_positive(self) -> None:
+        df = _clean_df(101)
+        # 需 >10 个唯一值才会推断为连续列（RV804 只作用于连续列）
+        df["norm_value"] = [0.5 + i * 0.01 for i in range(100)] + [55_805_580.0]
+        issue = _rules(validate(df), "RV804")[0]
+        assert issue.severity == "warning"
+        assert issue.column == "norm_value"
+
+    def test_negative(self) -> None:
+        assert _rules(validate(_clean_df()), "RV804") == []
 
 
 class TestReportContract:
