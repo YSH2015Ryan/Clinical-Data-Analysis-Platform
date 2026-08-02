@@ -1,5 +1,7 @@
 # 21. 部署方案（Deployment）
 
+> 操作版（非技术人员逐步照做）：[deployment-guide.md](deployment-guide.md)；用户操作：[user-manual.md](user-manual.md)。
+
 ## 1. 部署形态
 
 | 形态 | 场景 | 组件 |

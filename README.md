@@ -14,13 +14,20 @@
 
 ## 当前状态
 
-**M0 准备阶段**：蓝图已完成并通过架构评审；API 契约已冻结（docs/14 §5, v1.0-frozen）。开发按 docs/17 路线图、docs/18 任务拆分执行。
+**M1–M4 全部完成**：蓝图执行完毕（docs/18 全部任务 DoD 达标）。性能实测见 [docs/perf-report.md](docs/perf-report.md)；安全审查见 [docs/security-review.md](docs/security-review.md)。
 
 ## 快速开始
 
 ```bash
-cd deploy && docker compose up -d   # M0 完成后可用
+cd deploy
+cp .env.example .env   # 填入随机密钥
+docker compose up -d --build
+docker compose exec api alembic upgrade head
+docker compose exec api python -m app.scripts.create_user \
+    --email admin@example.com --password '<随机>' --role admin
 ```
+
+逐步图文指引：[docs/deployment-guide.md](docs/deployment-guide.md)（面向非技术人员）；使用说明：[docs/user-manual.md](docs/user-manual.md)。
 
 ## 许可与合规
 

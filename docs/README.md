@@ -33,6 +33,11 @@
 | Phase 10 任务 | [17-Development-Roadmap](17-Development-Roadmap.md) / [18-Task-Breakdown](18-Task-Breakdown.md) | Epic→Feature→Task→Subtask、DoD、验收标准 |
 | 质量保障 | [19-Test-Plan](19-Test-Plan.md) | 单元/集成/性能测试计划 |
 | 部署 | [21-Deployment](21-Deployment.md) | Docker Compose / Kubernetes |
+| 部署手册（操作版） | [deployment-guide](deployment-guide.md) | 非技术人员逐步部署（T8.5） |
+| 用户手册 | [user-manual](user-manual.md) | 医生/科研全流程操作（T8.5） |
+| 安全审查 | [security-review](security-review.md) | T8.4 清单（越权/注入/上传/密钥/依赖） |
+| 依赖审计 | [licenses-report](licenses-report.md) | pip-audit + pip-licenses 结论与豁免 |
+| 性能压测 | [perf-report](perf-report.md) | T8.3 实测（10w×50 全链路 384s） |
 | 演进 | [22-Future-Extensions](22-Future-Extensions.md) | FHIR/OMOP、MCP、Agent、插件市场 |
 | 收尾 | [Appendix](Appendix.md) | Architecture Review Gate 结果、Implementation Readiness Checklist、术语表 |
 
