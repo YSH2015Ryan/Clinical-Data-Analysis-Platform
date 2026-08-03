@@ -3,7 +3,7 @@
 import io
 
 import pytest
-from app.services.storage import LocalStorage, StorageBackend, _public_url
+from app.services.storage import LocalStorage, StorageBackend, _presign_client
 
 
 def test_local_storage_protocol_compliance(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -24,22 +24,20 @@ def test_path_traversal_rejected(tmp_path) -> None:  # type: ignore[no-untyped-d
         storage.put("../escape.txt", io.BytesIO(b"x"))
 
 
-class TestPublicUrl:
-    """预签名 host 重写（docs/12 §2.4）：浏览器不可达容器内域名 minio:9000。"""
+class TestPresignClient:
+    """预签名须按浏览器可达端点签名（docs/12 §2.4）：host 计入 SigV4 签名。
 
-    def test_rewrites_scheme_and_host_keeps_path_query(self) -> None:
-        url = "http://minio:9000/cdap/reports/abc/report.pdf?X-Amz-Signature=deadbeef&X-Amz-Expires=604800"
-        out = _public_url(url, "http://localhost:9000")
-        assert out == (
-            "http://localhost:9000/cdap/reports/abc/report.pdf"
-            "?X-Amz-Signature=deadbeef&X-Amz-Expires=604800"
-        )
+    显式 region 使预签名为纯本地计算——本测试在容器内执行，localhost:9000
+    不可达，若触发服务端 region 探测会报错/超时，即为回归信号。
+    """
+
+    def test_signs_with_public_host(self) -> None:
+        client = _presign_client("http://localhost:9000", "ak", "sk")
+        url = client.presigned_get_object("cdap", "reports/abc/report.pdf")
+        assert url.startswith("http://localhost:9000/cdap/reports/abc/report.pdf?")
+        assert "X-Amz-Signature=" in url
 
     def test_https_public_endpoint(self) -> None:
-        url = "http://minio:9000/cdap/runs/r1/model.pkl?X-Amz-Signature=x"
-        out = _public_url(url, "https://files.example.com")
-        assert out.startswith("https://files.example.com/cdap/runs/r1/model.pkl?")
-
-    def test_empty_endpoint_passthrough(self) -> None:
-        url = "http://minio:9000/cdap/a?sig=1"
-        assert _public_url(url, "") == url
+        client = _presign_client("https://files.example.com", "ak", "sk")
+        url = client.presigned_get_object("cdap", "runs/r1/model.pkl")
+        assert url.startswith("https://files.example.com/cdap/runs/r1/model.pkl?")

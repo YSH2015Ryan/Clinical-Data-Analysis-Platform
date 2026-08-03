@@ -25,7 +25,7 @@ services:
       S3_BUCKET: cdap
       S3_ACCESS_KEY: ${MINIO_ROOT_USER:?}
       S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?}
-      # 预签名下载 URL 重写为浏览器可达端点（docs/12 §2.4）
+      # 预签名下载按浏览器可达端点签名（host 计入 SigV4，docs/12 §2.4）
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
       JWT_SECRET: ${JWT_SECRET:?}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}

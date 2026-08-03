@@ -6,7 +6,7 @@
 import io
 from pathlib import Path
 from typing import BinaryIO, Protocol, runtime_checkable
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 from minio import Minio
 
@@ -47,13 +47,18 @@ class LocalStorage:
         return str(self._path(key))
 
 
-def _public_url(url: str, public_endpoint: str) -> str:
-    """预签名 URL 重写为浏览器可达端点（docs/12 §2.4）：签名按 path/query 计算，换 host 仍有效。"""
-    if not public_endpoint:
-        return url
+def _presign_client(public_endpoint: str, access_key: str, secret_key: str) -> Minio:
+    """独立预签名客户端（docs/12 §2.4）：host 计入 SigV4 签名，事后改写 URL 会 403，
+    故须按浏览器可达端点签名。预签名为纯本地计算；显式 region 跳过服务端探测
+    （容器内访问不到公开端点）。"""
     pub = urlsplit(public_endpoint.rstrip("/"))
-    parts = urlsplit(url)
-    return urlunsplit((pub.scheme, pub.netloc, parts.path, parts.query, ""))
+    return Minio(
+        pub.netloc,
+        access_key=access_key,
+        secret_key=secret_key,
+        secure=pub.scheme == "https",
+        region="us-east-1",
+    )
 
 
 class S3Storage:
@@ -69,7 +74,12 @@ class S3Storage:
         host = endpoint.removeprefix("http://").removeprefix("https://")
         self._client = Minio(host, access_key=access_key, secret_key=secret_key, secure=secure)
         self._bucket = bucket
-        self._public_endpoint = public_endpoint.rstrip("/")
+        # 预签名走浏览器可达端点（docs/12 §2.4）；空则用内部端点（仅服务端间调用场景）
+        self._signer = (
+            _presign_client(public_endpoint, access_key, secret_key)
+            if public_endpoint
+            else self._client
+        )
         if not self._client.bucket_exists(bucket):
             self._client.make_bucket(bucket)
 
@@ -94,9 +104,7 @@ class S3Storage:
             return False
 
     def presign_download(self, key: str) -> str:
-        return _public_url(
-            self._client.presigned_get_object(self._bucket, key), self._public_endpoint
-        )
+        return self._signer.presigned_get_object(self._bucket, key)
 
 
 def build_storage(
