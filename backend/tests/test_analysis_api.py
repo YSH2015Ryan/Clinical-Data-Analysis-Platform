@@ -224,6 +224,17 @@ class TestCreateRun:
         assert resp.status_code == 400
         assert resp.json()["code"] == "VALIDATION_ERROR"
 
+    async def test_survival_missing_target_human_message(
+        self, client: AsyncClient, researcher: User, version: DatasetVersion
+    ) -> None:
+        """survival 缺 time_col/event_col → 400 且文案面向非技术用户（含改选分类指引）。"""
+        body = _body(version.id, ["dummy"])
+        body["task_type"] = "survival"
+        resp = await client.post("/api/v1/analysis-runs", json=body, headers=_auth(researcher))
+        assert resp.status_code == 400
+        msg = resp.json()["message"]
+        assert "随访时间" in msg and "分类" in msg
+
 
 class TestRunQueries:
     async def _completed_run(

@@ -35,10 +35,17 @@ def _check_target(task_type: str, target: dict[str, Any]) -> None:
     if task_type == "survival":
         if not (target.get("time_col") and target.get("event_col")):
             raise AppError(
-                "VALIDATION_ERROR", 400, "survival 任务须在 target 指定 time_col 与 event_col"
+                "VALIDATION_ERROR",
+                400,
+                "生存分析需要每位患者的「随访时间」列和「结局事件」列，当前未指定。"
+                "如果研究问题是「是否患病/是否恶性」这类是非判断，请改用「分类 / 风险预测」。",
             )
     elif not target.get("label_col"):
-        raise AppError("VALIDATION_ERROR", 400, f"{task_type} 任务须在 target 指定 label_col")
+        raise AppError(
+            "VALIDATION_ERROR",
+            400,
+            f"任务类型 {task_type} 需要指定「结局列」（如 label/是否复发），当前未指定。",
+        )
 
 
 async def create_run(
