@@ -137,6 +137,18 @@ export default function AnalysisWizardPage() {
     setConfig({ ...config, target });
   }, [config, taskType, detection]);
 
+  /** 生存分析硬约束：识别不到随访时间/结局事件列时阻断下一步（否则提交必然后端 400）。 */
+  const survivalBlocked = useMemo(
+    () =>
+      taskType === "survival" &&
+      detection != null &&
+      !(
+        (detection.candidates.time_col?.length ?? 0) > 0 &&
+        (detection.candidates.event_col?.length ?? 0) > 0
+      ),
+    [taskType, detection],
+  );
+
   const canNext = useMemo(() => {
     switch (step) {
       case 0:
@@ -144,13 +156,13 @@ export default function AnalysisWizardPage() {
       case 1:
         return config != null;
       case 2:
-        return taskType != null;
+        return taskType != null && !survivalBlocked;
       case 3:
         return selectedModels.length > 0;
       default:
         return true;
     }
-  }, [step, datasetId, config, taskType, selectedModels]);
+  }, [step, datasetId, config, taskType, selectedModels, survivalBlocked]);
 
   const next = () => {
     if (step === 2) applyDetectionToConfig();
@@ -263,6 +275,15 @@ export default function AnalysisWizardPage() {
             )}
           </Space>
         </Space>
+      )}
+      {survivalBlocked && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="当前数据没有随访时间 / 结局事件列，无法进行生存分析"
+          description="生存分析需要每位患者的随访时长（如 os_months）与事件标记（如 death）。数据准备 v1 产出的宽表只含二分类 label，请改用「分类 / 风险预测」。"
+        />
       )}
       <Space>
         <span>任务类型{detection ? "（可覆盖推荐）" : "（手动选择）"}</span>
