@@ -191,6 +191,66 @@ export async function listDatasetVersions(datasetId: string): Promise<DatasetVer
 
 export const SEMANTIC_OPTIONS = ["Age", "Gender", "Diagnosis", "FollowUp", "Event", "Label"];
 
+// ---- 数据准备（docs/14 §3 preparation，契约变更 2026-08-03；docs/05 §8） ----
+
+export interface PreparationDecisions {
+  outcome_terms: string[];
+  outcome_scope: "any" | "index";
+  index_diagnosis: "first" | "last";
+  window_days: number;
+  value_strategy: "latest" | "mean";
+  value_column: string;
+  exclude_susceptibility: boolean;
+  clip_quantile: number;
+  top_n_items: number;
+}
+
+export interface PreparationPreview {
+  lab_columns: Record<string, string | null>;
+  diag_columns: Record<string, string | null>;
+  lab_rows: number;
+  diag_rows: number;
+  patients_intersection: number;
+  diagnosis_terms: { term: string; count: number }[];
+  susceptibility_rows: number;
+  suggested: Partial<PreparationDecisions>;
+}
+
+export interface PreparationJob {
+  id: string;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+  result_dataset_id: string | null;
+  summary: Record<string, number> | null;
+  error: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export async function preparationPreview(
+  labDatasetId: string,
+  diagnosisDatasetId: string,
+): Promise<PreparationPreview> {
+  return apiFetch<PreparationPreview>(`/datasets/${labDatasetId}/preparation/preview`, {
+    method: "POST",
+    body: JSON.stringify({ diagnosis_dataset_id: diagnosisDatasetId }),
+  });
+}
+
+export async function preparationApply(
+  labDatasetId: string,
+  diagnosisDatasetId: string,
+  decisions: PreparationDecisions,
+): Promise<PreparationJob> {
+  return apiFetch<PreparationJob>(`/datasets/${labDatasetId}/preparation/apply`, {
+    method: "POST",
+    body: JSON.stringify({ diagnosis_dataset_id: diagnosisDatasetId, decisions }),
+  });
+}
+
+export async function getPreparationJob(id: string): Promise<PreparationJob> {
+  return apiFetch<PreparationJob>(`/preparations/${id}`);
+}
+
 // ---- 预处理 DSL（docs/14 §3 PreprocessConfig；docs/06 §2） ----
 
 export type StepType =

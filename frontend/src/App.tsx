@@ -7,6 +7,7 @@ import AnalysisWizardPage from "./pages/AnalysisWizardPage";
 import ComparisonPage from "./pages/ComparisonPage";
 import DatasetDetailPage from "./pages/DatasetDetailPage";
 import LoginPage from "./pages/LoginPage";
+import PreparationWizardPage from "./pages/PreparationWizardPage";
 import ProjectDetailPage from "./pages/ProjectDetailPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import ReportsPage from "./pages/ReportsPage";
@@ -72,6 +73,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <ReportsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/projects/:id/preparation/new"
+            element={
+              <RequireAuth>
+                <PreparationWizardPage />
               </RequireAuth>
             }
           />

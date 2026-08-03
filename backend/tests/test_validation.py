@@ -2,6 +2,7 @@
 
 import pandas as pd
 from app.engines.validation import (
+    ValidationConfig,
     parse_error_issue,
     validate,
 )
@@ -107,6 +108,15 @@ class TestRV201MissingRate:
 
     def test_negative(self) -> None:
         assert _rules(validate(_clean_df()), "RV201") == []
+
+    def test_prepared_output_downgrades_blocker(self) -> None:
+        """数据准备产物模式（docs/05 §8.5）：稀疏宽表 RV201 阻塞降级为警告。"""
+        df = _clean_df()
+        df.loc[df.index[:60], "age"] = None
+        rep = validate(df, config=ValidationConfig(prepared_output=True))
+        issue = _rules(rep, "RV201")[0]
+        assert issue.severity == "warning"
+        assert rep.blockers == 0
 
 
 class TestRV301IllegalNumeric:

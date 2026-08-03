@@ -27,6 +27,7 @@ class ValidationConfig:
     iqr_k: float = 1.5  # RV501 IQR 系数
     extreme_abs: float = 1e6  # RV804 极端值阈值（绝对值）
     susceptibility_min_rows: int = 5  # RV802 药敏判定最少行数
+    prepared_output: bool = False  # 数据准备产物模式（docs/05 §8.5）：RV201 阻塞降级为警告
 
 
 # ---------- 输出结构（14 章 QualityReport 契约） ----------
@@ -352,7 +353,7 @@ def validate(
         # RV201 缺失率
         if n_rows and missing:
             rate = missing / n_rows
-            if rate > cfg.missing_block:
+            if rate > cfg.missing_block and not cfg.prepared_output:
                 issues.append(
                     Issue(
                         "RV201",

@@ -95,8 +95,12 @@ def _execute(db: Session, job: PreparationJob) -> tuple[uuid.UUID, dict[str, Any
     db.add(version)
     db.flush()
 
-    # 产物即入库即校验：预览/画像/质量报告齐备，可直接进入分析流程
-    report = validation.validate(result.wide, raw_columns=[str(c) for c in result.wide.columns])
+    # 产物即入库即校验（产物模式：RV201 缺失阻塞降级为警告，docs/05 §8.5）
+    report = validation.validate(
+        result.wide,
+        config=validation.ValidationConfig(prepared_output=True),
+        raw_columns=[str(c) for c in result.wide.columns],
+    )
     dataset.preview = parser.preview_json(result.wide)
     dataset.column_profile = report.column_profiles
     dataset.status = "FAILED" if report.status == "FAILED" else "VALIDATED"

@@ -64,6 +64,7 @@ export default function ProjectDetailPage() {
           数据集
         </Typography.Title>
         <Space>
+          <Button onClick={() => navigate(`/projects/${id}/preparation/new`)}>数据准备</Button>
           <Button onClick={() => navigate(`/projects/${id}/analysis/new`)}>新建分析</Button>
           <Upload
             accept=".csv,.xlsx,.xls,.tsv,.txt"
