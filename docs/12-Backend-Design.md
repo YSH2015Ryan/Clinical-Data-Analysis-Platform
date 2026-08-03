@@ -57,6 +57,8 @@ class StorageBackend(Protocol):
 
 实现：`S3Storage`(MinIO/生产) + `LocalStorage`(单测/开发)。**业务代码只依赖协议**，未来迁云零改动。
 
+> 预签名 URL 的可达性（2026-08-03 补充）：`presign_download` 的返回 URL 最终由**浏览器**直接访问（报告下载 302，14 章）。容器网络内端点（如 `http://minio:9000`）浏览器不可解析，故 `S3Storage` 支持 `S3_PUBLIC_ENDPOINT`：生成预签名后将 scheme+host 重写为该公开端点（签名按路径计算，重写 host 不影响有效性）；docker-compose 须相应发布 MinIO API 端口（默认 `localhost:9000`）。
+
 ### 2.5 文件上传
 
 - multipart → 流式写 S3（不落 API 服务器磁盘）。

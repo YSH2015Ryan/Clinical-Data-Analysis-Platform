@@ -6,6 +6,7 @@
 import io
 from pathlib import Path
 from typing import BinaryIO, Protocol, runtime_checkable
+from urllib.parse import urlsplit, urlunsplit
 
 from minio import Minio
 
@@ -46,13 +47,29 @@ class LocalStorage:
         return str(self._path(key))
 
 
+def _public_url(url: str, public_endpoint: str) -> str:
+    """预签名 URL 重写为浏览器可达端点（docs/12 §2.4）：签名按 path/query 计算，换 host 仍有效。"""
+    if not public_endpoint:
+        return url
+    pub = urlsplit(public_endpoint.rstrip("/"))
+    parts = urlsplit(url)
+    return urlunsplit((pub.scheme, pub.netloc, parts.path, parts.query, ""))
+
+
 class S3Storage:
     def __init__(
-        self, endpoint: str, access_key: str, secret_key: str, bucket: str, secure: bool = False
+        self,
+        endpoint: str,
+        access_key: str,
+        secret_key: str,
+        bucket: str,
+        secure: bool = False,
+        public_endpoint: str = "",
     ) -> None:
         host = endpoint.removeprefix("http://").removeprefix("https://")
         self._client = Minio(host, access_key=access_key, secret_key=secret_key, secure=secure)
         self._bucket = bucket
+        self._public_endpoint = public_endpoint.rstrip("/")
         if not self._client.bucket_exists(bucket):
             self._client.make_bucket(bucket)
 
@@ -77,7 +94,9 @@ class S3Storage:
             return False
 
     def presign_download(self, key: str) -> str:
-        return self._client.presigned_get_object(self._bucket, key)
+        return _public_url(
+            self._client.presigned_get_object(self._bucket, key), self._public_endpoint
+        )
 
 
 def build_storage(
@@ -89,9 +108,12 @@ def build_storage(
     s3_secret_key: str = "",
     s3_bucket: str = "cdap",
     s3_secure: bool = False,
+    s3_public_endpoint: str = "",
 ) -> StorageBackend:
     if backend == "s3":
-        return S3Storage(s3_endpoint, s3_access_key, s3_secret_key, s3_bucket, s3_secure)
+        return S3Storage(
+            s3_endpoint, s3_access_key, s3_secret_key, s3_bucket, s3_secure, s3_public_endpoint
+        )
     return LocalStorage(local_path)
 
 
@@ -107,6 +129,7 @@ def storage_from_settings() -> StorageBackend:
         s3_secret_key=s.s3_secret_key,
         s3_bucket=s.s3_bucket,
         s3_secure=s.s3_secure,
+        s3_public_endpoint=s.s3_public_endpoint,
     )
 
 

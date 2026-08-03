@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     storage_backend: str = "local"  # local | s3
     local_storage_path: str = "./.data/storage"
     s3_endpoint: str = "http://localhost:9000"
+    s3_public_endpoint: str = ""  # 浏览器可达端点（预签名重写 host，docs/12 §2.4）；空=不重写
     s3_bucket: str = "cdap"
     s3_access_key: str = "minioadmin"
     s3_secret_key: str = "minioadmin"

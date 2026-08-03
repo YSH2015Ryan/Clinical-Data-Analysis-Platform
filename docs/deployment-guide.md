@@ -69,6 +69,9 @@ MINIO_ROOT_USER=cdap-admin
 MINIO_ROOT_PASSWORD=（第二串）
 JWT_SECRET=（第三串）
 LOG_LEVEL=INFO
+# 报告预签名下载的浏览器可达 MinIO 地址（docs/12 §2.4）
+# 本机访问保持默认即可；部署到服务器须改为 http://服务器IP:9000
+S3_PUBLIC_ENDPOINT=http://localhost:9000
 # 国内服务器保留此行（加速构建）；海外可删除
 PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ```
@@ -161,6 +164,7 @@ docker compose exec api alembic upgrade head   # 应用数据库变更
 | 上传大文件失败 | 上限默认 200MB：在 `deploy/.env` 加 `MAX_UPLOAD_MB=500` 后 `docker compose up -d api` 即生效（Nginx 天花板 1024MB，超过需同步改 `frontend/nginx.conf` 的 `client_max_body_size` 并重建 frontend）；磁盘不足时 `docker system df` 清理；大文件需更多 worker 内存 |
 | 分析卡住不动 | `docker compose logs -f worker` 看任务日志；单模型超时会自动标记失败（默认 15 分钟），不影响其他模型 |
 | 忘记管理员密码 | 用第 5 步命令**新建**一个 admin 账号登录即可（旧账号可由新管理员禁用） |
+| 报告预览/下载报「Failed to fetch」 | 预签名下载地址指向了容器内域名：在 `deploy/.env` 设置 `S3_PUBLIC_ENDPOINT=http://服务器IP:9000`（本机即 http://localhost:9000），确认 `docker compose ps` 中 minio 已发布 9000 端口，然后 `docker compose up -d` 重建 api 与 minio |
 | MinIO 文件管理台 | 浏览器访问 `http://服务器IP:9001`，账号密码为 `.env` 中的 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD |
 
 ## 11. 安全基线（务必遵守）
