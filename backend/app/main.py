@@ -41,6 +41,7 @@ def create_app() -> FastAPI:
     v1.include_router(projects_api.router)
     v1.include_router(datasets_api.router)
     v1.include_router(datasets_api.dataset_router)
+    v1.include_router(datasets_api.preparation_router)
     v1.include_router(analysis_api.router)
     v1.include_router(reports_api.router)
     v1.include_router(admin_api.router)

@@ -31,15 +31,24 @@ from app.schemas.dataset import (
     QualityReport,
     QuickFixRequest,
 )
+from app.schemas.preparation import (
+    PreparationApplyRequest,
+    PreparationJob,
+    PreparationPreview,
+    PreparationPreviewRequest,
+)
 from app.services import audit as audit_service
 from app.services import datasets as dataset_service
+from app.services import preparation as preparation_service
 from app.services import projects as project_service
 from app.services import quickfix as quickfix_service
 from app.services.storage import key_from_uri, storage_from_settings
 from app.workers.dataset_tasks import validate_dataset
+from app.workers.preparation_tasks import run_preparation
 
 router = APIRouter(prefix="/projects/{project_id}/datasets", tags=["datasets"])
 dataset_router = APIRouter(prefix="/datasets", tags=["datasets"])
+preparation_router = APIRouter(prefix="/preparations", tags=["datasets"])
 
 
 @router.post("", status_code=202, response_model=DatasetAccepted)
@@ -204,6 +213,59 @@ async def recommend_preprocess_dsl(
     raw = storage_from_settings().get(key_from_uri(dataset.storage_uri))
     result = parser.parse(raw, dataset.source_type)
     return {"config": recommend_config(result.df)}
+
+
+@dataset_router.post("/{dataset_id}/preparation/preview", response_model=PreparationPreview)
+async def preparation_preview(
+    dataset_id: uuid.UUID,
+    body: PreparationPreviewRequest,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PreparationPreview:
+    """数据准备预览（docs/05 §8）：扫描化验长表+诊断表，返回列识别/词条/建议默认值。"""
+    prev = await preparation_service.preview(
+        db, storage_from_settings(), user, dataset_id, body.diagnosis_dataset_id
+    )
+    return PreparationPreview.model_validate(prev.to_dict())
+
+
+@dataset_router.post(
+    "/{dataset_id}/preparation/apply", status_code=202, response_model=PreparationJob
+)
+async def preparation_apply(
+    dataset_id: uuid.UUID,
+    body: PreparationApplyRequest,
+    user: CurrentUser = Depends(require_role("researcher")),
+    db: AsyncSession = Depends(get_db),
+) -> PreparationJob:
+    """提交数据准备（docs/05 §8）：按决策异步生成宽表数据集，202 轮询 /preparations/{id}。"""
+    job = await preparation_service.create_job(
+        db, user, dataset_id, body.diagnosis_dataset_id, body.decisions
+    )
+    await audit_service.record(
+        db,
+        "preparation.apply",
+        user_id=user.id,
+        resource_type="preparation_job",
+        resource_id=job.id,
+        detail={"lab_dataset_id": str(dataset_id), "decisions": job.decisions},
+    )
+    await db.commit()
+    run_preparation.delay(str(job.id))
+    await db.refresh(job)  # eager/快任务下回读最新状态；异步部署下仍为 PENDING
+    return PreparationJob.model_validate(job, from_attributes=True)
+
+
+@preparation_router.get("/{preparation_id}", response_model=PreparationJob)
+async def get_preparation_job(
+    preparation_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PreparationJob:
+    job = await preparation_service.get_job(db, user, preparation_id)
+    if job is None:
+        raise not_found("preparation", str(preparation_id))
+    return PreparationJob.model_validate(job, from_attributes=True)
 
 
 @dataset_router.post("/{dataset_id}/detect-task")

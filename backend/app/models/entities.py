@@ -77,7 +77,8 @@ class Dataset(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "source_type IN ('csv','excel','fhir','omop')", name="ck_datasets_source_type"
+            "source_type IN ('csv','excel','fhir','omop','prepared')",
+            name="ck_datasets_source_type",
         ),
         CheckConstraint(
             "status IN ('UPLOADED','VALIDATING','VALIDATED','FAILED','ARCHIVED')",
@@ -106,6 +107,44 @@ class DatasetVersion(Base):
     __table_args__ = (
         UniqueConstraint(
             "dataset_id", "version_no", name="uq_dataset_versions_dataset_id_version_no"
+        ),
+    )
+
+
+class PreparationJob(Base):
+    """数据准备任务（docs/13；docs/05 §8）：长表+诊断表 → 宽表数据集。"""
+
+    __tablename__ = "preparation_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    lab_dataset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("datasets.id"), nullable=False
+    )
+    diag_dataset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("datasets.id"), nullable=False
+    )
+    decisions: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="PENDING")
+    result_dataset_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("datasets.id"), nullable=True
+    )
+    summary: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('PENDING','RUNNING','COMPLETED','FAILED')",
+            name="ck_preparation_jobs_status",
         ),
     )
 
