@@ -29,7 +29,7 @@ CREATE TABLE datasets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  source_type TEXT NOT NULL CHECK (source_type IN ('csv','excel','fhir','omop')),
+  source_type TEXT NOT NULL CHECK (source_type IN ('csv','excel','fhir','omop','prepared')), -- prepared=数据准备产物（05 §8，2026-08-03）
   storage_uri TEXT NOT NULL,
   file_hash CHAR(64) NOT NULL,          -- sha256
   file_size BIGINT NOT NULL,
@@ -62,6 +62,23 @@ CREATE TABLE quality_reports (
   issues JSONB NOT NULL DEFAULT '[]',
   column_profiles JSONB NOT NULL DEFAULT '[]',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 数据准备任务（05 章 §8；2026-08-03 新增）：长表+诊断表 → 宽表数据集
+CREATE TABLE preparation_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  lab_dataset_id UUID NOT NULL REFERENCES datasets(id),
+  diag_dataset_id UUID NOT NULL REFERENCES datasets(id),
+  decisions JSONB NOT NULL,              -- 05 §8.2 五个决策点
+  status TEXT NOT NULL DEFAULT 'PENDING'
+    CHECK (status IN ('PENDING','RUNNING','COMPLETED','FAILED')),
+  result_dataset_id UUID REFERENCES datasets(id),  -- 产出的宽表数据集
+  summary JSONB,                         -- 每阶段行数变化（可审计）
+  error TEXT,
+  created_by UUID NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at TIMESTAMPTZ
 );
 
 CREATE TABLE analysis_runs (

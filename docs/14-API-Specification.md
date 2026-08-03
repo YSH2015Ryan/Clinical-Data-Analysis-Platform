@@ -265,6 +265,57 @@ paths:
                   config: {$ref: '#/components/schemas/PreprocessConfig'}
         '404': {$ref: '#/components/responses/Error'}
 
+  /datasets/{dataset_id}/preparation/preview:
+    post:
+      tags: [datasets]
+      summary: 数据准备预览（契约变更 2026-08-03，docs/05 §8）：扫描长表+诊断表，返回列识别/词条/统计
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [diagnosis_dataset_id]
+              properties:
+                diagnosis_dataset_id: {type: string, format: uuid}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PreparationPreview'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+
+  /datasets/{dataset_id}/preparation/apply:
+    post:
+      tags: [datasets]
+      summary: 提交数据准备（契约变更 2026-08-03）：按决策生成长表→宽表任务，202 异步
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [diagnosis_dataset_id, decisions]
+              properties:
+                diagnosis_dataset_id: {type: string, format: uuid}
+                decisions: {$ref: '#/components/schemas/PreparationDecisions'}
+      responses:
+        '202':
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PreparationJob'}
+        '400': {$ref: '#/components/responses/Error'}
+
+  /preparations/{preparation_id}:
+    get:
+      tags: [datasets]
+      summary: 数据准备任务状态与结果（契约变更 2026-08-03）
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PreparationJob'}
+        '404': {$ref: '#/components/responses/Error'}
+
   /datasets/{dataset_id}/detect-task:
     post:
       tags: [analysis]
@@ -507,6 +558,51 @@ components:
         confidence: {type: number}
         reason: {type: string}
         candidates: {type: object}
+    # 数据准备（契约变更 2026-08-03，docs/05 §8）
+    PreparationDecisions:
+      type: object
+      required: [outcome_terms]
+      properties:
+        outcome_terms:
+          type: array
+          minItems: 1
+          items: {type: string}
+          description: 结局阳性诊断词条（任一命中=1；子串匹配）
+        outcome_scope: {type: string, enum: [any, index], default: any}
+        index_diagnosis: {type: string, enum: [first, last], default: first}
+        window_days: {type: integer, default: 30, minimum: 0, description: 0=不限}
+        value_strategy: {type: string, enum: [latest, mean], default: latest}
+        value_column: {type: string, default: 归一化值}
+        exclude_susceptibility: {type: boolean, default: true}
+        clip_quantile: {type: number, default: 0.99, description: 按项目 winsorize；0=不截断}
+        top_n_items: {type: integer, default: 200, minimum: 1}
+    PreparationPreview:
+      type: object
+      properties:
+        lab_columns: {type: object, description: 识别出的关键列（id/item/value/date/unit/specimen/susceptibility）}
+        diag_columns: {type: object}
+        lab_rows: {type: integer}
+        diag_rows: {type: integer}
+        patients_intersection: {type: integer}
+        diagnosis_terms:
+          type: array
+          items:
+            type: object
+            properties:
+              term: {type: string}
+              count: {type: integer}
+        susceptibility_rows: {type: integer}
+        suggested: {$ref: '#/components/schemas/PreparationDecisions'}
+    PreparationJob:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        status: {type: string, enum: [PENDING, RUNNING, COMPLETED, FAILED]}
+        result_dataset_id: {type: string, format: uuid, nullable: true}
+        summary: {type: object}
+        error: {type: string, nullable: true}
+        created_at: {type: string, format: date-time}
+        finished_at: {type: string, format: date-time, nullable: true}
     AnalysisRunCreate:
       type: object
       required: [dataset_version_id, task_type, preprocess_config, selected_models]
@@ -694,3 +790,4 @@ components:
 | 2026-07-29 | `RunProgress` 新增可选 `errors`（model_key → 错误信息） | 非破坏（新增可选字段） | T5.10 运行监控页「失败原因 tooltip」需逐模型错误文本；受影响消费方：前端 RunProgressBoard |
 | 2026-07-30 | 新增 `POST /datasets/{dataset_id}/preprocess/validate` | 非破坏（新增端点） | T3.1 DoD「非法 DSL 400」前置落地 + T3.6 前端配置面板即时校验；受影响消费方：前端预处理面板 |
 | 2026-07-30 | 新增 `POST /datasets/{dataset_id}/preprocess/recommend` | 非破坏（新增端点） | T3.5 推荐配置生成器落地 + T3.6 前端「推荐配置」一键填充；受影响消费方：前端预处理面板 |
+| 2026-08-03 | 新增 `POST /datasets/{id}/preparation/preview`、`POST /datasets/{id}/preparation/apply`、`GET /preparations/{id}` + PreparationDecisions/Preview/Job schema | 非破坏（新增端点） | P0-1 数据准备向导（05 §8）：真实 EHR 长表组装为宽表；受影响消费方：前端数据准备向导页、worker（新任务）、DB（新表 preparation_jobs） |
