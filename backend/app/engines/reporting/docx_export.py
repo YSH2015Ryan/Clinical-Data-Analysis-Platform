@@ -9,7 +9,7 @@ import io
 from typing import Any
 
 from docx import Document
-from docx.shared import Inches
+from docx.shared import Inches, Pt
 
 from app.engines.reporting.context import NOT_APPLICABLE
 
@@ -20,11 +20,19 @@ def _add_charts(doc: Any, charts: list[dict[str, Any]]) -> None:
     for chart in charts:
         b64 = chart.get("image_b64")
         title = chart.get("title") or chart.get("kind") or "图表"
+        fig_no = chart.get("fig_no")
+        label = f"图 {fig_no}　{title}" if fig_no else f"图：{title}"
         if b64:
             doc.add_picture(io.BytesIO(base64.b64decode(b64)), width=_CHART_WIDTH)
-            doc.add_paragraph(f"图：{title}")
+            # 图题（docs/10 §2.1）：编号+标题加粗，说明小号字紧随其后
+            para = doc.add_paragraph()
+            head = para.add_run(f"{label}。")
+            head.bold = True
+            head.font.size = Pt(9)
+            body = para.add_run(str(chart.get("caption") or ""))
+            body.font.size = Pt(9)
         else:
-            doc.add_paragraph(f"[图表] {title}（本次分析不适用）")
+            doc.add_paragraph(f"[图表] {label}（本次分析不适用）")
 
 
 def _add_table(doc: Any, header: list[str], rows: list[list[str]]) -> None:

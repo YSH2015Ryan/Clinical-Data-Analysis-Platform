@@ -79,3 +79,23 @@ class TestNotApplicable:
         )
         html = render_html(ctx)
         assert "临床数据分析报告" in html
+
+
+class TestFigureCaptions:
+    """docs/10 §2.1：图下输出编号图题 + 说明段落。"""
+
+    def test_caption_paragraphs_rendered(self) -> None:
+        html = _render()
+        assert '<p class="fig-caption">' in html
+        assert "图 1" in html and "图 2" in html  # 全文统一编号
+        assert "ROC 曲线对比。" in html  # 图题标题
+
+    def test_caption_explanation_text(self) -> None:
+        html = _render()
+        assert "相当于随机猜测" in html  # roc 说明内容（读法+意义）
+
+    def test_academic_typography(self) -> None:
+        html = _render()
+        assert "@page" in html  # 页码规则
+        assert "Noto Serif CJK SC" in html  # 正文衬线
+        assert "#1677ff" not in html  # 商务深色，不再用主题蓝

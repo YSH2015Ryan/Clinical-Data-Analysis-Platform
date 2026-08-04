@@ -3,7 +3,6 @@ import {
   Button,
   Card,
   Descriptions,
-  List,
   Popconfirm,
   Select,
   Space,
@@ -14,6 +13,7 @@ import {
   Typography,
   message,
 } from "antd";
+import { MinusOutlined, PlusOutlined } from "@ant-design/icons";
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
@@ -43,6 +43,36 @@ const SEVERITY_LABEL: Record<Issue["severity"], string> = {
   info: "信息",
 };
 
+/** 优先级：阻塞 > 警告 > 信息（分组排序用） */
+const SEVERITY_RANK: Record<Issue["severity"], number> = {
+  blocker: 0,
+  warning: 1,
+  info: 2,
+};
+
+/** 规则类型中文名（与 engines/validation.py 对应；未知规则回退显示规则号） */
+const RULE_LABEL: Record<string, string> = {
+  RV001: "文件解析失败",
+  RV002: "空表",
+  RV003: "重复列名",
+  RV101: "任务必需字段缺失",
+  RV102: "推荐字段缺失",
+  RV201: "缺失率过高",
+  RV301: "数值列混入非法值",
+  RV302: "日期格式不一致",
+  RV401: "重复行",
+  RV501: "异常值（IQR）",
+  RV502: "临床不合理范围",
+  RV601: "高基数分类",
+  RV701: "类别不平衡",
+  RV801: "长表结构",
+  RV802: "疑似药敏试验记录",
+  RV803: "同一项目多种单位",
+  RV804: "数值极端值",
+};
+
+const COLLAPSED_ROWS = 10;
+
 const REPORT_LABEL: Record<QualityReport["status"], string> = {
   PASSED: "通过",
   PASSED_WITH_WARNINGS: "有警告",
@@ -59,6 +89,110 @@ function fixActionFor(issue: Issue): QuickFixAction | null {
   if (issue.rule_id === "RV301" && issue.column)
     return { type: "to_missing", column: issue.column };
   return null;
+}
+
+/** 问题清单分组：按规则类型拆分、组内优先级排序、超 10 行折叠（展开按钮查看全部） */
+function IssueGroup({
+  ruleId,
+  issues,
+  fixing,
+  onFix,
+}: {
+  ruleId: string;
+  issues: Issue[];
+  fixing: boolean;
+  onFix: (action: QuickFixAction) => Promise<void>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const severity = issues.reduce(
+    (top, i) => (SEVERITY_RANK[i.severity] < SEVERITY_RANK[top] ? i.severity : top),
+    issues[0].severity,
+  );
+  const shown = expanded ? issues : issues.slice(0, COLLAPSED_ROWS);
+  return (
+    <Card
+      size="small"
+      style={{ marginBottom: 12 }}
+      title={
+        <Space>
+          <Tag color={SEVERITY_COLOR[severity]}>{SEVERITY_LABEL[severity]}</Tag>
+          <Typography.Text code>{ruleId}</Typography.Text>
+          <span>{RULE_LABEL[ruleId] ?? "其他问题"}</span>
+        </Space>
+      }
+      extra={<Typography.Text type="secondary">{issues.length} 条</Typography.Text>}
+    >
+      <Table<Issue>
+        rowKey={(r) => `${r.rule_id}-${r.column ?? ""}-${r.message}`}
+        size="small"
+        dataSource={shown}
+        pagination={false}
+        columns={[
+          {
+            title: "级别",
+            dataIndex: "severity",
+            width: 80,
+            render: (s: Issue["severity"]) => (
+              <Tag color={SEVERITY_COLOR[s]}>{SEVERITY_LABEL[s]}</Tag>
+            ),
+          },
+          {
+            title: "列",
+            dataIndex: "column",
+            width: 140,
+            render: (c?: string) => (c ? <Tag>{c}</Tag> : "—"),
+          },
+          { title: "问题", dataIndex: "message" },
+          {
+            title: "建议",
+            render: (_, r) => r.suggestion || r.detail || "—",
+          },
+          {
+            title: "操作",
+            width: 100,
+            render: (_, r) => {
+              const action = r.severity === "warning" ? fixActionFor(r) : null;
+              return action ? (
+                <Popconfirm
+                  title="一键修复将生成新版本，原文件不变"
+                  onConfirm={() => void onFix(action)}
+                >
+                  <Button size="small" loading={fixing}>
+                    一键修复
+                  </Button>
+                </Popconfirm>
+              ) : null;
+            },
+          },
+        ]}
+      />
+      {issues.length > COLLAPSED_ROWS && (
+        <Button
+          type="link"
+          size="small"
+          icon={expanded ? <MinusOutlined /> : <PlusOutlined />}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "收起" : `展开全部（共 ${issues.length} 条）`}
+        </Button>
+      )}
+    </Card>
+  );
+}
+
+/** 按规则类型分组；组间按最高严重级别（阻塞优先）再按条数排序 */
+function groupIssues(issues: Issue[]): [string, Issue[]][] {
+  const groups = new Map<string, Issue[]>();
+  for (const issue of issues) {
+    const list = groups.get(issue.rule_id) ?? [];
+    list.push(issue);
+    groups.set(issue.rule_id, list);
+  }
+  const rankOf = (list: Issue[]) =>
+    Math.min(...list.map((i) => SEVERITY_RANK[i.severity]));
+  return [...groups.entries()].sort(
+    (a, b) => rankOf(a[1]) - rankOf(b[1]) || b[1].length - a[1].length,
+  );
 }
 
 export default function DatasetDetailPage() {
@@ -169,46 +303,19 @@ export default function DatasetDetailPage() {
           </Card>
 
           <Card title="问题清单" style={{ marginBottom: 16 }}>
-            <List<Issue>
-              dataSource={report.issues}
-              locale={{ emptyText: "未发现问题" }}
-              renderItem={(issue) => {
-                const action = issue.severity === "warning" ? fixActionFor(issue) : null;
-                return (
-                  <List.Item
-                    actions={
-                      action
-                        ? [
-                            <Popconfirm
-                              key="fix"
-                              title="一键修复将生成新版本，原文件不变"
-                              onConfirm={() => void onFix(action)}
-                            >
-                              <Button size="small" loading={fixing}>
-                                一键修复
-                              </Button>
-                            </Popconfirm>,
-                          ]
-                        : undefined
-                    }
-                  >
-                    <List.Item.Meta
-                      title={
-                        <Space>
-                          <Tag color={SEVERITY_COLOR[issue.severity]}>
-                            {SEVERITY_LABEL[issue.severity]}
-                          </Tag>
-                          <Typography.Text code>{issue.rule_id}</Typography.Text>
-                          {issue.column && <Tag>{issue.column}</Tag>}
-                          <span>{issue.message}</span>
-                        </Space>
-                      }
-                      description={issue.suggestion || issue.detail || undefined}
-                    />
-                  </List.Item>
-                );
-              }}
-            />
+            {report.issues.length === 0 ? (
+              <Typography.Text type="secondary">未发现问题</Typography.Text>
+            ) : (
+              groupIssues(report.issues).map(([ruleId, issues]) => (
+                <IssueGroup
+                  key={ruleId}
+                  ruleId={ruleId}
+                  issues={issues}
+                  fixing={fixing}
+                  onFix={onFix}
+                />
+              ))
+            )}
           </Card>
 
           <Card title="列画像" style={{ marginBottom: 16 }}>

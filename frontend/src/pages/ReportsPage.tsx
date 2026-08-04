@@ -108,9 +108,10 @@ export default function ReportsPage() {
     return (
       <div style={{ maxWidth: 960, margin: "24px auto", padding: "0 16px" }}>
         <Alert type="error" message="报告列表不可用" description={loadError} />
-        <Button style={{ marginTop: 16 }} onClick={() => navigate(-1)}>
-          返回
-        </Button>
+        <Space style={{ marginTop: 16 }}>
+          <Button onClick={() => navigate(-1)}>返回</Button>
+          <Button onClick={() => navigate("/projects")}>返回主页</Button>
+        </Space>
       </div>
     );
   }
@@ -146,6 +147,7 @@ export default function ReportsPage() {
             </Button>
           </Tooltip>
           <Button onClick={() => navigate(`/runs/${id}/comparison`)}>返回比较</Button>
+          <Button onClick={() => navigate("/projects")}>返回主页</Button>
         </Space>
       </Space>
 

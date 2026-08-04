@@ -4,6 +4,7 @@
 - 免责声明与可复现附录强制存在；结论只引用真实指标值。
 """
 
+from app.engines.reporting.captions import FIGURE_CAPTIONS
 from app.engines.reporting.context import SECTION_TITLES, build_report_context
 
 
@@ -106,6 +107,48 @@ class TestSections:
         assert [c["kind"] for c in explain["data"]["charts"]] == ["feature_importance"]
         perf = next(s for s in ctx["sections"] if s["key"] == "performance")
         assert [c["kind"] for c in perf["data"]["charts"]] == ["roc"]
+
+
+class TestFigureCaptions:
+    """docs/10 §2.1：每图必带全文统一编号 + 说明文案。"""
+
+    def test_fig_no_globally_numbered(self) -> None:
+        ctx = build_report_context(_payload())
+        perf = next(s for s in ctx["sections"] if s["key"] == "performance")
+        explain = next(s for s in ctx["sections"] if s["key"] == "explainability")
+        # 第 5 章图先于第 6 章编号
+        assert perf["data"]["charts"][0]["fig_no"] == 1
+        assert explain["data"]["charts"][0]["fig_no"] == 2
+
+    def test_caption_injected_for_known_kind(self) -> None:
+        ctx = build_report_context(_payload())
+        perf = next(s for s in ctx["sections"] if s["key"] == "performance")
+        caption = perf["data"]["charts"][0]["caption"]
+        assert "AUC" in caption and "随机" in caption  # roc 说明要点
+
+    def test_unknown_kind_empty_caption_not_crash(self) -> None:
+        payload = _payload()
+        payload["comparison"]["charts"] = [{"kind": "unknown_x", "title": "t", "data": {}}]
+        ctx = build_report_context(payload)
+        perf = next(s for s in ctx["sections"] if s["key"] == "performance")
+        assert perf["data"]["charts"][0]["caption"] == ""
+
+    def test_captions_cover_all_produced_kinds(self) -> None:
+        """charts.py 实际产出的 kind 必须全部有说明文案（防新增图漏写说明）。"""
+        produced = {
+            "roc",
+            "calibration",
+            "dca",
+            "confusion_matrix",
+            "km",
+            "cindex_forest",
+            "prediction_scatter",
+            "feature_importance",
+            "hr_forest",
+        }
+        missing = produced - set(FIGURE_CAPTIONS)
+        assert not missing, f"缺少图题说明: {missing}"
+        assert all(FIGURE_CAPTIONS[k] for k in produced)
 
     def test_clinical_interpretation_marked_auto(self) -> None:
         ctx = build_report_context(_payload())

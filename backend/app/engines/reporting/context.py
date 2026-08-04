@@ -7,6 +7,8 @@
 
 from typing import Any
 
+from app.engines.reporting.captions import caption_for
+
 DISCLAIMER = "本报告由 CDAP 自动生成，仅供科研参考，不构成临床诊断建议。"
 NOT_APPLICABLE = "本次分析不适用"
 INTERPRETATION_NOTICE = "本节内容由系统自动生成，仅供线索参考，需研究者核实后方可写入论文。"
@@ -79,6 +81,11 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
     quality = payload.get("quality_report")
     steps = payload.get("preprocess_steps")
     table = payload.get("table")
+
+    # 图题（docs/10 §2.1）：全文统一编号（第 5 章先于第 6 章渲染），并注入说明文案
+    for i, chart in enumerate([*perf_charts, *explain_charts], start=1):
+        chart["fig_no"] = i
+        chart["caption"] = caption_for(str(chart.get("kind") or ""))
 
     recommendation = (comparison or {}).get("recommendation") or {}
     top1 = (recommendation.get("top") or [None])[0]

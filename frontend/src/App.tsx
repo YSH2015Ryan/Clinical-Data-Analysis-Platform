@@ -24,7 +24,26 @@ function RequireAdmin({ children }: { children: JSX.Element }) {
 
 export default function App() {
   return (
-    <ConfigProvider locale={zhCN}>
+    <ConfigProvider
+      locale={zhCN}
+      theme={{
+        token: {
+          // 简约商务基调：深藏青主色、克制的圆角与阴影、中性灰底色
+          colorPrimary: "#1f4e79",
+          colorInfo: "#1f4e79",
+          colorLink: "#1f4e79",
+          borderRadius: 4,
+          colorBgLayout: "#f5f6f8",
+          colorTextBase: "#1a1a1a",
+          fontFamily:
+            "-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif",
+        },
+        components: {
+          Card: { boxShadowTertiary: "none" },
+          Button: { fontWeight: 500 },
+        },
+      }}
+    >
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
