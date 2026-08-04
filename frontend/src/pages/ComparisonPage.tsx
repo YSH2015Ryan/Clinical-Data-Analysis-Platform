@@ -242,9 +242,10 @@ export default function ComparisonPage() {
     return (
       <div style={{ maxWidth: 960, margin: "24px auto", padding: "0 16px" }}>
         <Alert type="error" message="比较结果不可用" description={loadError} />
-        <Button style={{ marginTop: 16 }} onClick={() => navigate(-1)}>
-          返回
-        </Button>
+        <Space style={{ marginTop: 16 }}>
+          <Button onClick={() => navigate(-1)}>返回</Button>
+          <Button onClick={() => navigate("/projects")}>返回主页</Button>
+        </Space>
       </div>
     );
   }
@@ -264,6 +265,7 @@ export default function ComparisonPage() {
             生成报告
           </Button>
           <Button onClick={() => navigate(`/runs/${id}`)}>返回监控</Button>
+          <Button onClick={() => navigate("/projects")}>返回主页</Button>
         </Space>
       </Space>
 

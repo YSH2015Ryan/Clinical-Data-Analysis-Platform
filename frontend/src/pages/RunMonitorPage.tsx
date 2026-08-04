@@ -107,6 +107,7 @@ export default function RunMonitorPage() {
             </Popconfirm>
           )}
           <Button onClick={() => navigate(-1)}>返回</Button>
+          <Button onClick={() => navigate("/projects")}>返回主页</Button>
         </Space>
       </Space>
 
