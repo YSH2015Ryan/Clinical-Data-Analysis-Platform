@@ -81,7 +81,7 @@ const REPORT_LABEL: Record<QualityReport["status"], string> = {
 
 const POLL_MS = 2000;
 
-/** 规则 → 一键修复动作映射（docs/05 §5；仅 warning 级显示按钮） */
+/** 规则 → 一键修复动作映射（docs/05 §5；可安全自动化的规则，阻塞/警告均开放） */
 function fixActionFor(issue: Issue): QuickFixAction | null {
   if (issue.rule_id === "RV201" && issue.column)
     return { type: "drop_column", column: issue.column };
@@ -90,6 +90,14 @@ function fixActionFor(issue: Issue): QuickFixAction | null {
     return { type: "to_missing", column: issue.column };
   return null;
 }
+
+/** 各修复动作的风险说明（docs/05 §5：确认弹窗必须载明风险 + 新版本机制） */
+const FIX_RISK: Record<QuickFixAction["type"], string> = {
+  drop_column: "该列将从新版本中彻底移除，其中的数据在新版本不可恢复（适用于确认无用的列）。",
+  drop_duplicates: "完全重复的数据行将被删除，仅保留一份；若重复本身是真实记录，会造成样本损失。",
+  to_missing: "无法识别的取值将被置为缺失，原始取值在新版本不可恢复。",
+  remap_semantic: "该列的语义将被重新标记，影响任务识别与校验结论。",
+};
 
 /** 问题清单分组：按规则类型拆分、组内优先级排序、超 10 行折叠（展开按钮查看全部） */
 function IssueGroup({
@@ -151,13 +159,25 @@ function IssueGroup({
             title: "操作",
             width: 100,
             render: (_, r) => {
-              const action = r.severity === "warning" ? fixActionFor(r) : null;
+              const action = fixActionFor(r);
               return action ? (
                 <Popconfirm
-                  title="一键修复将生成新版本，原文件不变"
+                  title="确认一键修复？"
+                  description={
+                    <div style={{ maxWidth: 320 }}>
+                      <div>风险：{FIX_RISK[action.type]}</div>
+                      <div style={{ marginTop: 4 }}>
+                        修复将生成一个<strong>新的文件版本</strong>
+                        （保存在原数据集目录下），你上传的源文件不会被修改；
+                        也可以放弃自动修复，改为手动修改源文件后重新上传。
+                      </div>
+                    </div>
+                  }
+                  okText="确认修复"
+                  cancelText="取消"
                   onConfirm={() => void onFix(action)}
                 >
-                  <Button size="small" loading={fixing}>
+                  <Button size="small" danger={r.severity === "blocker"} loading={fixing}>
                     一键修复
                   </Button>
                 </Popconfirm>
@@ -303,6 +323,12 @@ export default function DatasetDetailPage() {
           </Card>
 
           <Card title="问题清单" style={{ marginBottom: 16 }}>
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message="带「一键修复」按钮的问题可由系统自动处理：修复会生成一个新的文件版本（保存在原数据集目录下），你上传的源文件不会被修改。也可以不采用自动修复，手动修改源文件后重新上传。阻塞项消除前无法提交分析。"
+            />
             {report.issues.length === 0 ? (
               <Typography.Text type="secondary">未发现问题</Typography.Text>
             ) : (
