@@ -99,6 +99,24 @@ const FIX_RISK: Record<QuickFixAction["type"], string> = {
   remap_semantic: "该列的语义将被重新标记，影响任务识别与校验结论。",
 };
 
+/** 无一键修复动作时的原因与出路（docs/05 §5：行内明示为何不能自动修复） */
+const NO_FIX_REASON: Record<string, string> = {
+  RV001: "文件本身无法读取，无从自动修复：请检查文件格式与编码（建议 UTF-8 CSV）后重新上传",
+  RV002: "文件不含数据行，没有可修复的内容：请检查源文件后重新上传",
+  RV003: "存在重名列，系统无法判断应保留哪一列：请在源文件中重命名后重新上传",
+  RV101: "结局数据无法凭空生成：若结局列已存在但未被识别，请在下方「列画像」把该列角色重映射为 Label/Event；若数据本不含结局（如检验长表），请走项目页「数据准备」向导，关联诊断表生成带结局的宽表",
+  RV302: "日期格式混乱，系统无法确定哪种写法才是对的：请在源文件中统一日期格式后重新上传",
+  RV502: "取值超出临床合理范围，需人工核对是单位错误还是真实极端值，再决定如何处理",
+  RV601: "分类取值过多是数据本身的结构特征：可考虑合并稀有类别，或交由预处理阶段处理",
+  RV701: "类别不平衡是数据本身的特征，无法靠修复消除：分析时将自动采用分层交叉验证来缓解",
+  RV801: "检验长表需先重塑为宽表才能分析：请走项目页「数据准备」向导",
+  RV802: "药敏判定记录需筛选/重塑：请走项目页「数据准备」向导并勾选排除药敏记录",
+  RV803: "同一项目存在多种单位，需人工统一单位口径，系统无法猜测哪个单位正确",
+  RV804: "极端值需人工核对是否录入错误，自动删除可能误伤真实数据",
+};
+
+const NO_FIX_DEFAULT = "该问题需人工判断，暂不支持自动修复：请按「建议」列的指引手动处理";
+
 /** 问题清单分组：按规则类型拆分、组内优先级排序、超 10 行折叠（展开按钮查看全部） */
 function IssueGroup({
   ruleId,
@@ -156,11 +174,17 @@ function IssueGroup({
             render: (_, r) => r.suggestion || r.detail || "—",
           },
           {
-            title: "操作",
-            width: 100,
+            title: "修复方式",
+            width: 260,
             render: (_, r) => {
               const action = fixActionFor(r);
-              return action ? (
+              if (!action)
+                return (
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {NO_FIX_REASON[r.rule_id] ?? NO_FIX_DEFAULT}
+                  </Typography.Text>
+                );
+              return (
                 <Popconfirm
                   title="确认一键修复？"
                   description={
@@ -181,7 +205,7 @@ function IssueGroup({
                     一键修复
                   </Button>
                 </Popconfirm>
-              ) : null;
+              );
             },
           },
         ]}
@@ -323,12 +347,6 @@ export default function DatasetDetailPage() {
           </Card>
 
           <Card title="问题清单" style={{ marginBottom: 16 }}>
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 12 }}
-              message="带「一键修复」按钮的问题可由系统自动处理：修复会生成一个新的文件版本（保存在原数据集目录下），你上传的源文件不会被修改。也可以不采用自动修复，手动修改源文件后重新上传。阻塞项消除前无法提交分析。"
-            />
             {report.issues.length === 0 ? (
               <Typography.Text type="secondary">未发现问题</Typography.Text>
             ) : (
