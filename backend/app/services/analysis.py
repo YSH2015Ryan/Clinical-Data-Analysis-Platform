@@ -97,6 +97,10 @@ async def create_run(
     except Exception as exc:
         raise AppError("VALIDATION_ERROR", 400, f"preprocess_config 非法：{exc}") from exc
     _check_target(body.task_type, cfg.target.model_dump())
+    # 验证策略与任务一致性（docs/06 §2）：回归无类别可分层，stratified_kfold 必然失败，
+    # 落库前强制降级为 kfold
+    if body.task_type == "regression" and cfg.validation.strategy == "stratified_kfold":
+        cfg.validation.strategy = "kfold"
 
     # 模型可用性以 DB 为准（先同步注册表；禁用不被覆盖 docs/15 §1）
     await sync_plugins_to_db(db, registry)

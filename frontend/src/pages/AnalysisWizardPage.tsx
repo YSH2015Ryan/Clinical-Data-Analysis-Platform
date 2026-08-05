@@ -295,7 +295,16 @@ export default function AnalysisWizardPage() {
             value: t,
             label: TASK_LABEL[t],
           }))}
-          onChange={(v) => setTaskType(v)}
+          onChange={(v) => {
+            setTaskType(v);
+            // 验证策略与任务一致性（docs/06 §2）：回归无类别可分层，切换时同步替换
+            if (v === "regression" && config?.validation.strategy === "stratified_kfold") {
+              setConfig({
+                ...config,
+                validation: { ...config.validation, strategy: "kfold" },
+              });
+            }
+          }}
         />
       </Space>
     </Card>,

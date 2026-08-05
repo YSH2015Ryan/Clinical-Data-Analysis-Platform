@@ -112,7 +112,25 @@ export default function RunMonitorPage() {
       </Space>
 
       {run?.error && (
-        <Alert type="error" message="运行失败" description={run.error} style={{ marginBottom: 16 }} />
+        <Alert
+          type="error"
+          message="运行失败"
+          style={{ marginBottom: 16 }}
+          description={
+            <div>
+              <div>{run.error}</div>
+              {progress && Object.keys(progress.errors).length > 0 && (
+                <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                  {Object.entries(progress.errors).map(([key, err]) => (
+                    <li key={key}>
+                      <strong>{key}</strong>：{err}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          }
+        />
       )}
 
       <Card>

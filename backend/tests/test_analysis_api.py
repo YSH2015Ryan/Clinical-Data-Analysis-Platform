@@ -235,6 +235,25 @@ class TestCreateRun:
         msg = resp.json()["message"]
         assert "随访时间" in msg and "分类" in msg
 
+    async def test_regression_stratified_kfold_coerced(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        researcher: User,
+        version: DatasetVersion,
+    ) -> None:
+        """docs/06 §2：回归任务配 stratified_kfold 必败，落库前强制降级 kfold。"""
+        body = _body(version.id, ["lasso"])
+        body["task_type"] = "regression"
+        body["preprocess_config"] = dict(CLF_CONFIG)  # 合法 DSL + stratified_kfold
+        resp = await client.post("/api/v1/analysis-runs", json=body, headers=_auth(researcher))
+        assert resp.status_code == 202
+        db_session.expunge_all()
+        run = (
+            await db_session.execute(select(AnalysisRun).where(AnalysisRun.id == resp.json()["id"]))
+        ).scalar_one()
+        assert run.preprocess_config["validation"]["strategy"] == "kfold"
+
 
 class TestRunQueries:
     async def _completed_run(
