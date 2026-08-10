@@ -1,0 +1,154 @@
+/* CDAP 视觉语言（docs/11 §6 设计契约）：学术编辑风——衬线标题 / 纸白底色 / hairline 细线。
+   字体全部走本地栈（Noto Serif SC → 宋体回退），不引外部 CDN，离线/内网可用。 */
+
+:root {
+  --cdap-ink: #1a1a1a;
+  --cdap-navy: #1f4e79;
+  --cdap-paper: #faf9f6;
+  --cdap-hairline: #e3e0d8;
+  --cdap-serif:
+    "Noto Serif SC", "Source Han Serif SC", "Noto Serif CJK SC", "STSong", "SimSun",
+    serif;
+}
+
+html,
+body {
+  background: var(--cdap-paper);
+}
+
+/* 全站标题衬线化（AntD Typography）——「界面即期刊」的品牌记忆点 */
+h1.ant-typography,
+h2.ant-typography,
+h3.ant-typography,
+h4.ant-typography {
+  font-family: var(--cdap-serif);
+  letter-spacing: 0.5px;
+  color: var(--cdap-ink);
+}
+
+/* 统计表格数字等宽对齐，期刊 Table 1 质感 */
+.ant-table {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 克制的单页入场（≤300ms，docs/11 §6 动效约束） */
+@keyframes cdap-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.cdap-fade {
+  animation: cdap-fade-up 280ms ease-out both;
+}
+
+/* ---------- 登录页：期刊封面式非对称排版 ---------- */
+
+.login-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: stretch;
+}
+.login-brand {
+  flex: 1.2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 48px 64px;
+  border-right: 1px solid var(--cdap-hairline);
+}
+.login-eyebrow {
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--cdap-navy);
+  margin-bottom: 18px;
+}
+.login-title {
+  font-family: var(--cdap-serif);
+  font-size: 44px;
+  line-height: 1.25;
+  color: var(--cdap-ink);
+  margin: 0 0 16px;
+}
+.login-sub {
+  font-size: 14px;
+  color: #555;
+  margin: 0 0 32px;
+}
+.login-points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 420px;
+}
+.login-points li {
+  padding: 10px 0;
+  border-top: 1px solid var(--cdap-hairline);
+  font-size: 13px;
+  color: #333;
+}
+.login-points li span {
+  color: var(--cdap-navy);
+  font-family: var(--cdap-serif);
+  margin-right: 10px;
+}
+.login-form-col {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 32px;
+}
+.login-card {
+  width: 360px;
+  border: 1px solid var(--cdap-hairline);
+  border-radius: 4px;
+  padding: 28px 28px 20px;
+  background: #fff;
+}
+.login-card-title {
+  font-family: var(--cdap-serif);
+  font-size: 20px;
+  margin: 0 0 4px;
+}
+.login-card-sub {
+  font-size: 12px;
+  color: #888;
+  margin: 0 0 20px;
+}
+
+@media (max-width: 860px) {
+  .login-wrap {
+    flex-direction: column;
+  }
+  .login-brand {
+    border-right: none;
+    border-bottom: 1px solid var(--cdap-hairline);
+    padding: 40px 28px 28px;
+  }
+  .login-title {
+    font-size: 30px;
+  }
+}
+
+/* ---------- 列表页页眉（eyebrow + 题名 + 细分隔线） ---------- */
+
+.page-head {
+  border-bottom: 1px solid var(--cdap-hairline);
+  padding-bottom: 14px;
+  margin-bottom: 20px;
+}
+.page-eyebrow {
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--cdap-navy);
+  margin-bottom: 6px;
+}
+.page-sub {
+  color: #777;
+  font-size: 12px;
+}

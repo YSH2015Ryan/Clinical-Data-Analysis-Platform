@@ -58,28 +58,36 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div style={{ maxWidth: 960, margin: "24px auto", padding: "0 16px" }}>
-      <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          我的项目
-        </Typography.Title>
-        <Space>
-          {getRole() === "admin" && (
-            <Button onClick={() => navigate("/admin/plugins")}>插件管理</Button>
-          )}
-          <Button type="primary" onClick={() => setModalOpen(true)}>
-            新建项目
-          </Button>
-          <Button
-            onClick={() => {
-              clearTokens();
-              navigate("/login");
-            }}
-          >
-            退出登录
-          </Button>
+    <div className="cdap-fade" style={{ maxWidth: 960, margin: "24px auto", padding: "0 16px" }}>
+      <div className="page-head">
+        <Space style={{ width: "100%", justifyContent: "space-between", alignItems: "flex-end" }}>
+          <div>
+            <p className="page-eyebrow">工作台 · WORKSPACE</p>
+            <Typography.Title level={3} style={{ margin: 0 }}>
+              我的项目
+            </Typography.Title>
+            <p className="page-sub" style={{ margin: "6px 0 0" }}>
+              {loading ? "正在加载…" : `共 ${items.length} 个研究项目`}
+            </p>
+          </div>
+          <Space>
+            {getRole() === "admin" && (
+              <Button onClick={() => navigate("/admin/plugins")}>插件管理</Button>
+            )}
+            <Button type="primary" onClick={() => setModalOpen(true)}>
+              新建项目
+            </Button>
+            <Button
+              onClick={() => {
+                clearTokens();
+                navigate("/login");
+              }}
+            >
+              退出登录
+            </Button>
+          </Space>
         </Space>
-      </Space>
+      </div>
       <Table<Project>
         rowKey="id"
         loading={loading}
