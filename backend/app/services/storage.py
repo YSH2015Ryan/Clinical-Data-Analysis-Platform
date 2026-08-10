@@ -13,7 +13,7 @@ from minio import Minio
 
 @runtime_checkable
 class StorageBackend(Protocol):
-    def put(self, key: str, data: BinaryIO, length: int = -1) -> str: ...
+    def put(self, key: str, data: BinaryIO, length: int = -1, content_type: str = "") -> str: ...
     def get(self, key: str) -> bytes: ...
     def exists(self, key: str) -> bool: ...
     def presign_download(self, key: str) -> str: ...
@@ -30,7 +30,8 @@ class LocalStorage:
             raise ValueError(f"非法存储 key: {key}")
         return self._root / key
 
-    def put(self, key: str, data: BinaryIO, length: int = -1) -> str:
+    def put(self, key: str, data: BinaryIO, length: int = -1, content_type: str = "") -> str:
+        # content_type 仅对象存储有意义（预览 iframe 依赖 MIME，docs/10 §4）；本地模式忽略
         path = self._path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data.read())
@@ -83,9 +84,15 @@ class S3Storage:
         if not self._client.bucket_exists(bucket):
             self._client.make_bucket(bucket)
 
-    def put(self, key: str, data: BinaryIO, length: int = -1) -> str:
+    def put(self, key: str, data: BinaryIO, length: int = -1, content_type: str = "") -> str:
         payload = data.read()
-        self._client.put_object(self._bucket, key, io.BytesIO(payload), len(payload))
+        self._client.put_object(
+            self._bucket,
+            key,
+            io.BytesIO(payload),
+            len(payload),
+            content_type=content_type or "application/octet-stream",
+        )
         return f"s3://{self._bucket}/{key}"
 
     def get(self, key: str) -> bytes:

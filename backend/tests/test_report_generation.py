@@ -9,6 +9,7 @@
 import uuid
 
 import pytest
+from app.engines.reporting.render import TEMPLATE_VERSION
 from app.models.entities import Comparison, QualityReport, Report
 from app.services.storage import storage_from_settings
 from app.workers import db as worker_db
@@ -77,7 +78,7 @@ class TestReportGeneration:
             saved = db.get(Report, report.id)
             assert saved is not None and saved.status == "READY"
             assert saved.template_key == "clinical_report_zh"
-            assert saved.template_version == "1.0.0"
+            assert saved.template_version == TEMPLATE_VERSION
             assert saved.storage_uri
             comparison = db.execute(
                 select(Comparison).where(Comparison.run_id == run.id)

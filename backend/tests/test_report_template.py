@@ -99,3 +99,47 @@ class TestFigureCaptions:
         assert "@page" in html  # 页码规则
         assert "Noto Serif CJK SC" in html  # 正文衬线
         assert "#1677ff" not in html  # 商务深色，不再用主题蓝
+
+
+class TestJournalLayout:
+    """docs/10 §2 卷首与期刊排版（2026-08-10 修订：IMRaD + TRIPOD 顺序）。"""
+
+    def test_structured_abstract(self) -> None:
+        html = _render()
+        assert "摘　要" in html
+        assert "目的：" in html and "方法：" in html
+        assert "结果：" in html and "结论：" in html
+        assert "示例数据集" in html  # 目的含真实数据集名
+        assert "推荐 rf：主指标最高" in html  # 结果引用真实 Top1
+
+    def test_page_header_footer(self) -> None:
+        html = _render()
+        assert "@top-center" in html  # 页眉短标题
+        assert "counter(pages)" in html  # 页脚「第 X 页 / 共 Y 页」
+        assert "@page :first" in html  # 首页无页眉
+
+    def test_table_captions_numbered(self) -> None:
+        """每表必带表题（表上），全文连续编号；_payload 无列画像 → 首表为质量清单。"""
+        html = _render()
+        assert "表 1 数据质量问题清单" in html
+        assert "表 4 模型性能比较" in html
+        assert "表 6 软件版本" in html
+
+    def test_imrad_part_dividers(self) -> None:
+        html = _render()
+        assert "研 究 方 法" in html and "研 究 结 果" in html and "讨　　论" in html
+
+
+class TestCollapsible:
+    """docs/10 §2.2：仅 HTML 产物重点表默认折叠；派生格式全展开。"""
+
+    def test_collapsible_details(self) -> None:
+        html = render_html(build_report_context(_payload()), collapsible=True)
+        assert '<details class="fold">' in html
+        assert "<summary>表 1 数据质量问题清单</summary>" in html
+        assert "<caption>" not in html  # 折叠模式无 caption 重复
+
+    def test_default_not_collapsible(self) -> None:
+        html = _render()
+        assert "<details" not in html
+        assert "<caption>表 1 数据质量问题清单</caption>" in html

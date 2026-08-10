@@ -49,6 +49,14 @@ _SOFTWARE_PACKAGES = [
     "python-docx",
 ]
 
+# 报告产物 Content-Type（docs/10 §4）：预览 iframe 依赖浏览器按 MIME 渲染
+_CONTENT_TYPES = {
+    "html": "text/html; charset=utf-8",
+    "pdf": "application/pdf",
+    "markdown": "text/markdown; charset=utf-8",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
 
 def _software_versions() -> dict[str, str]:
     versions = {"python": platform.python_version()}
@@ -204,17 +212,20 @@ def generate_report(report_id: str) -> None:
                 # docs/10 §3：HTML 主产物派生 PDF/Markdown；docx 由同一 Context 填充
                 if report.format == "docx":
                     payload = context_to_docx(context)
+                elif report.format == "html":
+                    # docs/10 §2.2：仅 HTML 产物重点表默认折叠；派生格式全展开
+                    payload = render_html(context, collapsible=True).encode("utf-8")
                 else:
                     html = render_html(context)
-                    if report.format == "html":
-                        payload = html.encode("utf-8")
-                    elif report.format == "pdf":
+                    if report.format == "pdf":
                         payload = html_to_pdf(html)
                     else:
                         payload = html_to_markdown(html).encode("utf-8")
                 storage = storage_from_settings()
                 uri = storage.put(
-                    f"reports/{report_id}/report.{report.format}", io.BytesIO(payload)
+                    f"reports/{report_id}/report.{report.format}",
+                    io.BytesIO(payload),
+                    content_type=_CONTENT_TYPES[report.format],
                 )
                 report.storage_uri = str(uri)
             else:

@@ -1,9 +1,9 @@
 """ChartAsset JSON → PNG（docs/09 §3 单数据源；docs/10 §3 图表装配）。
 
 报告 PNG 与前端 ECharts 渲染同一份数据 JSON，避免两处不一致。
-PNG 中坐标轴/图例一律使用英文标注（matplotlib 默认字体无 CJK，
-中文标题由 HTML 模板在 <img> 外呈现，避免缺字方块 —— T7.4 打包
-Noto Sans CJK 后 HTML/CSS 文本不受影响）。
+字体首选 Noto Sans CJK SC（worker/测试镜像已打包 fonts-noto-cjk，
+docs/10 §2.1）：特征名等用户原文标签可直接中文渲染；坐标轴/图例
+保留英文术语惯例，中文标题由 HTML 模板在 <img> 外呈现。
 """
 
 import base64
@@ -16,6 +16,12 @@ matplotlib.use("Agg")  # 无显示环境（worker 容器）
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+# CJK 字体（docs/10 §2.1）：Noto Sans CJK SC 同时覆盖中英文，单字体即可混排；
+# 缺字体环境（本地开发）回退 DejaVu Sans，中文渲染为缺字方块但不中断
+matplotlib.rcParams["font.family"] = "sans-serif"
+matplotlib.rcParams["font.sans-serif"] = ["Noto Sans CJK SC", "DejaVu Sans"]
+matplotlib.rcParams["axes.unicode_minus"] = False  # 负号走 ASCII，避免缺字
 
 _KIND_TITLES = {
     "roc": "ROC Curves",

@@ -4,30 +4,53 @@
 <meta charset="utf-8"/>
 <title>临床数据分析报告</title>
 <style>
-  /* 排版取向：学术期刊样式（docs/10 §2.1）——正文衬线、标题无衬线深色、三线表、图题图下小号字 */
-  @page { size: A4; margin: 2.2cm 2cm;
-          @bottom-center { content: counter(page); font-size: 9px; color: #888;
+  /* 排版取向：医学科研期刊（docs/10 §2.1，IMRaD + TRIPOD 顺序，NEJM/Lancet/JAMA 惯例）——
+     正文衬线、标题无衬线深色、三线表、表题表上/图题图下、页眉短标题 + 页脚页码 */
+  @page { size: A4; margin: 2.4cm 2.1cm;
+          @top-center { content: "临床数据分析报告"; font-size: 8.5px; color: #999;
+                        letter-spacing: 1px; font-family: "Noto Sans CJK SC", sans-serif; }
+          @bottom-center { content: "第 " counter(page) " 页 / 共 " counter(pages) " 页";
+                           font-size: 9px; color: #888;
                            font-family: "Noto Sans CJK SC", sans-serif; } }
+  @page :first { @top-center { content: none; } }
   body { font-family: "Noto Serif CJK SC", "Noto Sans CJK SC", "Microsoft YaHei", serif;
          color: #1a1a1a; max-width: 760px; margin: 0 auto; padding: 24px;
-         line-height: 1.75; font-size: 12.5px; text-align: justify; }
+         line-height: 1.8; font-size: 12.5px; text-align: justify; }
   h1 { font-family: "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
-       font-size: 20px; text-align: center; letter-spacing: 1px;
-       border-bottom: 1px solid #1a1a1a; padding-bottom: 10px; margin-bottom: 6px; }
+       font-size: 21px; text-align: center; letter-spacing: 1px;
+       border-bottom: 2px solid #1a1a1a; padding-bottom: 12px; margin-bottom: 6px; }
   h2 { font-family: "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
        font-size: 15px; color: #1a1a1a; border-bottom: 1px solid #999;
-       padding-bottom: 4px; margin-top: 30px; }
+       padding-bottom: 4px; margin-top: 26px; }
+  .meta { color: #666; font-size: 11px; text-align: center; }
+  .abstract { background: #f7f7f5; border: 1px solid #ddd; border-left: 4px solid #1a1a1a;
+              padding: 12px 16px; margin: 18px 0 6px; }
+  .abstract p { margin: 4px 0; }
+  .abs-title { font-family: "Noto Sans CJK SC", sans-serif; font-weight: bold;
+               letter-spacing: 3px; margin: 0 0 6px; }
+  .abs-label { font-weight: bold; font-family: "Noto Sans CJK SC", sans-serif; }
+  .part { font-family: "Noto Sans CJK SC", sans-serif; font-size: 12px; color: #555;
+          letter-spacing: 4px; border-bottom: 1.5px solid #333; padding-bottom: 3px;
+          margin: 36px 0 0; }
   table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 12px;
           border-top: 1.5px solid #333; border-bottom: 1.5px solid #333; }
   th, td { border: none; padding: 5px 8px; text-align: left; }
   th { font-family: "Noto Sans CJK SC", sans-serif; border-bottom: 1px solid #666; }
   caption { caption-side: top; text-align: left; font-size: 11px; font-weight: bold;
-            color: #333; padding: 4px 0; }
+            color: #333; padding: 4px 0; font-family: "Noto Sans CJK SC", sans-serif; }
+  /* HTML 交互折叠（docs/10 §2.2）：无 JS 依赖，sandbox iframe 内可用 */
+  details.fold { margin: 10px 0 16px; }
+  details.fold > summary { cursor: pointer; list-style: none; font-size: 11px;
+        font-weight: bold; color: #333; padding: 4px 0;
+        font-family: "Noto Sans CJK SC", sans-serif; }
+  details.fold > summary::-webkit-details-marker { display: none; }
+  details.fold > summary::before { content: "＋ "; color: #888; }
+  details.fold[open] > summary::before { content: "－ "; color: #888; }
+  details.fold > table { margin: 6px 0 4px; }
   .na { color: #999; font-style: italic; }
   .notice { background: #fafafa; border-left: 3px solid #999; padding: 8px 12px; font-size: 12px; }
   .disclaimer { border-top: 1.5px solid #333; border-bottom: 1.5px solid #333; padding: 10px 4px;
                 font-weight: bold; margin-top: 20px; text-align: center; }
-  .meta { color: #666; font-size: 11px; text-align: center; }
   img.chart { max-width: 100%; display: block; margin: 12px auto 0; }
   .fig-caption { font-size: 11px; color: #444; line-height: 1.6;
                  margin: 4px 0 18px; text-align: justify; }
@@ -35,13 +58,42 @@
 </style>
 </head>
 <body>
+{# 表题宏：全文连续编号（docs/10 §2.1 表题表上）；collapsible 时默认折叠（§2.2） #}
+{% set T = namespace(n=0) %}
+{% macro tbl(title) -%}
+  {% set T.n = T.n + 1 -%}
+  {% if collapsible -%}
+<details class="fold"><summary>表 {{ T.n }} {{ title }}</summary>
+<table>
+{{ caller() }}</table>
+</details>
+  {%- else -%}
+<table>
+  <caption>表 {{ T.n }} {{ title }}</caption>
+{{ caller() }}</table>
+  {%- endif -%}
+{%- endmacro %}
+
 <h1>临床数据分析报告</h1>
 <p class="meta">
-  数据集：{{ dataset.name or "—" }} ｜ 任务类型：{{ run.task_type or "—" }} ｜
+  数据集：{{ dataset.name or "—" }} ｜ 任务类型：{{ task_label or run.task_type or "—" }} ｜
   运行时间：{{ run.created_at or "—" }}
 </p>
 
+{% if abstract %}
+<div class="abstract">
+  <p class="abs-title">摘　要</p>
+  {% if abstract.purpose %}<p><span class="abs-label">目的：</span>{{ abstract.purpose }}</p>{% endif %}
+  {% if abstract.methods %}<p><span class="abs-label">方法：</span>{{ abstract.methods }}</p>{% endif %}
+  {% if abstract.results %}<p><span class="abs-label">结果：</span>{{ abstract.results }}</p>{% endif %}
+  {% if abstract.conclusion %}<p><span class="abs-label">结论：</span>{{ abstract.conclusion }}</p>{% endif %}
+</div>
+{% endif %}
+
 {% for s in sections %}
+{% if s.key == "overview" %}<p class="part">研 究 方 法</p>{% endif %}
+{% if s.key == "performance" %}<p class="part">研 究 结 果</p>{% endif %}
+{% if s.key == "clinical_interpretation" %}<p class="part">讨　　论</p>{% endif %}
 <h2>{{ s.title }}</h2>
 {% if not s.applicable %}
 <p class="na">{{ s.data.note }}</p>
@@ -51,8 +103,7 @@
 {% if s.data.prevalence is not none %}阳性 {{ s.data.positives }} 例（阳性率 {{ '%.2f%%' | format(s.data.prevalence * 100) }}）。{% endif %}
 {% if s.data.events is not none %}事件数：{{ s.data.events }}；中位随访时间：{{ s.data.median_followup }}。{% endif %}</p>
 {% if s.data.columns %}
-<table>
-  <caption>表 1 变量概况</caption>
+{% call tbl("变量概况") %}
   <tr><th>变量</th><th>类型</th><th>缺失率</th><th>唯一值</th><th>最小值</th><th>最大值</th></tr>
   {% for c in s.data.columns %}
   <tr><td>{{ c.name }}</td><td>{{ c.inferred_type }}</td>
@@ -60,38 +111,37 @@
       <td>{{ c.min if c.min is not none else "—" }}</td>
       <td>{{ c.max if c.max is not none else "—" }}</td></tr>
   {% endfor %}
-</table>
+{% endcall %}
 {% endif %}
 
 {% elif s.key == "quality" %}
 <p>校验结论：{{ s.data.status }}（阻塞 {{ s.data.blockers }} 项，警告 {{ s.data.warnings }} 项）。</p>
 {% if s.data.issues %}
-<table>
+{% call tbl("数据质量问题清单") %}
   <tr><th>级别</th><th>列</th><th>问题</th><th>建议</th></tr>
   {% for i in s.data.issues %}
   <tr><td>{{ i.severity }}</td><td>{{ i.column or "—" }}</td>
       <td>{{ i.message }}</td><td>{{ i.suggestion }}</td></tr>
   {% endfor %}
-</table>
+{% endcall %}
 {% endif %}
 {% if s.data.transform_log %}
-<table>
-  <caption>处理动作</caption>
+{% call tbl("数据处理动作") %}
   <tr><th>动作</th><th>列</th><th>影响行数</th></tr>
   {% for t in s.data.transform_log %}
   <tr><td>{{ t.action }}</td><td>{{ t.column or "—" }}</td><td>{{ t.affected_rows }}</td></tr>
   {% endfor %}
-</table>
+{% endcall %}
 {% endif %}
 
 {% elif s.key == "preprocessing" %}
-<table>
+{% call tbl("预处理步骤与参数") %}
   <tr><th>#</th><th>步骤</th><th>参数</th></tr>
   {% for step in s.data.steps %}
   <tr><td>{{ loop.index }}</td><td>{{ step.type }}</td>
       <td><code>{{ step.params | tojson }}</code></td></tr>
   {% endfor %}
-</table>
+{% endcall %}
 
 {% elif s.key == "methods" %}
 <p>任务类型：{{ s.data.task_type }}；模型：{{ s.data.selected_models | join("、") }}。</p>
@@ -101,7 +151,7 @@
 {% endif %}
 
 {% elif s.key == "performance" %}
-<table>
+{% call tbl("模型性能比较（mean±std）") %}
   <tr><th>模型</th><th>状态</th>
     {% set ns = namespace(names=[]) %}
     {% for row in s.data.table %}{% for k in (row.metrics or {}) %}
@@ -117,14 +167,7 @@
     {% endfor %}
   </tr>
   {% endfor %}
-</table>
-{% for c in s.data.charts %}
-  {% if c.image_b64 %}<img class="chart" src="data:image/png;base64,{{ c.image_b64 }}" alt="{{ c.title }}"/>
-  {% else %}<p class="na">[图表] {{ c.title }}</p>{% endif %}
-  <p class="fig-caption"><span class="fig-label">图 {{ c.fig_no }}　{{ c.title }}。</span>{{ c.caption }}</p>
-{% endfor %}
-
-{% elif s.key == "explainability" %}
+{% endcall %}
 {% for c in s.data.charts %}
   {% if c.image_b64 %}<img class="chart" src="data:image/png;base64,{{ c.image_b64 }}" alt="{{ c.title }}"/>
   {% else %}<p class="na">[图表] {{ c.title }}</p>{% endif %}
@@ -141,6 +184,13 @@
 {% endfor %}
 {% if s.data.formula %}<p class="meta">排名公式披露：{{ s.data.formula }}</p>{% endif %}
 
+{% elif s.key == "explainability" %}
+{% for c in s.data.charts %}
+  {% if c.image_b64 %}<img class="chart" src="data:image/png;base64,{{ c.image_b64 }}" alt="{{ c.title }}"/>
+  {% else %}<p class="na">[图表] {{ c.title }}</p>{% endif %}
+  <p class="fig-caption"><span class="fig-label">图 {{ c.fig_no }}　{{ c.title }}。</span>{{ c.caption }}</p>
+{% endfor %}
+
 {% elif s.key == "clinical_interpretation" %}
 <p class="notice">{{ s.data.notice }}</p>
 <ul>{% for st in s.data.statements %}<li>{{ st }}</li>{% endfor %}</ul>
@@ -154,19 +204,19 @@
 {% endfor %}
 
 <h2>附录：可复现性信息</h2>
-<table>
+{% call tbl("可复现性参数") %}
   <tr><th>数据输入哈希</th><td><code>{{ appendix.input_hash or "—" }}</code></td></tr>
   <tr><th>预处理步骤数</th><td>{{ appendix.preprocess_steps | length }}</td></tr>
   {% if appendix.validation %}
   <tr><th>验证参数</th><td><code>{{ appendix.validation | tojson }}</code></td></tr>
   {% endif %}
-</table>
-<table>
+{% endcall %}
+{% call tbl("软件版本") %}
   <tr><th>软件</th><th>版本</th></tr>
   {% for name, ver in appendix.software.items() %}
   <tr><td>{{ name }}</td><td>{{ ver }}</td></tr>
   {% endfor %}
-</table>
+{% endcall %}
 <p class="disclaimer">{{ appendix.disclaimer }}</p>
 </body>
 </html>

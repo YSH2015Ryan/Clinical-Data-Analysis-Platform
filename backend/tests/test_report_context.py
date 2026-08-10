@@ -203,3 +203,26 @@ class TestMissingData:
         assert all(
             s["applicable"] or s["data"].get("note") == "本次分析不适用" for s in ctx["sections"]
         )
+
+
+class TestAbstract:
+    """docs/10 §2 卷首结构化摘要：四要素全部由真实计算值填充，缺失则省略。"""
+
+    def test_abstract_from_real_values(self) -> None:
+        ctx = build_report_context(_payload())
+        abstract = ctx["abstract"]
+        assert "示例数据集" in abstract["purpose"]
+        assert "分类 / 风险预测" in abstract["purpose"]
+        assert "200 例" in abstract["methods"]
+        assert "stratified_kfold" in abstract["methods"]
+        assert "推荐 rf：主指标最高" in abstract["results"]
+        assert "0.8700" in abstract["conclusion"]
+
+    def test_abstract_minimal_payload_omits_missing(self) -> None:
+        ctx = build_report_context(
+            {"run": {"task_type": "survival", "selected_models": []}, "dataset": {"name": "x"}}
+        )
+        abstract = ctx["abstract"]
+        assert "生存分析" in abstract["purpose"]
+        assert "methods" not in abstract  # 无数据 → 省略，不虚构
+        assert "results" not in abstract and "conclusion" not in abstract

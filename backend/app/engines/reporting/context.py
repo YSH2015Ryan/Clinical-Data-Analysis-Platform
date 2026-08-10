@@ -14,16 +14,23 @@ NOT_APPLICABLE = "本次分析不适用"
 INTERPRETATION_NOTICE = "本节内容由系统自动生成，仅供线索参考，需研究者核实后方可写入论文。"
 
 SECTION_TITLES: dict[str, str] = {
-    "overview": "1. 数据概况",
-    "quality": "2. 数据质量",
-    "preprocessing": "3. 预处理过程",
-    "methods": "4. 分析方法",
-    "performance": "5. 模型表现",
-    "explainability": "6. 特征与可解释性",
-    "comparison": "7. 模型比较与推荐",
-    "clinical_interpretation": "8. 医学解释",
+    "overview": "1. 数据与研究对象",
+    "quality": "2. 数据质量评估",
+    "preprocessing": "3. 预处理流程",
+    "methods": "4. 统计分析方法",
+    "performance": "5. 模型性能",
+    "comparison": "6. 模型比较与推荐",
+    "explainability": "7. 特征重要性与可解释性",
+    "clinical_interpretation": "8. 临床意义解读",
     "limitations": "9. 局限性",
     "conclusion": "10. 结论",
+}
+
+# 摘要/元信息中的任务类型中文标签（docs/10 §2 卷首）
+TASK_LABELS: dict[str, str] = {
+    "classification": "分类 / 风险预测",
+    "regression": "回归 / 预后",
+    "survival": "生存分析",
 }
 
 # 可解释性图表（归第 6 章），其余对比图表归第 5 章（docs/10 §2）
@@ -67,6 +74,50 @@ def _interpretation_statements(charts: list[dict[str, Any]]) -> list[str]:
                 top = "、".join(str(f) for f in features[:3])
                 statements.append(f"跨模型共识的重要特征（按归一化重要性排序）：{top}。")
     return statements
+
+
+def _build_abstract(
+    payload: dict[str, Any],
+    run: dict[str, Any],
+    target_summary: dict[str, Any] | None,
+    comparison: dict[str, Any] | None,
+    conclusion_text: str | None,
+) -> dict[str, str]:
+    """结构化摘要（docs/10 §2 卷首）：目的/方法/结果/结论，全部由真实计算值填充。"""
+    abstract: dict[str, str] = {}
+    task_label = TASK_LABELS.get(str(run.get("task_type") or ""), str(run.get("task_type") or ""))
+    dataset_name = (payload.get("dataset") or {}).get("name")
+    models = run.get("selected_models") or []
+    if run:
+        abstract["purpose"] = (
+            f"基于数据集「{dataset_name or '—'}」，针对{task_label}任务"
+            f"构建并比较 {len(models)} 个预测模型。"
+        )
+    method_parts: list[str] = []
+    if target_summary:
+        n = target_summary.get("n_samples")
+        k = target_summary.get("n_features")
+        if n is not None:
+            method_parts.append(f"纳入样本 {n} 例" + (f"、变量 {k} 个" if k is not None else ""))
+    if models:
+        method_parts.append(f"候选模型：{'、'.join(models)}")
+    validation = payload.get("validation")
+    if validation:
+        method_parts.append(
+            f"交叉验证 {validation.get('strategy')}（n_splits={validation.get('n_splits')}，"
+            f"seed={validation.get('seed')}）"
+        )
+    if method_parts:
+        abstract["methods"] = "；".join(method_parts) + "。"
+    ranking = (comparison or {}).get("ranking") or []
+    top1 = (((comparison or {}).get("recommendation") or {}).get("top") or [None])[0]
+    if top1:
+        abstract["results"] = (
+            f"{len(ranking)} 个模型完成评估，推荐 {top1['model_key']}：{top1['reason']}。"
+        )
+    if conclusion_text:
+        abstract["conclusion"] = conclusion_text
+    return abstract
 
 
 def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
@@ -139,11 +190,6 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
             {"table": table or [], "charts": perf_charts},
         ),
         _section(
-            "explainability",
-            bool(explain_charts),
-            {"charts": explain_charts},
-        ),
-        _section(
             "comparison",
             comparison is not None,
             {
@@ -153,6 +199,11 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 "primary_metric": recommendation.get("primary_metric"),
                 "formula": recommendation.get("formula"),
             },
+        ),
+        _section(
+            "explainability",
+            bool(explain_charts),
+            {"charts": explain_charts},
         ),
         _section(
             "clinical_interpretation",
@@ -174,6 +225,8 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "run": run,
         "dataset": payload.get("dataset") or {},
+        "task_label": TASK_LABELS.get(str(run.get("task_type") or ""), ""),
+        "abstract": _build_abstract(payload, run, target_summary, comparison, conclusion_text),
         "sections": sections,
         "appendix": {
             "input_hash": payload.get("input_hash"),

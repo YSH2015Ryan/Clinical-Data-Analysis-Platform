@@ -11,7 +11,7 @@ import jinja2
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 TEMPLATE_KEY = "clinical_report_zh"
-TEMPLATE_VERSION = "1.0.0"
+TEMPLATE_VERSION = "1.1.0"
 
 _env = jinja2.Environment(
     loader=jinja2.FileSystemLoader(_TEMPLATE_DIR),
@@ -20,6 +20,12 @@ _env = jinja2.Environment(
 )
 
 
-def render_html(context: dict[str, Any], template_key: str = TEMPLATE_KEY) -> str:
-    """ReportContext → HTML 字符串；未知模板键抛 jinja2.TemplateNotFound。"""
-    return _env.get_template(f"{template_key}.html.j2").render(**context)
+def render_html(
+    context: dict[str, Any], template_key: str = TEMPLATE_KEY, *, collapsible: bool = False
+) -> str:
+    """ReportContext → HTML 字符串；未知模板键抛 jinja2.TemplateNotFound。
+
+    collapsible=True 时重点表以 <details> 默认折叠（docs/10 §2.2，仅 HTML 产物；
+    PDF/Word/Markdown 派生物一律 False 保持全展开）。
+    """
+    return _env.get_template(f"{template_key}.html.j2").render(collapsible=collapsible, **context)
