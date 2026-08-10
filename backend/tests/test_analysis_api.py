@@ -4,6 +4,7 @@
 400 数据集未 VALIDATED / 模型不可用；403 跨属主；进度端点聚合。
 """
 
+import hashlib
 import io
 import os
 import uuid
@@ -46,6 +47,63 @@ def _clf_csv() -> bytes:
     )
 
 
+def _text_label_csv() -> bytes:
+    rng = np.random.default_rng(7)
+    n = 60
+    return (
+        pd.DataFrame(
+            {
+                "age": rng.normal(60, 10, n),
+                "outcome": ["恶性" if i % 2 else "良性" for i in range(n)],
+            }
+        )
+        .to_csv(index=False)
+        .encode()
+    )
+
+
+def _imbalanced_csv() -> bytes:
+    """类别「1」仅 2 例，少于 n_splits=3 → stratified_kfold 必然失败。"""
+    rng = np.random.default_rng(11)
+    n = 60
+    label = np.zeros(n, dtype=int)
+    label[:2] = 1
+    return pd.DataFrame({"age": rng.normal(60, 10, n), "label": label}).to_csv(index=False).encode()
+
+
+def _cfg(target: dict[str, str], strategy: str = "stratified_kfold") -> dict[str, object]:
+    return {
+        "target": target,
+        "steps": [{"type": "scale", "params": {}}],
+        "validation": {"strategy": strategy, "n_splits": 3, "seed": 42},
+    }
+
+
+async def _make_version(
+    db_session: AsyncSession, researcher: User, csv_bytes: bytes, name: str
+) -> DatasetVersion:
+    storage = storage_from_settings()
+    uri = storage.put(f"datasets/test/{name}.csv", io.BytesIO(csv_bytes))
+    project = Project(owner_id=researcher.id, name=f"项目-{name}", description="")
+    db_session.add(project)
+    await db_session.flush()
+    dataset = Dataset(
+        project_id=project.id,
+        name=name,
+        source_type="csv",
+        storage_uri=uri,
+        file_hash=hashlib.sha256(csv_bytes).hexdigest(),
+        file_size=len(csv_bytes),
+        status="VALIDATED",
+    )
+    db_session.add(dataset)
+    await db_session.flush()
+    v = DatasetVersion(dataset_id=dataset.id, version_no=1, storage_uri=uri, transform_log=[])
+    db_session.add(v)
+    await db_session.commit()
+    return v
+
+
 @pytest.fixture(autouse=True)
 def worker_sync_db(monkeypatch: pytest.MonkeyPatch) -> None:
     """POST 创建后 eager dispatch 的 worker 会话指向测试库。"""
@@ -68,26 +126,7 @@ async def researcher(db_session: AsyncSession) -> User:
 
 @pytest.fixture()
 async def version(db_session: AsyncSession, researcher: User) -> DatasetVersion:
-    storage = storage_from_settings()
-    uri = storage.put("datasets/test/api_clf.csv", io.BytesIO(_clf_csv()))
-    project = Project(owner_id=researcher.id, name="分析项目", description="")
-    db_session.add(project)
-    await db_session.flush()
-    dataset = Dataset(
-        project_id=project.id,
-        name="clf",
-        source_type="csv",
-        storage_uri=uri,
-        file_hash="0" * 64,
-        file_size=1,
-        status="VALIDATED",
-    )
-    db_session.add(dataset)
-    await db_session.flush()
-    v = DatasetVersion(dataset_id=dataset.id, version_no=1, storage_uri=uri, transform_log=[])
-    db_session.add(v)
-    await db_session.commit()
-    return v
+    return await _make_version(db_session, researcher, _clf_csv(), "api_clf")
 
 
 def _auth(user: User) -> dict[str, str]:
@@ -187,11 +226,14 @@ class TestCreateRun:
     async def test_task_type_mismatch_400(
         self, client: AsyncClient, researcher: User, version: DatasetVersion
     ) -> None:
-        """dummy 仅支持 classification；survival 任务 → PLUGIN_UNAVAILABLE。"""
+        """dummy 仅支持 classification；survival 任务 → PLUGIN_UNAVAILABLE。
+
+        time/event 指向真实存在的列，确保 400 来自插件校验而非 target 存在性校验。
+        """
         body = _body(version.id, ["dummy"])
         body["task_type"] = "survival"
         body["preprocess_config"] = {
-            "target": {"time_col": "t", "event_col": "e"},
+            "target": {"time_col": "age", "event_col": "label"},
             "steps": [{"type": "scale", "params": {}}],
             "validation": {"strategy": "kfold", "n_splits": 3, "seed": 42},
         }
@@ -253,6 +295,58 @@ class TestCreateRun:
             await db_session.execute(select(AnalysisRun).where(AnalysisRun.id == resp.json()["id"]))
         ).scalar_one()
         assert run.preprocess_config["validation"]["strategy"] == "kfold"
+
+
+class TestTargetDataChecks:
+    """数据级硬校验（docs/06 §2，2026-08-10）：只拦数学上必然失败的情形。"""
+
+    async def test_regression_text_label_400(
+        self, client: AsyncClient, db_session: AsyncSession, researcher: User
+    ) -> None:
+        """回归 + 文字类别结局 → 400，文案引导改用分类。"""
+        version = await _make_version(db_session, researcher, _text_label_csv(), "reg_text")
+        body = _body(version.id, ["lasso"])
+        body["task_type"] = "regression"
+        body["preprocess_config"] = _cfg({"label_col": "outcome"}, strategy="kfold")
+        resp = await client.post("/api/v1/analysis-runs", json=body, headers=_auth(researcher))
+        assert resp.status_code == 400
+        assert resp.json()["code"] == "VALIDATION_ERROR"
+        msg = resp.json()["message"]
+        assert "数值" in msg and "分类" in msg
+
+    async def test_classification_rare_class_400(
+        self, client: AsyncClient, db_session: AsyncSession, researcher: User
+    ) -> None:
+        """stratified_kfold 下最小类别样本数 < n_splits → 400，文案含类别/样本数/折数。"""
+        version = await _make_version(db_session, researcher, _imbalanced_csv(), "imbalanced")
+        body = _body(version.id, ["dummy"])  # CLF_CONFIG：stratified_kfold × 3
+        resp = await client.post("/api/v1/analysis-runs", json=body, headers=_auth(researcher))
+        assert resp.status_code == 400
+        assert resp.json()["code"] == "VALIDATION_ERROR"
+        msg = resp.json()["message"]
+        assert "2 例" in msg and "3" in msg and "分层" in msg
+
+    async def test_label_column_missing_400(
+        self, client: AsyncClient, researcher: User, version: DatasetVersion
+    ) -> None:
+        body = _body(version.id, ["dummy"])
+        body["preprocess_config"] = _cfg({"label_col": "no_such_col"})
+        resp = await client.post("/api/v1/analysis-runs", json=body, headers=_auth(researcher))
+        assert resp.status_code == 400
+        assert resp.json()["code"] == "VALIDATION_ERROR"
+        assert "不存在" in resp.json()["message"]
+
+    async def test_survival_target_column_missing_400(
+        self, client: AsyncClient, researcher: User, version: DatasetVersion
+    ) -> None:
+        """survival 的 time/event 列名笔误 → 400 存在性校验（先于插件校验）。"""
+        body = _body(version.id, ["dummy"])
+        body["task_type"] = "survival"
+        body["preprocess_config"] = _cfg({"time_col": "t", "event_col": "e"}, strategy="kfold")
+        resp = await client.post("/api/v1/analysis-runs", json=body, headers=_auth(researcher))
+        assert resp.status_code == 400
+        assert resp.json()["code"] == "VALIDATION_ERROR"
+        assert "不存在" in resp.json()["message"]
 
 
 class TestRunQueries:

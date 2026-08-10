@@ -231,17 +231,23 @@ class TestOrchestration:
     async def test_preprocess_failure_marks_run_failed(
         self, db_session: AsyncSession, seeded: tuple[User, DatasetVersion]
     ) -> None:
-        """预处理异常（target 列不存在）→ run FAILED，chord 不执行。"""
+        """预处理异常（target 列不存在）→ run FAILED，chord 不执行。
+
+        API 创建路径已在落库前拦截该情形（docs/06 §2 数据级硬校验），
+        此处绕过 create_run 直插 PENDING run，验证 worker 侧失败兜底仍然成立。
+        """
         user, version = seeded
-        bad_config = {**CLF_CONFIG, "target": {"label_col": "missing_col"}}
-        body = AnalysisRunCreate(
+        project_id = (await db_session.get(Dataset, version.dataset_id)).project_id
+        run = AnalysisRun(
+            project_id=project_id,
             dataset_version_id=version.id,
             task_type="classification",
-            preprocess_config=bad_config,
+            status="PENDING",
+            preprocess_config={**CLF_CONFIG, "target": {"label_col": "missing_col"}},
             selected_models=["dummy"],
+            created_by=user.id,
         )
-        caller = CurrentUser(id=user.id, email=str(user.email), role=user.role)
-        run = await analysis_service.create_run(db_session, caller, body, registry=_registry())
+        db_session.add(run)
         await db_session.commit()
 
         # eager 模式下任务异常会传播给调用方（生产 apply_async 仅入队，不抛出）

@@ -8,12 +8,14 @@
 import uuid
 from typing import Any
 
+import pandas as pd
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, forbidden, not_found
+from app.engines import parser
 from app.engines.model_registry import ModelRegistry
-from app.engines.preprocessing import validate_dsl
+from app.engines.preprocessing import PreprocessConfig, validate_dsl
 from app.models.entities import (
     AnalysisRun,
     Comparison,
@@ -26,6 +28,7 @@ from app.models.entities import (
 from app.schemas.analysis import AnalysisRunCreate
 from app.schemas.auth import CurrentUser
 from app.services.plugins import sync_plugins_to_db
+from app.services.storage import key_from_uri, storage_from_settings
 
 TERMINAL_STATUSES = ("COMPLETED", "FAILED", "CANCELED")
 _FINISHED_MODEL = ("SUCCESS", "FAILED", "SKIPPED")
@@ -45,6 +48,80 @@ def _check_target(task_type: str, target: dict[str, Any]) -> None:
             "VALIDATION_ERROR",
             400,
             f"任务类型 {task_type} 需要指定「结局列」（如 label/是否复发），当前未指定。",
+        )
+
+
+# 与 engines/columns.py _NUMERIC_PARSE_RATIO 同口径：字符串列 ≥90% 可转数值 → 视为数值意图
+_NUMERIC_PARSE_RATIO = 0.9
+
+
+def _check_target_data(
+    version: DatasetVersion, dataset: Dataset, task_type: str, cfg: PreprocessConfig
+) -> None:
+    """数据级硬校验（docs/06 §2，2026-08-10）：只拦截数学上必然失败的情形。
+
+    1. target 列存在性（三任务通用，列名笔误 otherwise 必在 worker 阶段失败）；
+    2. 回归 + 非数值结局（既非数值 dtype 且可强制转数值比例 <90%）；
+    3. 分类 + 有效类别 <2；
+    4. 分类 + stratified_kfold 且最小类别样本数 < n_splits（分层抽样必然报错）。
+    方法学层面的建议（如低基数回归）不在此拦截，由任务识别推荐层软提示。
+    """
+    target = cfg.target
+    if task_type == "survival":
+        cols = [c for c in (target.time_col, target.event_col) if c]
+    else:
+        cols = [target.label_col] if target.label_col else []
+    if not cols:
+        return  # target 缺失由 _check_target 先行拦截
+    raw = storage_from_settings().get(key_from_uri(version.storage_uri))
+    try:
+        df = parser.parse(raw, dataset.source_type).df
+    except Exception as exc:
+        raise AppError(
+            "VALIDATION_ERROR", 400, "数据集文件读取失败，请重新上传或联系管理员"
+        ) from exc
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        raise AppError(
+            "VALIDATION_ERROR",
+            400,
+            f"结局相关列 {missing} 在数据集中不存在，请核对预处理配置中的列名与数据文件一致。",
+        )
+    if task_type == "survival":
+        return
+
+    label_col = cols[0]
+    y = df[label_col].dropna()
+    if task_type == "regression":
+        if not pd.api.types.is_numeric_dtype(y):
+            ratio = float(pd.to_numeric(y, errors="coerce").notna().mean()) if len(y) else 0.0
+            if ratio < _NUMERIC_PARSE_RATIO:
+                raise AppError(
+                    "VALIDATION_ERROR",
+                    400,
+                    f"回归任务的结局列「{label_col}」必须是数值（如血压、评分），"
+                    "当前列以文字类别为主。如果研究问题是「是否/属于哪类」的判断，"
+                    "请改用「分类 / 风险预测」。",
+                )
+        return
+
+    counts = y.value_counts()
+    if len(counts) < 2:
+        raise AppError(
+            "VALIDATION_ERROR",
+            400,
+            f"结局列「{label_col}」只有一个有效取值，"
+            "分类任务需要至少两个类别（如 患病/未患病），请核对结局定义。",
+        )
+    n_splits = cfg.validation.n_splits
+    if cfg.validation.strategy == "stratified_kfold" and int(counts.min()) < n_splits:
+        rare = counts.idxmin()
+        raise AppError(
+            "VALIDATION_ERROR",
+            400,
+            f"结局列中类别「{rare}」仅有 {int(counts.min())} 例，"
+            f"少于交叉验证折数 {n_splits}，分层抽样无法进行。"
+            "请减少折数、改用 kfold，或先合并稀有类别。",
         )
 
 
@@ -101,6 +178,7 @@ async def create_run(
     # 落库前强制降级为 kfold
     if body.task_type == "regression" and cfg.validation.strategy == "stratified_kfold":
         cfg.validation.strategy = "kfold"
+    _check_target_data(version, dataset, body.task_type, cfg)
 
     # 模型可用性以 DB 为准（先同步注册表；禁用不被覆盖 docs/15 §1）
     await sync_plugins_to_db(db, registry)

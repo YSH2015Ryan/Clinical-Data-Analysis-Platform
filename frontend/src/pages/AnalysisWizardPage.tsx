@@ -35,6 +35,7 @@ import {
   listModels,
   recommendPreprocess,
   type ApiError,
+  type ColumnProfile,
   type DatasetDetail,
   type ModelPlugin,
   type PreprocessConfig,
@@ -62,6 +63,7 @@ export default function AnalysisWizardPage() {
   const [datasetId, setDatasetId] = useState<string | null>(searchParams.get("dataset"));
   // Step 2
   const [columns, setColumns] = useState<string[]>([]);
+  const [profile, setProfile] = useState<ColumnProfile[] | null>(null);
   const [recommended, setRecommended] = useState<PreprocessConfig | null>(null);
   const [config, setConfig] = useState<PreprocessConfig | null>(null);
   // Step 3
@@ -86,7 +88,10 @@ export default function AnalysisWizardPage() {
   useEffect(() => {
     if (step !== 1 || !datasetId || recommended) return;
     getDataset(datasetId)
-      .then((ds) => setColumns(ds.preview?.columns ?? []))
+      .then((ds) => {
+        setColumns(ds.preview?.columns ?? []);
+        setProfile(ds.column_profile);
+      })
       .catch(() => setColumns([]));
     recommendPreprocess(datasetId)
       .then((cfg) => setRecommended(cfg))
@@ -149,6 +154,33 @@ export default function AnalysisWizardPage() {
     [taskType, detection],
   );
 
+  /**
+   * 提交前镜像硬校验（docs/06 §2，2026-08-10）：只预判数学上必然失败的情形。
+   * 规则 1 列存在性 + 规则 2/3 类型粗判（基于 column_profile）；
+   * 规则 4（最小类别样本数）需精确计数，以后端 400 文案为准（toast 原样展示）。
+   * 画像缺失（旧数据集）时不预判，绝不误拦。
+   */
+  const submitBlock = useMemo(() => {
+    if (!config || !taskType) return null;
+    const target = config.target;
+    const need =
+      taskType === "survival" ? [target.time_col, target.event_col] : [target.label_col];
+    const missing = need.filter((c): c is string => !!c && !columns.includes(c));
+    if (missing.length > 0) {
+      return `结局相关列 ${missing.join("、")} 在数据集中不存在，请返回步骤 2 核对结局定义。`;
+    }
+    if (!profile || !target.label_col) return null;
+    const p = profile.find((c) => c.name === target.label_col);
+    if (!p) return null;
+    if (taskType === "regression" && ["text", "datetime", "id"].includes(p.inferred_type)) {
+      return `回归任务的结局列「${target.label_col}」必须是数值，当前列为${p.inferred_type === "text" ? "文字类别" : p.inferred_type === "datetime" ? "日期" : "标识"}类型。如果研究问题是「是否/属于哪类」的判断，请改用「分类 / 风险预测」。`;
+    }
+    if (taskType === "classification" && p.unique < 2) {
+      return `结局列「${target.label_col}」只有一个有效取值，分类任务需要至少两个类别，请核对结局定义。`;
+    }
+    return null;
+  }, [config, taskType, columns, profile]);
+
   const canNext = useMemo(() => {
     switch (step) {
       case 0:
@@ -170,7 +202,7 @@ export default function AnalysisWizardPage() {
   };
 
   const submit = async () => {
-    if (!datasetId || !config || !taskType || selectedModels.length === 0) return;
+    if (!datasetId || !config || !taskType || selectedModels.length === 0 || submitBlock) return;
     setSubmitting(true);
     try {
       const versions = await listDatasetVersions(datasetId);
@@ -212,6 +244,7 @@ export default function AnalysisWizardPage() {
           setDatasetId(v);
           setRecommended(null);
           setConfig(null);
+          setProfile(null);
           setDetection(null);
           setDetectFailed(null);
           setTaskType(null);
@@ -339,6 +372,15 @@ export default function AnalysisWizardPage() {
     </Card>,
     // Step 5 确认
     <Card key="s5" title="参数摘要">
+      {submitBlock && (
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="当前配置无法完成分析"
+          description={submitBlock}
+        />
+      )}
       <Descriptions bordered size="small" column={1}>
         <Descriptions.Item label="数据集">{datasetName}</Descriptions.Item>
         <Descriptions.Item label="任务类型">
@@ -386,7 +428,12 @@ export default function AnalysisWizardPage() {
           </Button>
         )}
         {step === STEP_TITLES.length - 1 && (
-          <Button type="primary" loading={submitting} onClick={() => void submit()}>
+          <Button
+            type="primary"
+            loading={submitting}
+            disabled={!!submitBlock}
+            onClick={() => void submit()}
+          >
             提交分析
           </Button>
         )}
