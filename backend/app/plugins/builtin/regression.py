@@ -44,6 +44,9 @@ class _BaseRegressor:
         pred: np.ndarray[Any, Any] = self._model.predict(pd.DataFrame(X))
         return pred
 
+    def predict_values(self, X: Any) -> np.ndarray[Any, Any]:
+        return self._predict(X)
+
     def evaluate(self, X_val: Any, y_val: Any) -> dict[str, Any]:
         return regression_metrics(y_val, self._predict(X_val))
 
@@ -70,10 +73,13 @@ class _BaseRegressor:
         return self._builtin_importance()
 
     def predict_artifacts(self, X_val: Any, y_val: Any) -> dict[str, Any]:
+        return self.predict_artifacts_from_predictions(self._predict(X_val), y_val)
+
+    def predict_artifacts_from_predictions(self, pred: Any, y_val: Any) -> dict[str, Any]:
         return {
             "prediction_scatter": {
                 "y_true": np.asarray(y_val, dtype=float).tolist(),
-                "y_pred": self._predict(X_val).tolist(),
+                "y_pred": np.asarray(pred, dtype=float).tolist(),
             }
         }
 

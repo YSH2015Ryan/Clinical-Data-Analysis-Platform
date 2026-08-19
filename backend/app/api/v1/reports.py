@@ -15,6 +15,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_role
+from app.core.errors import AppError
 from app.db import get_db
 from app.schemas.auth import CurrentUser
 from app.schemas.report import ReportCreate, ReportOut
@@ -63,7 +64,12 @@ async def create_report(
         detail={"run_id": str(body.run_id), "format": body.format},
     )
     await db.commit()  # 先落库：worker 以独立会话读取 report 行
-    generate_report.apply_async(args=[str(report.id)])
+    try:
+        generate_report.apply_async(args=[str(report.id)])
+    except Exception as exc:
+        report.status = "FAILED"
+        await db.commit()
+        raise AppError("TASK_DISPATCH_FAILED", 503, "报告任务暂时无法排队，请稍后重试") from exc
     return _out(report)
 
 

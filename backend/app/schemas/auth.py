@@ -11,7 +11,8 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str = Field(min_length=1)
+    # 浏览器会话使用 HttpOnly Cookie；保留可选 body 兼容 CLI/服务间客户端。
+    refresh_token: str | None = Field(default=None, min_length=1)
 
 
 class TokenResponse(BaseModel):

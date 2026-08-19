@@ -35,22 +35,36 @@ def _as_float_array(values: Any, name: str) -> np.ndarray[Any, Any]:
 
 
 def classification_metrics(y_true: Any, y_prob: Any) -> dict[str, float]:
-    """二分类指标：y_prob 为正类概率；硬预测取 0.5 阈值。"""
+    """分类指标，兼容二分类正类概率和多分类概率矩阵。"""
     y_t = _as_float_array(y_true, "y_true")
-    y_p = _as_float_array(y_prob, "y_prob")
-    if y_t.shape[0] != y_p.shape[0]:
-        raise ValueError(f"y_true 与 y_prob 长度不一致：{y_t.shape[0]} vs {y_p.shape[0]}")
-    if not set(np.unique(y_t)) <= {0.0, 1.0}:
-        raise ValueError(f"classification_metrics 仅支持二分类（0/1），当前取值 {np.unique(y_t)!r}")
-    y_pred = (y_p >= 0.5).astype(int)
+    p = np.asarray(y_prob, dtype=float)
+    if p.ndim == 1:
+        if y_t.shape[0] != p.shape[0]:
+            raise ValueError(f"y_true 与 y_prob 长度不一致：{y_t.shape[0]} vs {p.shape[0]}")
+        if not set(np.unique(y_t)) <= {0.0, 1.0}:
+            raise ValueError(f"二分类 y_true 仅支持 0/1，当前取值 {np.unique(y_t)!r}")
+        y_pred = (p >= 0.5).astype(int)
+        return {
+            "auc": float(roc_auc_score(y_t, p)),
+            "accuracy": float(accuracy_score(y_t, y_pred)),
+            "precision": float(precision_score(y_t, y_pred, zero_division=0)),
+            "recall": float(recall_score(y_t, y_pred, zero_division=0)),
+            "f1": float(f1_score(y_t, y_pred, zero_division=0)),
+            "brier": float(brier_score_loss(y_t, p)),
+            "pr_auc": float(average_precision_score(y_t, p)),
+        }
+    if p.ndim != 2 or p.shape[0] != y_t.shape[0] or p.shape[1] < 3:
+        raise ValueError("多分类 y_prob 须为 shape=(n_samples, n_classes>=3) 的矩阵")
+    labels = np.arange(p.shape[1])
+    if not set(np.unique(y_t).astype(int)) <= set(labels):
+        raise ValueError("y_true 包含超出 y_prob 类别范围的标签")
+    y_pred = np.argmax(p, axis=1)
     return {
-        "auc": float(roc_auc_score(y_t, y_p)),
+        "auc": float(roc_auc_score(y_t.astype(int), p, multi_class="ovr", average="macro")),
         "accuracy": float(accuracy_score(y_t, y_pred)),
-        "precision": float(precision_score(y_t, y_pred, zero_division=0)),
-        "recall": float(recall_score(y_t, y_pred, zero_division=0)),
-        "f1": float(f1_score(y_t, y_pred, zero_division=0)),
-        "brier": float(brier_score_loss(y_t, y_p)),
-        "pr_auc": float(average_precision_score(y_t, y_p)),
+        "precision_macro": float(precision_score(y_t, y_pred, average="macro", zero_division=0)),
+        "recall_macro": float(recall_score(y_t, y_pred, average="macro", zero_division=0)),
+        "f1_macro": float(f1_score(y_t, y_pred, average="macro", zero_division=0)),
     }
 
 

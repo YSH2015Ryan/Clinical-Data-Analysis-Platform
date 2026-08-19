@@ -2,13 +2,35 @@
 name: cdap
 
 services:
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN to your HTTPS domain}
+      STORAGE_DOMAIN: ${STORAGE_DOMAIN:?set STORAGE_DOMAIN to your HTTPS storage domain}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      frontend:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
   frontend:
     build: ../frontend
-    ports:
-      - "8080:80"
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/ >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
   api:
@@ -18,25 +40,37 @@ services:
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
     environment:
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
       DATABASE_URL: postgresql+psycopg://cdap:${PG_PASSWORD:?need PG_PASSWORD}@postgres:5432/cdap
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?need REDIS_PASSWORD}@redis:6379/0
       STORAGE_BACKEND: s3
       S3_ENDPOINT: http://minio:9000
       S3_BUCKET: cdap
-      S3_ACCESS_KEY: ${MINIO_ROOT_USER:?}
-      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?}
+      S3_ACCESS_KEY: ${MINIO_APP_USER:?need MINIO_APP_USER}
+      S3_SECRET_KEY: ${MINIO_APP_PASSWORD:?need MINIO_APP_PASSWORD}
+      S3_SECURE: "false"
       # 预签名下载按浏览器可达端点签名（host 计入 SigV4，docs/12 §2.4）
-      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      S3_PUBLIC_ENDPOINT: https://${STORAGE_DOMAIN:?need STORAGE_DOMAIN}
       JWT_SECRET: ${JWT_SECRET:?}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      COOKIE_SECURE: "true"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       minio:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/healthz')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   worker:
@@ -47,19 +81,26 @@ services:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
     command: celery -A app.workers.celery_app worker -Q default,model,report --concurrency=4
     environment:
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
       DATABASE_URL: postgresql+psycopg://cdap:${PG_PASSWORD}@postgres:5432/cdap
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       STORAGE_BACKEND: s3
       S3_ENDPOINT: http://minio:9000
       S3_BUCKET: cdap
-      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
-      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_ACCESS_KEY: ${MINIO_APP_USER}
+      S3_SECRET_KEY: ${MINIO_APP_PASSWORD}
+      S3_SECURE: "false"
+      S3_PUBLIC_ENDPOINT: https://${STORAGE_DOMAIN}
       JWT_SECRET: ${JWT_SECRET}
     deploy:
       resources:
         limits:
           memory: 6G
     depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -74,10 +115,21 @@ services:
       target: prod
     command: celery -A app.workers.celery_app beat
     environment:
+      ENVIRONMENT: ${ENVIRONMENT:-prod}
       DATABASE_URL: postgresql+psycopg://cdap:${PG_PASSWORD}@postgres:5432/cdap
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: cdap
+      S3_ACCESS_KEY: ${MINIO_APP_USER}
+      S3_SECRET_KEY: ${MINIO_APP_PASSWORD}
+      S3_PUBLIC_ENDPOINT: https://${STORAGE_DOMAIN}
+      S3_SECURE: "false"
       JWT_SECRET: ${JWT_SECRET}
+      COOKIE_SECURE: "true"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -99,10 +151,11 @@ services:
 
   redis:
     image: redis:7
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?need REDIS_PASSWORD}"]
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -121,12 +174,52 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    ports:
-      - "9000:9000" # API：报告预签名下载经此端口对浏览器可达（docs/12 §2.4）
-      - "9001:9001"
     restart: unless-stopped
+
+  minio-init:
+    image: minio/mc
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?need MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?need MINIO_ROOT_PASSWORD}
+      MINIO_APP_USER: ${MINIO_APP_USER:?need MINIO_APP_USER}
+      MINIO_APP_PASSWORD: ${MINIO_APP_PASSWORD:?need MINIO_APP_PASSWORD}
+    volumes:
+      - ./minio-policy.json:/policy.json:ro
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        set -eu;
+        mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
+        mc mb --ignore-existing local/cdap;
+        mc admin policy detach local cdap-app-policy --user $$MINIO_APP_USER || true;
+        mc admin policy remove local cdap-app-policy || true;
+        mc admin policy create local cdap-app-policy /policy.json;
+        mc admin user add local $$MINIO_APP_USER $$MINIO_APP_PASSWORD || true;
+        mc admin policy attach local cdap-app-policy --user $$MINIO_APP_USER
+    restart: "no"
+
+  migrate:
+    build:
+      context: ../backend
+      target: prod
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    command: alembic upgrade head
+    environment:
+      # 迁移容器只需要数据库，不启动应用配置的生产存储校验。
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql+psycopg://cdap:${PG_PASSWORD}@postgres:5432/cdap
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
 volumes:
   pgdata:
   redisdata:
   miniodata:
+  caddy_data:
+  caddy_config:

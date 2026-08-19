@@ -41,7 +41,7 @@ async def sync_plugins_to_db(db: AsyncSession, registry: ModelRegistry) -> int:
             row.version = adapter.version
             row.task_types = list(adapter.task_types)
             row.capability = dict(adapter.capabilities)
-            row.default_params = dict(adapter.default_params)
+            # 管理员配置是运行契约的一部分；注册表升级不能静默覆盖它。
             row.entry_point = registered.entry_point
             # enabled 保留 DB 值（docs/15 §1）
         count += 1

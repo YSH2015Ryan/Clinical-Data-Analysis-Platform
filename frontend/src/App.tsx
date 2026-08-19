@@ -1,7 +1,8 @@
 import { ConfigProvider } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { getRole, getToken } from "./api";
+import { useEffect, useState } from "react";
+import { getRole, getToken, restoreSession } from "./api";
 import AdminPluginsPage from "./pages/AdminPluginsPage";
 import AnalysisWizardPage from "./pages/AnalysisWizardPage";
 import ComparisonPage from "./pages/ComparisonPage";
@@ -14,11 +15,22 @@ import ReportsPage from "./pages/ReportsPage";
 import RunMonitorPage from "./pages/RunMonitorPage";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
-  return getToken() ? children : <Navigate to="/login" replace />;
+  const [state, setState] = useState<"checking" | "ready" | "missing">(
+    getToken() ? "ready" : "checking",
+  );
+  useEffect(() => {
+    if (state !== "checking") return;
+    void restoreSession().then((ok) => setState(ok ? "ready" : "missing"));
+  }, [state]);
+  if (state === "checking") return null;
+  return state === "ready" ? children : <Navigate to="/login" replace />;
 }
 
 function RequireAdmin({ children }: { children: JSX.Element }) {
-  if (!getToken()) return <Navigate to="/login" replace />;
+  return <RequireAuth><AdminOnly>{children}</AdminOnly></RequireAuth>;
+}
+
+function AdminOnly({ children }: { children: JSX.Element }) {
   return getRole() === "admin" ? children : <Navigate to="/projects" replace />;
 }
 

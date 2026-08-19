@@ -26,5 +26,17 @@ def test_prod_rejects_default_jwt_secret() -> None:
     with pytest.raises(ValueError, match="JWT_SECRET"):
         Settings(_env_file=None, environment="prod")  # type: ignore[call-arg]
     # 非默认密钥放行
-    s = Settings(_env_file=None, environment="prod", jwt_secret="s3cur3-random")  # type: ignore[call-arg]
+    s = Settings(
+        _env_file=None,
+        environment="prod",
+        jwt_secret="s3cur3-random",
+        database_url="postgresql+psycopg://cdap:secret@postgres:5432/cdap",
+        redis_url="redis://:secret@redis:6379/0",
+        storage_backend="s3",
+        s3_endpoint="http://minio:9000",
+        s3_public_endpoint="https://storage.example.com",
+        s3_access_key="cdap-storage",
+        s3_secret_key="storage-secret",
+        cookie_secure=True,
+    )  # type: ignore[call-arg]
     assert s.environment == "prod"

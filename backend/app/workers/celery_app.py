@@ -18,6 +18,7 @@ celery_app = Celery(
         "app.workers.preparation_tasks",
         "app.workers.analysis_tasks",
         "app.workers.report_tasks",
+        "app.workers.project_tasks",
     ],  # 任务模块注册
 )
 

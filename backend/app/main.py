@@ -16,7 +16,10 @@ from app.api.v1 import reports as reports_api
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
-from app.db import dispose_engine, get_engine
+from app.db import dispose_engine, get_engine, get_session_factory
+from app.engines.model_registry import ModelRegistry
+from app.services.plugins import sync_plugins_to_db
+from app.services.storage import storage_from_settings
 
 logger = get_logger(__name__)
 
@@ -25,6 +28,17 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level)
+    # 数据库迁移完成后立即同步插件，避免新部署的分析向导拿到空模型列表。
+    try:
+        registry = ModelRegistry()
+        registry.load()
+        async with get_session_factory()() as db:
+            await sync_plugins_to_db(db, registry)
+            await db.commit()
+    except Exception:
+        if settings.environment == "prod":
+            raise
+        logger.warning("plugin_sync_deferred", exc_info=True)
     logger.info("app_started", app=settings.app_name)
     yield
     await dispose_engine()
@@ -68,6 +82,12 @@ def create_app() -> FastAPI:
             components["redis"] = "ok"
         except Exception as exc:
             components["redis"] = f"error: {type(exc).__name__}"
+        try:
+            components["storage"] = (
+                "ok" if storage_from_settings().healthcheck() else "error: unavailable"
+            )
+        except Exception as exc:
+            components["storage"] = f"error: {type(exc).__name__}"
 
         ok = all(v == "ok" for v in components.values())
         return JSONResponse(

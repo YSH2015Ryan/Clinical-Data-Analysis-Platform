@@ -3,6 +3,8 @@
 错误码与 docs/14 §2 冻结表一致：AUTH_FAILED / TOKEN_EXPIRED。
 """
 
+import hashlib
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
@@ -16,13 +18,17 @@ TokenKind = Literal["access", "refresh"]
 
 
 def hash_password(password: str) -> str:
-    # bcrypt 算法上限 72 字节（docs/12 §2.2）；显式截断与历史行为一致
-    return bcrypt.hashpw(password.encode()[:72], bcrypt.gensalt()).decode()
+    encoded = password.encode("utf-8")
+    if len(encoded) > 72:
+        raise ValueError("密码 UTF-8 编码长度不能超过 72 字节")
+    return bcrypt.hashpw(encoded, bcrypt.gensalt()).decode()
 
 
 def verify_password(password: str, password_hash: str) -> bool:
+    if len(password.encode("utf-8")) > 72:
+        return False
     try:
-        return bcrypt.checkpw(password.encode()[:72], password_hash.encode())
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode())
     except ValueError:
         return False
 
@@ -39,6 +45,7 @@ def create_token(subject: str, role: str, kind: TokenKind) -> str:
         "sub": subject,
         "role": role,
         "type": kind,
+        "jti": str(uuid.uuid4()),
         "iat": now,
         "exp": now + timedelta(minutes=minutes),
     }
@@ -58,3 +65,8 @@ def decode_token(token: str, expected: TokenKind) -> dict[str, Any]:
     if claims.get("type") != expected:
         raise AppError(code="AUTH_FAILED", status=401, message="认证失败")
     return claims
+
+
+def token_hash(token: str) -> str:
+    """只保存 refresh token 摘要，数据库泄露时不能直接重放会话。"""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()

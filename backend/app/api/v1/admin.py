@@ -77,5 +77,9 @@ async def list_available_models(
     task_type: TaskTypeQuery,
     user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    registry: ModelRegistry = Depends(get_registry),
 ) -> list[ModelPluginOut]:
+    # 不能依赖管理员页面先访问：新数据库启动后向导必须立即能拿到插件。
+    await plugin_service.sync_plugins_to_db(db, registry)
+    await db.commit()
     return [_out(r) for r in await plugin_service.list_available(db, task_type)]

@@ -85,7 +85,12 @@ async def upload_dataset(
     )
     await db.commit()
 
-    validate_dataset.delay(str(dataset.id))
+    try:
+        validate_dataset.delay(str(dataset.id))
+    except Exception as exc:
+        dataset.status = "FAILED"
+        await db.commit()
+        raise AppError("TASK_DISPATCH_FAILED", 503, "数据校验任务暂时无法排队，请稍后重试") from exc
     return DatasetAccepted(dataset_id=dataset.id)
 
 
@@ -251,7 +256,13 @@ async def preparation_apply(
         detail={"lab_dataset_id": str(dataset_id), "decisions": job.decisions},
     )
     await db.commit()
-    run_preparation.delay(str(job.id))
+    try:
+        run_preparation.delay(str(job.id))
+    except Exception as exc:
+        job.status = "FAILED"
+        job.error = f"任务派发失败：{exc}"[:2000]
+        await db.commit()
+        raise AppError("TASK_DISPATCH_FAILED", 503, "数据准备任务暂时无法排队，请稍后重试") from exc
     await db.refresh(job)  # eager/快任务下回读最新状态；异步部署下仍为 PENDING
     return PreparationJob.model_validate(job, from_attributes=True)
 

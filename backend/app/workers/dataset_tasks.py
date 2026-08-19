@@ -6,6 +6,7 @@ T2.4：13 规则校验 + 质量报告落库 + 状态流转 VALIDATED/FAILED。
 """
 
 import uuid
+from typing import Any
 
 from sqlalchemy import select
 
@@ -17,6 +18,18 @@ from app.workers.celery_app import celery_app
 from app.workers.db import get_sync_session_factory
 
 logger = get_logger(__name__)
+_SENSITIVE_HINTS = (
+    "name",
+    "姓名",
+    "patient",
+    "患者",
+    "mrn",
+    "身份证",
+    "phone",
+    "电话",
+    "email",
+    "地址",
+)
 
 
 @celery_app.task(name="app.workers.dataset_tasks.validate_dataset")
@@ -44,7 +57,7 @@ def validate_dataset(dataset_id: str) -> None:
             result = parser.parse(raw, dataset.source_type)
             report = validation.validate(result.df, raw_columns=result.raw_columns)
             dataset.encoding = result.encoding
-            dataset.preview = parser.preview_json(result.df)
+            dataset.preview = _redact_preview(parser.preview_json(result.df))
             dataset.column_profile = report.column_profiles
             dataset.status = "FAILED" if report.status == "FAILED" else "VALIDATED"
             db.add(_quality_report(dataset, version, report))
@@ -97,3 +110,18 @@ def _encoding_hint(raw: bytes) -> str | None:
         return parser.detect_encoding(raw)
     except Exception:
         return None
+
+
+def _redact_preview(preview: dict[str, Any]) -> dict[str, Any]:
+    """预览只用于交互提示，疑似直接标识符不应进入数据库或浏览器。"""
+    columns = [str(c) for c in preview.get("columns", [])]
+    sensitive = {
+        i
+        for i, column in enumerate(columns)
+        if any(hint in column.lower() for hint in _SENSITIVE_HINTS)
+    }
+    rows = [
+        ["[REDACTED]" if i in sensitive else value for i, value in enumerate(row)]
+        for row in preview.get("rows", [])
+    ]
+    return {**preview, "rows": rows}

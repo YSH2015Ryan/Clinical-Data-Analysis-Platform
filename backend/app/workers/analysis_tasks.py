@@ -56,7 +56,8 @@ def get_registry() -> ModelRegistry:
 def _put_df(storage: Any, key: str, df: pd.DataFrame) -> str:
     buf = io.BytesIO()
     df.to_parquet(buf, index=False)
-    return str(storage.put(key, io.BytesIO(buf.getvalue())))
+    buf.seek(0)
+    return str(storage.put(key, buf, buf.getbuffer().nbytes, "application/octet-stream"))
 
 
 def _get_df(storage: Any, key: str) -> pd.DataFrame:
@@ -77,7 +78,8 @@ def _y_adapter(target: pd.DataFrame, task_type: str) -> Any:
         return Surv.from_arrays(
             target["event"].astype(bool).to_numpy(), target["time"].astype(float).to_numpy()
         )
-    return target["label"].to_numpy()
+    # 统一编码，支持字符串标签和多分类；映射由整份目标列确定，折内不重新编码。
+    return pd.Categorical(target["label"]).codes
 
 
 def _y_preprocess(target: pd.DataFrame, task_type: str) -> pd.Series | None:
@@ -129,6 +131,15 @@ def preprocess_run(run_id: str) -> None:
 
             cfg = validate_dsl(run.preprocess_config)
             target, target_cols = _target_frame(df, cfg.target, run.task_type)
+            if target.isna().any().any():
+                missing = {str(k): int(v) for k, v in target.isna().sum().items() if int(v)}
+                raise ValueError(f"结局列包含缺失值，不能直接建模：{missing}")
+            if run.task_type == "survival":
+                if (pd.to_numeric(target["time"], errors="coerce") <= 0).any():
+                    raise ValueError("生存时间必须为正数")
+                event = pd.to_numeric(target["event"], errors="coerce")
+                if event.isna().any() or not set(event.astype(int).unique()) <= {0, 1}:
+                    raise ValueError("事件列必须只包含 0/1")
             raw_features = df.drop(columns=target_cols)
             input_hash = hashlib.sha256(raw).hexdigest()
             result = run_preprocess(
@@ -196,22 +207,48 @@ def run_model(run_id: str, model_key: str) -> None:
 
             # 每折重建 Pipeline + 全新 adapter 实例（防泄漏/防状态串折）
             folds: list[dict[str, float]] = []
+            oof: np.ndarray[Any, Any] | None = (
+                np.full(len(raw_features), np.nan, dtype=float)
+                if run.task_type == "regression"
+                else None
+            )
             splits = iter_cv_splits(raw_features, cfg.validation, _stratify(target, run.task_type))
             for train_idx, val_idx in splits:
                 pipe = build_pipeline(cfg)
+                preprocess_y = _y_preprocess(target, run.task_type)
                 X_train = pipe.fit_transform(
-                    raw_features.iloc[train_idx], _y_preprocess(target, run.task_type)
+                    raw_features.iloc[train_idx],
+                    preprocess_y.iloc[train_idx] if preprocess_y is not None else None,
                 )
                 X_val = pipe.transform(raw_features.iloc[val_idx])
                 adapter = type(proto)()
                 adapter.fit(X_train, y[train_idx], params)
                 folds.append(adapter.evaluate(X_val, y[val_idx]))
+                if oof is not None:
+                    predict_values = getattr(adapter, "predict_values", None)
+                    if predict_values is not None:
+                        prediction = np.asarray(predict_values(X_val), dtype=float)
+                        oof[val_idx] = prediction
+                elif run.task_type == "classification":
+                    predict_values = getattr(adapter, "predict_values", None)
+                    if predict_values is not None:
+                        prediction = np.asarray(predict_values(X_val), dtype=float)
+                        if prediction.ndim == 1:
+                            oof = np.full(len(raw_features), np.nan, dtype=float)
+                        else:
+                            oof = np.full(
+                                (len(raw_features), prediction.shape[1]), np.nan, dtype=float
+                            )
+                        oof[val_idx] = prediction
 
             # 全量 fit：用 preprocess 阶段固化的特征矩阵；explain/artifacts 供报告引用
             features = _get_df(storage, key_from_uri(_feature_uri(db, run.id)))
             full = type(proto)()
             full.fit(features, y, params)
-            artifacts = full.predict_artifacts(features, y)
+            if oof is not None and not np.isnan(oof).any():
+                artifacts = full.predict_artifacts_from_predictions(oof, y)
+            else:
+                artifacts = full.predict_artifacts(features, y)
             row.explainability = full.explain(features)
 
             row.status = "SUCCESS"

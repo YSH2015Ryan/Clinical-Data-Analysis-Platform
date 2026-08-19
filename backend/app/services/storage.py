@@ -3,7 +3,6 @@
 实现：LocalStorage（开发/单测）、S3Storage（MinIO/生产）。未来迁云零改动。
 """
 
-import io
 from pathlib import Path
 from typing import BinaryIO, Protocol, runtime_checkable
 from urllib.parse import urlsplit
@@ -17,6 +16,9 @@ class StorageBackend(Protocol):
     def get(self, key: str) -> bytes: ...
     def exists(self, key: str) -> bool: ...
     def presign_download(self, key: str) -> str: ...
+    def healthcheck(self) -> bool: ...
+    def delete(self, key: str) -> None: ...
+    def delete_prefix(self, prefix: str) -> None: ...
 
 
 class LocalStorage:
@@ -34,7 +36,10 @@ class LocalStorage:
         # content_type 仅对象存储有意义（预览 iframe 依赖 MIME，docs/10 §4）；本地模式忽略
         path = self._path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data.read())
+        with path.open("wb") as destination:
+            import shutil
+
+            shutil.copyfileobj(data, destination, length=1024 * 1024)
         return str(path)
 
     def get(self, key: str) -> bytes:
@@ -46,6 +51,27 @@ class LocalStorage:
     def presign_download(self, key: str) -> str:
         # 本地模式无预签名概念，返回文件路径（仅开发用）
         return str(self._path(key))
+
+    def healthcheck(self) -> bool:
+        return self._root.exists()
+
+    def delete(self, key: str) -> None:
+        path = self._path(key)
+        if path.exists():
+            path.unlink()
+
+    def delete_prefix(self, prefix: str) -> None:
+        root = self._path(prefix)
+        if not root.exists():
+            return
+        for child in sorted(root.rglob("*"), reverse=True):
+            if child.is_file():
+                child.unlink()
+        for child in sorted(root.rglob("*"), reverse=True):
+            if child.is_dir():
+                child.rmdir()
+        if root.is_dir():
+            root.rmdir()
 
 
 def _presign_client(public_endpoint: str, access_key: str, secret_key: str) -> Minio:
@@ -85,12 +111,11 @@ class S3Storage:
             self._client.make_bucket(bucket)
 
     def put(self, key: str, data: BinaryIO, length: int = -1, content_type: str = "") -> str:
-        payload = data.read()
         self._client.put_object(
             self._bucket,
             key,
-            io.BytesIO(payload),
-            len(payload),
+            data,
+            length,
             content_type=content_type or "application/octet-stream",
         )
         return f"s3://{self._bucket}/{key}"
@@ -112,6 +137,22 @@ class S3Storage:
 
     def presign_download(self, key: str) -> str:
         return self._signer.presigned_get_object(self._bucket, key)
+
+    def healthcheck(self) -> bool:
+        return bool(self._client.bucket_exists(self._bucket))
+
+    def delete(self, key: str) -> None:
+        self._client.remove_object(self._bucket, key)
+
+    def delete_prefix(self, prefix: str) -> None:
+        from minio.deleteobjects import DeleteObject
+
+        objects = (
+            DeleteObject(obj.object_name)
+            for obj in self._client.list_objects(self._bucket, prefix=prefix, recursive=True)
+        )
+        for error in self._client.remove_objects(self._bucket, objects):
+            raise RuntimeError(error.message)
 
 
 def build_storage(

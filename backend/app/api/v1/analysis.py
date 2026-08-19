@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_registry, require_role
+from app.core.errors import AppError
 from app.core.logging import get_logger
 from app.db import get_db
 from app.engines.model_registry import ModelRegistry
@@ -52,8 +53,17 @@ async def create_analysis_run(
         detail={"task_type": body.task_type, "models": list(body.selected_models)},
     )
     await db.commit()  # 先落库：worker 以独立会话读取 run 行
-    run.celery_chain_id = dispatch_analysis_run(str(run.id), list(body.selected_models))
-    await db.commit()
+    try:
+        run.celery_chain_id = dispatch_analysis_run(str(run.id), list(body.selected_models))
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        # 任务代理不可用时不能留下永远 PENDING 的运行。
+        run = await analysis_service.get_run(db, user, run.id)
+        run.status = "FAILED"
+        run.error = f"任务派发失败：{exc}"[:2000]
+        await db.commit()
+        raise AppError("TASK_DISPATCH_FAILED", 503, "分析任务暂时无法排队，请稍后重试") from exc
     return AnalysisRunOut(
         id=run.id, status=run.status, task_type=run.task_type, created_at=run.created_at
     )
@@ -149,6 +159,10 @@ async def rerun_model(
         detail={"model_key": model_key},
     )
     await db.commit()  # 先落 MODELING 状态：worker 以独立会话读取
-    run.celery_chain_id = dispatch_model_rerun(str(run.id), model_key)
-    await db.commit()
+    try:
+        run.celery_chain_id = dispatch_model_rerun(str(run.id), model_key)
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        raise AppError("TASK_DISPATCH_FAILED", 503, "重跑任务暂时无法排队，请稍后重试") from exc
     return {"status": "MODELING"}

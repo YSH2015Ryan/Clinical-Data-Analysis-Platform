@@ -4,6 +4,7 @@ import pytest
 from app.core.config import get_settings
 from app.core.security import create_token, hash_password
 from app.models.entities import Dataset, DatasetVersion, Project, User
+from app.workers.dataset_tasks import validate_dataset
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,7 +52,11 @@ class TestUploadHappyPath:
         db_session: AsyncSession,
         researcher: User,
         project: Project,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        # Celery is eager globally for task tests; this endpoint contract only
+        # verifies the enqueue transaction and should remain VALIDATING until a worker runs.
+        monkeypatch.setattr(validate_dataset, "delay", lambda *_args, **_kwargs: None)
         resp = await _upload(client, project.id, "cohort.csv", CSV_BYTES, researcher)
         assert resp.status_code == 202
         body = resp.json()

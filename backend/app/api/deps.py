@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from fastapi import Depends
+from fastapi import Cookie, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,11 +25,13 @@ _auth_failed = AppError(code="AUTH_FAILED", status=401, message="认证失败")
 
 async def get_current_user(
     cred: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    cdap_access: str | None = Cookie(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> CurrentUser:
-    if cred is None:
+    token = cred.credentials if cred is not None else cdap_access
+    if token is None:
         raise _auth_failed
-    claims = decode_token(cred.credentials, expected="access")
+    claims = decode_token(token, expected="access")
     try:
         user_id = uuid.UUID(str(claims["sub"]))
     except (KeyError, ValueError):

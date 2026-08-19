@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.entities import Project
+from app.models.entities import AnalysisRun, Dataset, DatasetVersion, Project, Report
 from app.schemas.auth import CurrentUser
 from app.schemas.project import ProjectCreate
 
@@ -79,3 +79,44 @@ async def soft_delete_project(
     project.deleted_at = datetime.now(UTC)
     await db.commit()
     return project
+
+
+async def storage_keys_for_project(db: AsyncSession, project_id: uuid.UUID) -> list[str]:
+    """收集项目所有对象键，供事务提交后的补偿清理任务使用。"""
+    keys: set[str] = {f"datasets/{project_id}/"}
+    datasets = (
+        (await db.execute(select(Dataset).where(Dataset.project_id == project_id))).scalars().all()
+    )
+    for dataset in datasets:
+        if dataset.storage_uri:
+            from app.services.storage import key_from_uri
+
+            keys.add(key_from_uri(dataset.storage_uri))
+        versions = (
+            (
+                await db.execute(
+                    select(DatasetVersion).where(DatasetVersion.dataset_id == dataset.id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for version in versions:
+            if version.storage_uri:
+                from app.services.storage import key_from_uri
+
+                keys.add(key_from_uri(version.storage_uri))
+    runs = (
+        (await db.execute(select(AnalysisRun).where(AnalysisRun.project_id == project_id)))
+        .scalars()
+        .all()
+    )
+    for run in runs:
+        keys.add(f"runs/{run.id}/")
+        reports = (await db.execute(select(Report).where(Report.run_id == run.id))).scalars().all()
+        for report in reports:
+            if report.storage_uri:
+                from app.services.storage import key_from_uri
+
+                keys.add(key_from_uri(report.storage_uri))
+    return sorted(keys)

@@ -3,7 +3,7 @@
 - 指标一律经 engines.comparison.metrics 计算，适配器只输出正类概率（docs/07 §5）；
 - 概率输出支撑 ROC / 校准曲线产物（predict_artifacts）；
 - SVM 无内置特征重要性 → permutation importance 兜底（docs/07 §6）；
-- y 约定为 0/1 二分类数组。
+    - y 为整数编码标签；二分类输出正类概率，多分类输出完整概率矩阵。
 """
 
 from typing import Any, ClassVar
@@ -68,8 +68,11 @@ class _BaseClassifier:
         self._model.fit(self._X, self._y)
 
     def _predict_proba(self, X: Any) -> np.ndarray[Any, Any]:
-        proba: np.ndarray[Any, Any] = self._model.predict_proba(pd.DataFrame(X))[:, 1]
-        return proba
+        matrix = np.asarray(self._model.predict_proba(pd.DataFrame(X)), dtype=float)
+        return matrix[:, 1] if matrix.shape[1] == 2 else matrix
+
+    def predict_values(self, X: Any) -> np.ndarray[Any, Any]:
+        return self._predict_proba(X)
 
     def evaluate(self, X_val: Any, y_val: Any) -> dict[str, Any]:
         return classification_metrics(y_val, self._predict_proba(X_val))
@@ -102,6 +105,21 @@ class _BaseClassifier:
     def predict_artifacts(self, X_val: Any, y_val: Any) -> dict[str, Any]:
         y = np.asarray(y_val).astype(int)
         prob = self._predict_proba(X_val)
+        return self.predict_artifacts_from_predictions(prob, y)
+
+    def predict_artifacts_from_predictions(self, prob: Any, y_val: Any) -> dict[str, Any]:
+        y = np.asarray(y_val).astype(int)
+        prob = np.asarray(prob, dtype=float)
+        if prob.ndim == 2:
+            predicted = np.argmax(prob, axis=1)
+            labels = np.arange(prob.shape[1])
+            return {
+                "confusion_matrix": {
+                    "labels": labels.tolist(),
+                    "matrix": confusion_matrix(y, predicted, labels=labels).tolist(),
+                    "multiclass": True,
+                }
+            }
         fpr, tpr, thresholds = roc_curve(y, prob)
         prob_true, prob_pred = calibration_curve(y, prob, n_bins=10)
         cm = confusion_matrix(y, (prob >= 0.5).astype(int), labels=[0, 1])
@@ -129,9 +147,11 @@ class LogregAdapter(_BaseClassifier):
         return LogisticRegression(**params)
 
     def explain(self, X_val: Any) -> dict[str, Any] | None:
+        coefficients = np.asarray(self._model.coef_, dtype=float)
+        values = np.abs(coefficients).mean(axis=0) if coefficients.ndim == 2 else coefficients
         table = [
             {"feature": str(col), "coef": float(coef)}
-            for col, coef in zip(self._X.columns, self._model.coef_[0], strict=True)
+            for col, coef in zip(self._X.columns, values, strict=True)
         ]
         return {"type": "coefficients", "table": table}
 

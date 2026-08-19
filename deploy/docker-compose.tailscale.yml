@@ -1,0 +1,31 @@
+# Tailscale Funnel overlay for a single-host CDAP deployment.
+# The host only listens on loopback; Tailscale Funnel is the public edge.
+# Override TAILSCALE_HOSTNAME when this machine uses a different tailnet name.
+
+services:
+  # Tailscale terminates HTTPS. Keep the Caddy public edge disabled in this mode.
+  caddy:
+    profiles: ["caddy-disabled"]
+
+  frontend:
+    ports:
+      - "127.0.0.1:8080:80"
+
+  minio:
+    ports:
+      - "127.0.0.1:9000:9000"
+
+  api:
+    environment:
+      COOKIE_SECURE: "true"
+      S3_PUBLIC_ENDPOINT: "https://${TAILSCALE_HOSTNAME:-codex-pc.tail409d12.ts.net}:10000"
+
+  worker:
+    environment:
+      COOKIE_SECURE: "true"
+      S3_PUBLIC_ENDPOINT: "https://${TAILSCALE_HOSTNAME:-codex-pc.tail409d12.ts.net}:10000"
+
+  beat:
+    environment:
+      COOKIE_SECURE: "true"
+      S3_PUBLIC_ENDPOINT: "https://${TAILSCALE_HOSTNAME:-codex-pc.tail409d12.ts.net}:10000"

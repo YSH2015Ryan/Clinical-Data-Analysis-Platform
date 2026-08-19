@@ -12,6 +12,7 @@ from app.schemas.auth import CurrentUser
 from app.schemas.project import Project, ProjectCreate, ProjectPage
 from app.services import audit as audit_service
 from app.services import projects as project_service
+from app.workers.project_tasks import purge_project_storage
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -58,6 +59,7 @@ async def delete_project(
     user: CurrentUser = Depends(require_role("researcher")),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
+    keys = await project_service.storage_keys_for_project(db, project_id)
     project = await project_service.soft_delete_project(db, user, project_id)
     if project is None:
         raise not_found("project", str(project_id))
@@ -65,4 +67,6 @@ async def delete_project(
         db, "project.delete", user_id=user.id, resource_type="project", resource_id=project.id
     )
     await db.commit()
+    # 删除已提交后异步清理对象；失败会自动重试，不阻塞 API 响应。
+    purge_project_storage.apply_async(args=[keys])
     return Response(status_code=204)

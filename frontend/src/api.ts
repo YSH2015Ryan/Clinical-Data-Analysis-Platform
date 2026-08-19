@@ -1,8 +1,8 @@
 /** API 客户端：契约同源 docs/14（/api/v1，Bearer JWT，RFC7807 错误）。 */
 
 const BASE = "/api/v1";
-const TOKEN_KEY = "cdap_access_token";
-const REFRESH_KEY = "cdap_refresh_token";
+let accessToken: string | null = null;
+let restorePromise: Promise<boolean> | null = null;
 
 export interface ApiError {
   code: string;
@@ -12,17 +12,38 @@ export interface ApiError {
 }
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return accessToken;
 }
 
 export function setTokens(access: string, refresh: string): void {
-  localStorage.setItem(TOKEN_KEY, access);
-  localStorage.setItem(REFRESH_KEY, refresh);
+  void refresh;
+  accessToken = access;
 }
 
 export function clearTokens(): void {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(REFRESH_KEY);
+  accessToken = null;
+}
+
+export async function restoreSession(): Promise<boolean> {
+  if (accessToken) return true;
+  if (restorePromise) return restorePromise;
+  restorePromise = fetch(`${BASE}/auth/refresh`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  })
+    .then(async (resp) => {
+      if (!resp.ok) return false;
+      const tokens = (await resp.json()) as TokenResponse;
+      accessToken = tokens.access_token;
+      return true;
+    })
+    .catch(() => false)
+    .finally(() => {
+      restorePromise = null;
+    });
+  return restorePromise;
 }
 
 async function parseError(resp: Response): Promise<ApiError> {
@@ -34,16 +55,22 @@ async function parseError(resp: Response): Promise<ApiError> {
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers = new Headers(init.headers);
-  const token = getToken();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (init.body && typeof init.body === "string" && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
+  const request = () => {
+    const headers = new Headers(init.headers);
+    const token = getToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    if (init.body && typeof init.body === "string" && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    return fetch(`${BASE}${path}`, { ...init, headers, credentials: "include" });
+  };
+  let resp = await request();
+  if (resp.status === 401 && !path.startsWith("/auth/")) {
+    if (await restoreSession()) resp = await request();
   }
-  const resp = await fetch(`${BASE}${path}`, { ...init, headers });
   if (!resp.ok) {
     const err = await parseError(resp);
-    if (resp.status === 401 && getToken()) {
+    if (resp.status === 401) {
       clearTokens();
       window.location.href = "/login";
     }
@@ -485,7 +512,10 @@ export async function fetchReportBlob(reportId: string): Promise<Blob> {
   const headers = new Headers();
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const resp = await fetch(`${BASE}/reports/${reportId}/download`, { headers });
+  const resp = await fetch(`${BASE}/reports/${reportId}/download`, {
+    headers,
+    credentials: "include",
+  });
   if (!resp.ok) throw await parseError(resp);
   return resp.blob();
 }

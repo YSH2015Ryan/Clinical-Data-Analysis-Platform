@@ -88,10 +88,25 @@ def _check_target_data(
             f"结局相关列 {missing} 在数据集中不存在，请核对预处理配置中的列名与数据文件一致。",
         )
     if task_type == "survival":
+        time_values = pd.to_numeric(df[cols[0]], errors="coerce")
+        event_values = pd.to_numeric(df[cols[1]], errors="coerce")
+        if time_values.isna().any() or event_values.isna().any():
+            raise AppError("VALIDATION_ERROR", 400, "生存时间和事件列不能包含缺失或非数值值")
+        if (time_values <= 0).any():
+            raise AppError("VALIDATION_ERROR", 400, "生存时间必须为正数")
+        if not set(event_values.astype(int).unique()) <= {0, 1}:
+            raise AppError("VALIDATION_ERROR", 400, "事件列必须只包含 0/1")
         return
 
     label_col = cols[0]
-    y = df[label_col].dropna()
+    if df[label_col].isna().any():
+        raise AppError(
+            "VALIDATION_ERROR",
+            400,
+            f"结局列「{label_col}」包含 {int(df[label_col].isna().sum())} 个缺失值，"
+            "请先在数据质量页面处理后再建模。",
+        )
+    y = df[label_col]
     if task_type == "regression":
         if not pd.api.types.is_numeric_dtype(y):
             ratio = float(pd.to_numeric(y, errors="coerce").notna().mean()) if len(y) else 0.0
@@ -139,14 +154,16 @@ async def create_run(
     if version is None:
         raise not_found("dataset", str(body.dataset_version_id))
     dataset = (
-        await db.execute(select(Dataset).where(Dataset.id == version.dataset_id))
+        await db.execute(
+            select(Dataset).where(Dataset.id == version.dataset_id, Dataset.deleted_at.is_(None))
+        )
     ).scalar_one_or_none()
     if dataset is None:
         raise not_found("dataset", str(body.dataset_version_id))
     project = (
         await db.execute(select(Project).where(Project.id == dataset.project_id))
     ).scalar_one_or_none()
-    if project is None:
+    if project is None or project.deleted_at is not None:
         raise not_found("dataset", str(body.dataset_version_id))
     if user.role != "admin" and project.owner_id != user.id:
         raise forbidden()
@@ -195,6 +212,11 @@ async def create_run(
                 f"模型 {key} 不可用（未注册/已禁用/不支持 {body.task_type}）",
             )
 
+    effective_params = {
+        key: {**dict(plugins[key].default_params), **dict(body.model_params.get(key, {}))}
+        for key in body.selected_models
+    }
+
     run = AnalysisRun(
         project_id=project.id,
         dataset_version_id=version.id,
@@ -202,7 +224,8 @@ async def create_run(
         status="PENDING",
         preprocess_config=cfg.model_dump(mode="json"),
         selected_models=list(body.selected_models),
-        model_params=dict(body.model_params),
+        # 将管理员默认参数和本次覆盖快照进 run，后续修改插件不会改变历史结果。
+        model_params=effective_params,
         created_by=user.id,
     )
     db.add(run)
@@ -219,7 +242,11 @@ async def get_run(db: AsyncSession, user: CurrentUser, run_id: uuid.UUID) -> Ana
     project = (
         await db.execute(select(Project).where(Project.id == run.project_id))
     ).scalar_one_or_none()
-    if project is None or (user.role != "admin" and project.owner_id != user.id):
+    if (
+        project is None
+        or project.deleted_at is not None
+        or (user.role != "admin" and project.owner_id != user.id)
+    ):
         raise forbidden()
     return run
 
@@ -230,7 +257,7 @@ async def list_runs(
     project = (
         await db.execute(select(Project).where(Project.id == project_id))
     ).scalar_one_or_none()
-    if project is None:
+    if project is None or project.deleted_at is not None:
         raise not_found("project", str(project_id))
     if user.role != "admin" and project.owner_id != user.id:
         raise forbidden()

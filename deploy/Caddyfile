@@ -1,0 +1,9 @@
+{$PUBLIC_DOMAIN} {
+    encode gzip
+    reverse_proxy frontend:80
+}
+
+# 仅暴露 S3 API；MinIO 控制台端口 9001 不对公网发布。
+{$STORAGE_DOMAIN} {
+    reverse_proxy minio:9000
+}
