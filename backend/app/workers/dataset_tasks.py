@@ -58,7 +58,7 @@ def validate_dataset(dataset_id: str) -> None:
             report = validation.validate(result.df, raw_columns=result.raw_columns)
             dataset.encoding = result.encoding
             dataset.preview = _redact_preview(parser.preview_json(result.df))
-            dataset.column_profile = report.column_profiles
+            dataset.column_profile = parser.normalize_json_value(report.column_profiles)
             dataset.status = "FAILED" if report.status == "FAILED" else "VALIDATED"
             db.add(_quality_report(dataset, version, report))
             db.commit()
@@ -74,6 +74,7 @@ def validate_dataset(dataset_id: str) -> None:
             )
         except Exception as exc:
             # RV001 文件无法解析：阻塞级 + 修正建议（docs/05 §3）
+            db.rollback()
             issue = validation.parse_error_issue(_encoding_hint(raw) if raw else None)
             dataset.status = "FAILED"
             db.add(
@@ -101,7 +102,7 @@ def _quality_report(
         blockers=report.blockers,
         warnings=report.warnings,
         issues=[i.to_dict() for i in report.issues],
-        column_profiles=report.column_profiles,
+        column_profiles=parser.normalize_json_value(report.column_profiles),
     )
 
 

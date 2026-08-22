@@ -20,8 +20,8 @@ from app.db import get_db
 from app.engines import parser
 from app.engines.preprocessing import validate_dsl
 from app.engines.quickfix import QuickFixAction
-from app.engines.recommender import recommend_config
-from app.engines.task_detection import detect_task
+from app.engines.recommender import recommend_config_from_profile
+from app.engines.task_detection import detect_task_from_profile
 from app.schemas.auth import CurrentUser
 from app.schemas.dataset import (
     DatasetAccepted,
@@ -215,9 +215,13 @@ async def recommend_preprocess_dsl(
     dataset = await dataset_service.get_dataset(db, user, dataset_id)
     if dataset is None:
         raise not_found("dataset", str(dataset_id))
-    raw = storage_from_settings().get(key_from_uri(dataset.storage_uri))
-    result = parser.parse(raw, dataset.source_type)
-    return {"config": recommend_config(result.df)}
+    if not dataset.column_profile:
+        raise AppError(
+            code="VALIDATION_ERROR",
+            status=400,
+            message="数据集尚未完成验证，请等待验证完成后再生成推荐配置",
+        )
+    return {"config": recommend_config_from_profile(dataset.column_profile)}
 
 
 @dataset_router.post("/{dataset_id}/preparation/preview", response_model=PreparationPreview)
@@ -289,9 +293,13 @@ async def detect_dataset_task(
     dataset = await dataset_service.get_dataset(db, user, dataset_id)
     if dataset is None:
         raise not_found("dataset", str(dataset_id))
-    raw = storage_from_settings().get(key_from_uri(dataset.storage_uri))
-    result = parser.parse(raw, dataset.source_type)
-    detection = detect_task(result.df)
+    if not dataset.column_profile:
+        raise AppError(
+            code="VALIDATION_ERROR",
+            status=400,
+            message="数据集尚未完成验证，请等待验证完成后再进行任务识别",
+        )
+    detection = detect_task_from_profile(dataset.column_profile)
     if detection.recommended_task is None:
         raise AppError(
             code="TASK_DETECTION_FAILED",

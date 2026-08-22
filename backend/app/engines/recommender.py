@@ -133,3 +133,76 @@ def recommend_config(df: pd.DataFrame, *, seed: int = 42) -> dict[str, Any]:
         "seed": seed,
     }
     return {"target": target, "steps": steps, "validation": validation}
+
+
+def recommend_config_from_profile(
+    column_profile: list[dict[str, Any]], *, seed: int = 42
+) -> dict[str, Any]:
+    """Generate the wide-table recommendation DSL from a validated column profile.
+
+    A profile contains all of the type, semantic, cardinality, and missingness
+    information needed by the wide-table path. Long-table detection is omitted
+    because it requires row-level relationships that are not represented here.
+    """
+    dropped_ids = [
+        column["name"]
+        for column in column_profile
+        if column.get("inferred_type") == "id"
+    ]
+
+    per_column = {
+        column["name"]: "mode"
+        for column in column_profile
+        if column["name"] not in dropped_ids
+        and column.get("inferred_type") in ("categorical", "datetime")
+    }
+    steps: list[dict[str, Any]] = []
+    if dropped_ids:
+        steps.append({"type": "drop_columns", "params": {"columns": dropped_ids}})
+    steps.extend(
+        [
+            {
+                "type": "missing",
+                "params": {"default": "median", "per_column": per_column, "drop_threshold": 0.5},
+            },
+            {
+                "type": "outlier",
+                "params": {"method": "iqr", "action": "clip", "columns": "continuous"},
+            },
+            {"type": "encode", "params": {"method": "auto", "onehot_max_cardinality": 10}},
+            {"type": "scale", "params": {"method": "standard", "columns": "continuous"}},
+            {
+                "type": "feature_select",
+                "params": {"method": "variance_threshold", "threshold": 0.0},
+            },
+        ]
+    )
+
+    target: dict[str, Any] = {}
+    event_col: str | None = None
+    unique_by_name = {column["name"]: column.get("unique") for column in column_profile}
+    for column in column_profile:
+        name = column["name"]
+        if column.get("semantic_confidence", 0.0) < 0.85:
+            continue
+        semantic = column.get("semantic")
+        if semantic == "FollowUp" and "time_col" not in target:
+            target["time_col"] = name
+        elif semantic == "Event" and "event_col" not in target:
+            target["event_col"] = name
+            event_col = name
+        elif semantic == "Label" and "label_col" not in target:
+            target["label_col"] = name
+    if "label_col" not in target and "event_col" in target and "time_col" not in target:
+        # Binary outcome without follow-up time is a classification label.
+        target["label_col"] = target.pop("event_col")
+
+    stratify_col = event_col or target.get("label_col")
+    unique = unique_by_name.get(stratify_col) if stratify_col is not None else None
+    stratified = unique is not None and unique <= 10
+    validation: dict[str, Any] = {
+        "strategy": "stratified_kfold" if stratified else "kfold",
+        "n_splits": 5,
+        "seed": seed,
+    }
+    return {"target": target, "steps": steps, "validation": validation}

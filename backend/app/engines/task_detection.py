@@ -184,3 +184,132 @@ def detect_task(df: pd.DataFrame) -> TaskDetection:
         reason="未识别到时间/事件/标签候选列，请手动选择任务类型",
         candidates=candidates,
     )
+
+
+def detect_task_from_profile(column_profile: list[dict[str, Any]]) -> TaskDetection:
+    """从已存储的 column_profile 直接推断任务类型，无需重新加载文件。
+
+    与 detect_task(df) 逻辑完全等价，但所有列统计量（inferred_type / semantic /
+    semantic_confidence / unique / min）均取自验证阶段已写入 DB 的 profile，
+    响应时间从"下载+解析"降至毫秒级。
+
+    binary 判定策略：
+    - semantic in ("Event","Label") + unique==2 → 确定为 0/1 二值
+    - semantic is None + unique==2              → 保守认为可能二值（confidence 0.5）
+    - continuous 列 min==0, max==1, unique==2   → 确定为 0/1 二值
+    """
+    time_cands: list[Candidate] = []
+    event_cands: list[Candidate] = []
+    binary_label_cands: list[Candidate] = []
+    multiclass_cands: list[Candidate] = []
+    regression_cands: list[Candidate] = []
+
+    for p in column_profile:
+        name: str = p["name"]
+        dtype: str = p.get("inferred_type", "")
+        semantic: str | None = p.get("semantic")
+        conf: float = float(p.get("semantic_confidence", 0.0))
+        unique: int = int(p.get("unique", 0))
+        p_min = p.get("min")
+        p_max = p.get("max")
+
+        # id / datetime / text 不做结局候选（与 detect_task 一致）
+        if dtype in ("id", "datetime", "text"):
+            continue
+
+        # binary 判断：值域 ⊆ {0,1}
+        if dtype == "continuous":
+            binary = (p_min is not None and p_max is not None
+                      and float(p_min) == 0.0 and float(p_max) == 1.0 and unique == 2)
+        else:
+            # categorical unique==2：语义明确时确定为二值，否则保守认为可能
+            binary = (unique == 2)
+
+        # FollowUp 时间列候选
+        if semantic == "FollowUp" and dtype == "continuous" and conf >= 0.85:
+            time_cands.append(Candidate(name, conf, f"FollowUp 语义（置信度 {conf:.2f}）"))
+
+        # Event 事件列候选
+        if semantic == "Event" and binary and conf >= 0.85:
+            event_cands.append(Candidate(name, conf, f"Event 语义（0/1 取值，置信度 {conf:.2f}）"))
+
+        # 二值/多分类/回归结局候选
+        if binary:
+            if semantic in ("Label", "Event"):
+                binary_label_cands.append(Candidate(name, conf, f"{semantic} 语义"))
+            elif semantic is None:
+                binary_label_cands.append(Candidate(name, _GENERIC_BINARY_CONF, "0/1 二值列"))
+        elif dtype == "categorical" and 3 <= unique <= _MULTICLASS_MAX_UNIQUE:
+            if semantic == "Label":
+                multiclass_cands.append(Candidate(name, conf, f"Label 语义（{unique} 类）"))
+            elif semantic is None:
+                multiclass_cands.append(
+                    Candidate(name, _GENERIC_MULTICLASS_CONF, f"{unique} 个类别")
+                )
+        elif dtype == "continuous":
+            if semantic == "Label":
+                regression_cands.append(Candidate(name, conf, f"Label 语义（连续值）"))
+            elif semantic == "FollowUp" and conf >= 0.85:
+                regression_cands.append(
+                    Candidate(name, _FOLLOWUP_AS_REGRESSION_CONF, f"{semantic} 语义（无配对事件列）")
+                )
+
+    # 模式规则：正数连续 + 列名含时间词 → 时间列候选（event_cands 存在时）
+    if event_cands:
+        known = {c.column for c in time_cands}
+        for p in column_profile:
+            name = p["name"]
+            if name in known or p.get("inferred_type") != "continuous":
+                continue
+            if not _has_hint(name, _TIME_NAME_HINTS):
+                continue
+            p_min = p.get("min")
+            if p_min is not None and float(p_min) >= 0:
+                time_cands.append(
+                    Candidate(name, _PATTERN_TIME_CONF, "正数连续且与事件列成对出现（模式规则）")
+                )
+
+    candidates: dict[str, list[Candidate]] = {
+        "time_col": _sorted(time_cands),
+        "event_col": _sorted(event_cands),
+        "label_col": _sorted(binary_label_cands + multiclass_cands + regression_cands),
+    }
+
+    if time_cands and event_cands:
+        t, e = _sorted(time_cands)[0], _sorted(event_cands)[0]
+        return TaskDetection(
+            recommended_task="survival",
+            confidence=round(0.5 * (t.confidence + e.confidence), 2),
+            reason=f"检测到生存时间列 {t.column}（{t.reason}）与事件列 {e.column}（{e.reason}）",
+            candidates=candidates,
+        )
+    if binary_label_cands:
+        top = _sorted(binary_label_cands)[0]
+        return TaskDetection(
+            recommended_task="classification",
+            confidence=top.confidence,
+            reason=f"检测到二分类结局候选列 {top.column}（{top.reason}）",
+            candidates=candidates,
+        )
+    if multiclass_cands:
+        top = _sorted(multiclass_cands)[0]
+        return TaskDetection(
+            recommended_task="classification",
+            confidence=top.confidence,
+            reason=f"检测到多分类结局候选列 {top.column}（{top.reason}）",
+            candidates=candidates,
+        )
+    if regression_cands:
+        top = _sorted(regression_cands)[0]
+        return TaskDetection(
+            recommended_task="regression",
+            confidence=top.confidence,
+            reason=f"检测到连续结局候选列 {top.column}（{top.reason}）",
+            candidates=candidates,
+        )
+    return TaskDetection(
+        recommended_task=None,
+        confidence=0.0,
+        reason="未识别到时间/事件/标签候选列，请手动选择任务类型",
+        candidates=candidates,
+    )
