@@ -52,6 +52,7 @@ services:
       # 预签名下载按浏览器可达端点签名（host 计入 SigV4，docs/12 §2.4）
       S3_PUBLIC_ENDPOINT: https://${STORAGE_DOMAIN:?need STORAGE_DOMAIN}
       JWT_SECRET: ${JWT_SECRET:?}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       COOKIE_SECURE: "true"
@@ -92,6 +93,7 @@ services:
       S3_SECURE: "false"
       S3_PUBLIC_ENDPOINT: https://${STORAGE_DOMAIN}
       JWT_SECRET: ${JWT_SECRET}
+      COOKIE_SECURE: "true"
     deploy:
       resources:
         limits:
