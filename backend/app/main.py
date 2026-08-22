@@ -18,6 +18,7 @@ from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.db import dispose_engine, get_engine, get_session_factory
 from app.engines.model_registry import ModelRegistry
+from app.middleware import UploadAuthenticationMiddleware
 from app.services.plugins import sync_plugins_to_db
 from app.services.storage import storage_from_settings
 
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(title="CDAP API", version="0.1.0", lifespan=lifespan)
     register_exception_handlers(app)
+    app.add_middleware(UploadAuthenticationMiddleware)
 
     # 所有端点挂在 /api/v1 下（docs/14 Base URL 约定）
     v1 = APIRouter(prefix="/api/v1")
