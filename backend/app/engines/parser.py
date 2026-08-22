@@ -5,9 +5,13 @@
 
 import csv
 import io
+import math
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import date, datetime, time
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from charset_normalizer import from_bytes
 
@@ -95,11 +99,43 @@ def parse(data: bytes, source_type: str) -> ParseResult:
     return parse_csv(data)
 
 
+def normalize_json_value(value: Any) -> Any:
+    """Recursively convert pandas/numpy values to JSON-compatible primitives."""
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        return None if not math.isfinite(value) else value
+    try:
+        if bool(pd.isna(value)):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, (pd.Timestamp, pd.Timedelta)):
+        return value.isoformat()
+    if isinstance(value, np.ndarray):
+        return normalize_json_value(value.tolist())
+    if isinstance(value, np.generic):
+        return normalize_json_value(value.item())
+    if isinstance(value, Mapping):
+        normalized = {}
+        for key, item in value.items():
+            normalized_key = normalize_json_value(key)
+            if not isinstance(normalized_key, (str, bool, int, float)) and normalized_key is not None:
+                normalized_key = str(normalized_key)
+            normalized[normalized_key] = normalize_json_value(item)
+        return normalized
+    if isinstance(value, (list, tuple, set)):
+        return [normalize_json_value(item) for item in value]
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    return str(value)
+
+
 def preview_json(df: pd.DataFrame, n: int = _PREVIEW_ROWS) -> dict[str, Any]:
     """前 n 行预览：NaN/NaT → None，numpy 标量 → 原生类型（JSON 可序列化）。"""
     head = df.head(n)
     rows = [
-        [None if pd.isna(v) else (v.item() if hasattr(v, "item") else v) for v in row]
+        [normalize_json_value(v) for v in row]
         for row in head.itertuples(index=False, name=None)
     ]
     return {

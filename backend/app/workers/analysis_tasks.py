@@ -188,6 +188,7 @@ def run_model(run_id: str, model_key: str) -> None:
             row = ModelResult(run_id=run.id, model_key=model_key)
             db.add(row)
         row.status = "RUNNING"
+        row.error = None  # 清掉上一轮遗留的 error，防止重跑后前端仍显示旧错误
         db.commit()
 
         started = time.perf_counter()
@@ -330,9 +331,19 @@ def _build_charts(run: AnalysisRun, succeeded: list[ModelResult]) -> list[dict[s
     try:
         prevalence: float | None = None
         if run.task_type == "classification":
-            storage = storage_from_settings()
-            target = _get_df(storage, f"runs/{run.id}/target.parquet")
-            prevalence = float(target["label"].mean())
+            # 从已落库的混淆矩阵推算阳性率（避免重新读取大文件）
+            # 仅二分类有意义（DCA 需要阳性率）；多分类 prevalence 保持 None
+            for r in succeeded:
+                arts = (r.artifacts or [{}])[0]
+                cm = arts.get("confusion_matrix", {})
+                labels = cm.get("labels", [])
+                matrix = cm.get("matrix", [])
+                if len(labels) == 2 and matrix:
+                    total = sum(sum(row) for row in matrix)
+                    positives = sum(matrix[1]) if len(matrix) > 1 else 0
+                    if total > 0:
+                        prevalence = positives / total
+                    break
         payload = [
             {
                 "model_key": r.model_key,
@@ -382,14 +393,20 @@ def janitor_sweep() -> dict[str, int]:
     - 超时 RUNNING 模型结果 → FAILED（worker kill -9 恢复）；
     - MODELING 且全部模型终态但回调未触发 → 手动补触发 compare；
     - 陈旧 PREPROCESSING / COMPARING / MODELING（无终态）→ FAILED。
+
+    超时语义：
+    - model_timeout_s：单个 ModelResult 行从开始 RUNNING 到现在超过此值即视为僵死；
+    - run_timeout_s：整个 AnalysisRun 从创建到现在超过此值且仍无终态才视为超时；
+      MODELING 状态额外豁免：只要还有模型仍在 RUNNING（未被上面判定为僵死），
+      就继续等待，不提前杀掉 run。
     """
     from datetime import UTC, datetime, timedelta
 
     from app.core.config import get_settings
 
-    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
-        seconds=get_settings().model_timeout_s
-    )
+    settings = get_settings()
+    model_cutoff = datetime.now(UTC) - timedelta(seconds=settings.model_timeout_s)
+    run_cutoff = datetime.now(UTC) - timedelta(seconds=settings.run_timeout_s)
     stats = {"stale_models_failed": 0, "compare_recovered": 0, "runs_failed": 0}
     factory = get_sync_session_factory()
     recovered: list[str] = []
@@ -397,7 +414,7 @@ def janitor_sweep() -> dict[str, int]:
         stale_results = (
             db.execute(
                 select(ModelResult).where(
-                    ModelResult.status == "RUNNING", ModelResult.created_at < cutoff
+                    ModelResult.status == "RUNNING", ModelResult.updated_at < model_cutoff
                 )
             )
             .scalars()
@@ -418,27 +435,35 @@ def janitor_sweep() -> dict[str, int]:
             .all()
         )
         for run in active_runs:
-            stale = bool(run.created_at < cutoff)
+            run_stale = bool(run.created_at < run_cutoff)
             if run.status != "MODELING":
-                if stale:
+                # PREPROCESSING / COMPARING：超过 run_timeout_s 才算超时
+                if run_stale:
                     run.status = "FAILED"
                     run.error = "janitor：运行超时"
                     run.finished_at = func_now(db)
                     stats["runs_failed"] += 1
                 continue
+
+            # MODELING：先检查各模型终态
             rows = (
                 db.execute(select(ModelResult).where(ModelResult.run_id == run.id)).scalars().all()
             )
             states = {r.model_key: r.status for r in rows}
             terminal = ("SUCCESS", "FAILED", "SKIPPED")
-            if all(states.get(k) in terminal for k in run.selected_models):
-                recovered.append(str(run.id))  # R1 降级：回调未触发，提交后手动 compare
+            all_done = all(states.get(k) in terminal for k in run.selected_models)
+
+            if all_done:
+                # 所有模型已完成但 compare 回调未触发 → 手动补触发（R1 降级）
+                recovered.append(str(run.id))
                 stats["compare_recovered"] += 1
-            elif stale:
+            elif run_stale:
+                # 超过 run_timeout_s 且仍有模型未完成 → 整体超时
                 run.status = "FAILED"
                 run.error = "janitor：运行超时"
                 run.finished_at = func_now(db)
                 stats["runs_failed"] += 1
+            # else: 仍在正常运行范围内，不干预
         db.commit()
 
     for rid in recovered:

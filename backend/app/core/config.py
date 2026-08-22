@@ -42,7 +42,8 @@ class Settings(BaseSettings):
     auth_rate_window_seconds: int = 300
 
     # 任务
-    model_timeout_s: int = 900
+    model_timeout_s: int = 900   # 单个模型任务的超时（秒），超时后 worker SIGKILL
+    run_timeout_s: int = 7200    # 整个分析 run 的超时（秒，默认 2 小时）
     max_upload_mb: int = 200
 
     # 排名权重（docs/09 §4.1）

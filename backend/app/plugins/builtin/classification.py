@@ -15,6 +15,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.inspection import permutation_importance
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix, roc_curve
+from sklearn.preprocessing import label_binarize
 from sklearn.svm import SVC
 
 from app.engines.comparison.metrics import classification_metrics
@@ -111,15 +112,56 @@ class _BaseClassifier:
         y = np.asarray(y_val).astype(int)
         prob = np.asarray(prob, dtype=float)
         if prob.ndim == 2:
+            # 多分类：混淆矩阵 + OvR macro ROC + OvR macro 校准曲线
             predicted = np.argmax(prob, axis=1)
             labels = np.arange(prob.shape[1])
-            return {
+            artifacts: dict[str, Any] = {
                 "confusion_matrix": {
                     "labels": labels.tolist(),
                     "matrix": confusion_matrix(y, predicted, labels=labels).tolist(),
                     "multiclass": True,
                 }
             }
+            # OvR macro ROC：对每个类别计算 FPR/TPR，取等距 100 点后平均
+            try:
+                y_bin = label_binarize(y, classes=labels)
+                n_classes = prob.shape[1]
+                all_fpr: list[float] = []
+                all_tpr: list[float] = []
+                # 在公共 FPR 网格上插值平均（macro 平均 ROC）
+                mean_fpr = np.linspace(0, 1, 100)
+                interp_tprs: list[np.ndarray] = []
+                for i in range(n_classes):
+                    fpr_i, tpr_i, thr_i = roc_curve(y_bin[:, i], prob[:, i])
+                    interp_tprs.append(np.interp(mean_fpr, fpr_i, tpr_i))
+                mean_tpr = np.mean(interp_tprs, axis=0)
+                # 宏平均 AUC（等于各类 AUC 的算术均值）
+                artifacts["roc_curve"] = {
+                    "fpr": mean_fpr.tolist(),
+                    "tpr": mean_tpr.tolist(),
+                    "thresholds": [None] * 100,   # 宏平均无对应阈值
+                    "macro_avg": True,
+                }
+            except Exception:
+                pass  # ROC 计算失败不影响混淆矩阵
+            # OvR macro 校准曲线（等距 10 桶插值平均）
+            try:
+                from sklearn.calibration import calibration_curve as _cal_curve
+                prob_trues: list[np.ndarray] = []
+                mean_pred = np.linspace(0, 1, 10)
+                for i in range(n_classes):
+                    pt, pp = _cal_curve(y_bin[:, i], prob[:, i], n_bins=10)
+                    prob_trues.append(np.interp(mean_pred, pp, pt))
+                artifacts["calibration_curve"] = {
+                    "prob_true": np.mean(prob_trues, axis=0).tolist(),
+                    "prob_pred": mean_pred.tolist(),
+                    "macro_avg": True,
+                }
+            except Exception:
+                pass  # 校准曲线失败不影响其他产物
+            return artifacts
+
+        # 二分类：完整三件套
         fpr, tpr, thresholds = roc_curve(y, prob)
         prob_true, prob_pred = calibration_curve(y, prob, n_bins=10)
         cm = confusion_matrix(y, (prob >= 0.5).astype(int), labels=[0, 1])
@@ -127,7 +169,6 @@ class _BaseClassifier:
             "roc_curve": {
                 "fpr": fpr.tolist(),
                 "tpr": tpr.tolist(),
-                # DCA 净获益计算需要（09 §3）；首元素 inf 非合法 JSONB 值 → None
                 "thresholds": [float(t) if np.isfinite(t) else None for t in thresholds],
             },
             "calibration_curve": {
@@ -141,7 +182,22 @@ class _BaseClassifier:
 class LogregAdapter(_BaseClassifier):
     key = "logreg"
     name = "Logistic Regression"
-    default_params: ClassVar[dict[str, Any]] = {"max_iter": 1000}
+    # max_train_rows: 大样本保护（同 SVM，docs/07 §6.1）；
+    # solver='saga' 支持 mini-batch 且对大样本/多分类更快；
+    # max_iter 降至 200 对采样后数据足够。
+    default_params: ClassVar[dict[str, Any]] = {
+        "max_iter": 200,
+        "solver": "saga",
+        "random_state": 42,
+        "max_train_rows": 50000,
+    }
+
+    def fit(self, X: Any, y: Any, params: dict[str, Any]) -> None:
+        p = {**self.default_params, **params}
+        max_rows = int(p.pop("max_train_rows"))
+        self._X, self._y = _stratified_subsample(X, y, max_rows)
+        self._model = self._build(p)
+        self._model.fit(self._X, self._y)
 
     def _build(self, params: dict[str, Any]) -> Any:
         return LogisticRegression(**params)
@@ -243,11 +299,24 @@ class LightgbmAdapter(_BaseClassifier):
         "feature_importance": True,
         "calibration": True,
     }
+    # 大样本保护（docs/07 §6.1）：
+    # - num_leaves=31、min_child_samples=100 限制树复杂度，防止在大数据上过拟合+超时；
+    # - max_train_rows=200000：超过 20 万行时分层采样，保证单折训练在可接受时间内完成。
     default_params: ClassVar[dict[str, Any]] = {
         "n_estimators": 100,
         "random_state": 42,
         "verbose": -1,
+        "num_leaves": 31,
+        "min_child_samples": 100,
+        "max_train_rows": 200000,
     }
+
+    def fit(self, X: Any, y: Any, params: dict[str, Any]) -> None:
+        p = {**self.default_params, **params}
+        max_rows = int(p.pop("max_train_rows"))
+        self._X, self._y = _stratified_subsample(X, y, max_rows)
+        self._model = self._build(p)
+        self._model.fit(self._X, self._y)
 
     def _build(self, params: dict[str, Any]) -> Any:
         from lightgbm import LGBMClassifier

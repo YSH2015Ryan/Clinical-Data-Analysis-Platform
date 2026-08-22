@@ -135,6 +135,11 @@ def _jsonable(value: Any) -> Any:
         return None if np.isnan(value) else float(value)
     if isinstance(value, float) and np.isnan(value):
         return None
+    # 处理 Pandas 时间类型（Timestamp, Timedelta 等）
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, pd.Timedelta):
+        return value.total_seconds()
     return value
 
 
