@@ -24,8 +24,7 @@ export function clearTokens(): void {
   accessToken = null;
 }
 
-export async function restoreSession(): Promise<boolean> {
-  if (accessToken) return true;
+async function refreshSession(): Promise<boolean> {
   if (restorePromise) return restorePromise;
   restorePromise = fetch(`${BASE}/auth/refresh`, {
     method: "POST",
@@ -44,6 +43,11 @@ export async function restoreSession(): Promise<boolean> {
       restorePromise = null;
     });
   return restorePromise;
+}
+
+export async function restoreSession(): Promise<boolean> {
+  if (accessToken) return true;
+  return refreshSession();
 }
 
 async function parseError(resp: Response): Promise<ApiError> {
@@ -172,12 +176,96 @@ export async function listDatasets(projectId: string): Promise<DatasetPage> {
   return apiFetch<DatasetPage>(`/projects/${projectId}/datasets`);
 }
 
-export async function uploadDataset(projectId: string, file: File): Promise<{ dataset_id: string }> {
+export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+
+export interface UploadDatasetOptions {
+  signal?: AbortSignal;
+  onProgress?: (percent: number) => void;
+}
+
+function uploadError(xhr: XMLHttpRequest): ApiError {
+  try {
+    return JSON.parse(xhr.responseText) as ApiError;
+  } catch {
+    return {
+      code: "INTERNAL_ERROR",
+      message: xhr.status ? `HTTP ${xhr.status}` : "网络连接中断",
+      details: {},
+      trace_id: "",
+    };
+  }
+}
+
+export async function uploadDataset(
+  projectId: string,
+  file: File,
+  options: UploadDatasetOptions = {},
+): Promise<{ dataset_id: string }> {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw {
+      code: "FILE_TOO_LARGE",
+      message: "文件超过 200 MB 上限，请压缩或拆分后重试",
+      details: { max_mb: 200 },
+      trace_id: "",
+    } satisfies ApiError;
+  }
+
+  // Start every upload with a fresh access token. Uploads are intentionally
+  // not retried after 401 because replaying a large FormData body starts over.
+  if (!(await refreshSession())) {
+    clearTokens();
+    window.location.href = "/login";
+    throw {
+      code: "AUTH_FAILED",
+      message: "登录已过期，请重新登录",
+      details: {},
+      trace_id: "",
+    } satisfies ApiError;
+  }
+
   const form = new FormData();
   form.append("file", file);
-  return apiFetch<{ dataset_id: string }>(`/projects/${projectId}/datasets`, {
-    method: "POST",
-    body: form,
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const abort = () => xhr.abort();
+    xhr.open("POST", `${BASE}/projects/${projectId}/datasets`);
+    xhr.withCredentials = true;
+    const token = getToken();
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        options.onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+      }
+    };
+    xhr.onload = () => {
+      options.signal?.removeEventListener("abort", abort);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        options.onProgress?.(100);
+        try {
+          resolve(JSON.parse(xhr.responseText) as { dataset_id: string });
+        } catch {
+          reject(uploadError(xhr));
+        }
+        return;
+      }
+      if (xhr.status === 401) clearTokens();
+      reject(uploadError(xhr));
+    };
+    xhr.onerror = () => {
+      options.signal?.removeEventListener("abort", abort);
+      reject(uploadError(xhr));
+    };
+    xhr.onabort = () => {
+      options.signal?.removeEventListener("abort", abort);
+      reject(new DOMException("Upload cancelled", "AbortError"));
+    };
+    options.signal?.addEventListener("abort", abort, { once: true });
+    if (options.signal?.aborted) {
+      xhr.abort();
+      return;
+    }
+    xhr.send(form);
   });
 }
 

@@ -10,6 +10,7 @@ from app.models.entities import User
 from app.schemas.auth import CurrentUser
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
 
 
 @pytest.fixture()
@@ -29,30 +30,43 @@ def _cred(token: str) -> HTTPAuthorizationCredentials:
     return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
 
+def _request(claims: dict[str, object] | None = None) -> Request:
+    scope: dict[str, object] = {"type": "http", "headers": []}
+    if claims is not None:
+        scope["cdap.access_claims"] = claims
+    return Request(scope)  # type: ignore[arg-type]
+
+
 class TestGetCurrentUser:
     async def test_no_credentials_401(self, db_session: AsyncSession) -> None:
         with pytest.raises(AppError) as exc_info:
-            await get_current_user(cred=None, db=db_session)
+            await get_current_user(request=_request(), cred=None, cdap_access=None, db=db_session)
         assert exc_info.value.code == "AUTH_FAILED"
         assert exc_info.value.status == 401
 
     async def test_garbage_token_401(self, db_session: AsyncSession) -> None:
         with pytest.raises(AppError) as exc_info:
-            await get_current_user(cred=_cred("garbage"), db=db_session)
+            await get_current_user(
+                request=_request(), cred=_cred("garbage"), cdap_access=None, db=db_session
+            )
         assert exc_info.value.code == "AUTH_FAILED"
 
     async def test_valid_token_returns_principal(
         self, db_session: AsyncSession, viewer_user: User
     ) -> None:
         token = create_token(str(viewer_user.id), "viewer", "access")
-        principal = await get_current_user(cred=_cred(token), db=db_session)
+        principal = await get_current_user(
+            request=_request(), cred=_cred(token), cdap_access=None, db=db_session
+        )
         assert principal.id == viewer_user.id
         assert principal.role == "viewer"
 
     async def test_unknown_user_401(self, db_session: AsyncSession) -> None:
         token = create_token(str(uuid.uuid4()), "viewer", "access")
         with pytest.raises(AppError) as exc_info:
-            await get_current_user(cred=_cred(token), db=db_session)
+            await get_current_user(
+                request=_request(), cred=_cred(token), cdap_access=None, db=db_session
+            )
         assert exc_info.value.code == "AUTH_FAILED"
 
 

@@ -1,7 +1,9 @@
 """T2.2 解析引擎单测：编码/分隔符/表头嗅探 + 预览 JSON（docs/05 §2、docs/19）。"""
 
 import io
+import json
 
+import numpy as np
 import pandas as pd
 import pytest
 from app.engines.parser import (
@@ -10,6 +12,7 @@ from app.engines.parser import (
     parse_csv,
     parse_excel,
     preview_json,
+    normalize_json_value,
 )
 
 TEXT = "id,姓名,年龄\n1,张三,55\n2,李四,61\n"
@@ -82,7 +85,40 @@ class TestPreview:
         assert preview["rows"][1] == [None, None]
 
     def test_json_serializable(self) -> None:
-        import json
-
         df = pd.DataFrame({"a": [1, 2], "b": [1.5, None], "c": ["x", "y"]})
         json.dumps(preview_json(df))  # 不抛异常即通过
+
+
+class TestNormalizeJsonValue:
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (pd.Timestamp("2024-01-02T03:04:05"), "2024-01-02T03:04:05"),
+            (pd.NaT, None),
+            (pd.NA, None),
+            (np.int64(7), 7),
+            (np.array([1, np.nan], dtype=np.float64), [1.0, None]),
+        ],
+    )
+    def test_json_serializable_values(self, value: object, expected: object) -> None:
+        normalized = normalize_json_value(value)
+        json.dumps(normalized)
+        assert normalized == expected
+
+    def test_nested_values_and_unsupported_leaves_are_json_safe(self) -> None:
+        value = {
+            pd.Timestamp("2024-01-02"): {
+                "nat": pd.NaT,
+                "na": pd.NA,
+                "array": np.array([np.int64(1), np.nan]),
+                "unsupported": object(),
+            }
+        }
+
+        normalized = normalize_json_value(value)
+        json.dumps(normalized)
+        nested = normalized["2024-01-02T00:00:00"]
+        assert nested["nat"] is None
+        assert nested["na"] is None
+        assert nested["array"] == [1, None]
+        assert isinstance(nested["unsupported"], str)

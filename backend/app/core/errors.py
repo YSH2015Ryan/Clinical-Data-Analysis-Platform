@@ -35,11 +35,16 @@ def _error_payload(exc: AppError, trace_id: str) -> dict[str, Any]:
     }
 
 
+def app_error_response(request: Request, exc: AppError) -> JSONResponse:
+    """Build the canonical API error response outside endpoint handlers."""
+    trace_id = request.headers.get("x-request-id", "")
+    return JSONResponse(status_code=exc.status, content=_error_payload(exc, trace_id))
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
-        trace_id = request.headers.get("x-request-id", "")
-        return JSONResponse(status_code=exc.status, content=_error_payload(exc, trace_id))
+        return app_error_response(request, exc)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(
