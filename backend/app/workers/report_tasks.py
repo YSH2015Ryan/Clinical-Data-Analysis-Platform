@@ -86,9 +86,17 @@ def _target_summary(storage: Any, run_id: uuid.UUID, task_type: str) -> dict[str
         "n_features": int(features.shape[1]) if features is not None else None,
     }
     if task_type == "classification":
-        positives = int(target["label"].sum())
-        summary["positives"] = positives
-        summary["prevalence"] = round(positives / len(target), 6) if len(target) else 0.0
+        label_col = target["label"]
+        n_classes = int(label_col.nunique())
+        summary["n_classes"] = n_classes
+        if n_classes == 2:
+            # 二分类：计算阳性率（假设较大值为阳性，与训练 label encoding 一致）
+            positives = int((label_col == label_col.max()).sum())
+            summary["positives"] = positives
+            summary["prevalence"] = round(positives / len(target), 6) if len(target) else 0.0
+        else:
+            # 多分类：记录各类别样本数
+            summary["class_counts"] = label_col.value_counts().to_dict()
     elif task_type == "survival":
         summary["events"] = int(target["event"].sum())
         summary["median_followup"] = round(float(target["time"].median()), 4)
@@ -225,6 +233,7 @@ def generate_report(report_id: str) -> None:
                 uri = storage.put(
                     f"reports/{report_id}/report.{report.format}",
                     io.BytesIO(payload),
+                    len(payload),
                     content_type=_CONTENT_TYPES[report.format],
                 )
                 report.storage_uri = str(uri)

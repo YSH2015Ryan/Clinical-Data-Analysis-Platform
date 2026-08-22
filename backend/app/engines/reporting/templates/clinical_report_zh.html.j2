@@ -100,7 +100,8 @@
 
 {% elif s.key == "overview" %}
 <p>样本量：{{ s.data.n_samples }}；变量数：{{ s.data.n_features }}。
-{% if s.data.prevalence is not none %}阳性 {{ s.data.positives }} 例（阳性率 {{ '%.2f%%' | format(s.data.prevalence * 100) }}）。{% endif %}
+{% if s.data.get('prevalence') is not none %}阳性 {{ s.data.positives }} 例（阳性率 {{ '%.2f%%' | format(s.data.prevalence * 100) }}）。{% endif %}
+{% if s.data.get('n_classes') is not none and s.data.n_classes > 2 %}多分类（{{ s.data.n_classes }} 类）。{% endif %}
 {% if s.data.events is not none %}事件数：{{ s.data.events }}；中位随访时间：{{ s.data.median_followup }}。{% endif %}</p>
 {% if s.data.columns %}
 {% call tbl("变量概况") %}
