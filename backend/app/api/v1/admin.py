@@ -20,7 +20,7 @@ from app.services import plugins as plugin_service
 
 router = APIRouter(tags=["admin"])
 
-TaskTypeQuery = Literal["survival", "classification", "regression"]
+TaskTypeQuery = Literal["survival", "classification", "regression", "time_series"]
 
 
 def _out(row: object) -> ModelPluginOut:

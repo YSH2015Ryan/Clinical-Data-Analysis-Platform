@@ -231,7 +231,7 @@ class AnalysisRun(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "task_type IN ('survival','classification','regression')",
+            "task_type IN ('survival','classification','regression','time_series')",
             name="ck_analysis_runs_task_type",
         ),
         CheckConstraint(

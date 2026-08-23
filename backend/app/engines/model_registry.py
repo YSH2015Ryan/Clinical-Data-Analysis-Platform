@@ -20,7 +20,7 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 ENTRY_POINT_GROUP = "cdap.models"
-VALID_TASK_TYPES = frozenset({"survival", "classification", "regression"})
+VALID_TASK_TYPES = frozenset({"survival", "classification", "regression", "time_series"})
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
 
 # 协议方法的必填参数（docs/07 §2；inspect.signature 校验）

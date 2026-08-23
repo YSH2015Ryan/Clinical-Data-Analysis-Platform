@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-TaskType = Literal["survival", "classification", "regression"]
+TaskType = Literal["survival", "classification", "regression", "time_series"]
 
 
 class AnalysisRunCreate(BaseModel):
