@@ -21,6 +21,7 @@ from app.engines import parser
 from app.engines.preprocessing import validate_dsl
 from app.engines.quickfix import QuickFixAction
 from app.engines.recommender import recommend_config_from_profile
+from app.engines.research_profiler import detect_research_direction
 from app.engines.task_detection import detect_task_from_profile
 from app.schemas.auth import CurrentUser
 from app.schemas.dataset import (
@@ -30,6 +31,8 @@ from app.schemas.dataset import (
     DatasetVersion,
     QualityReport,
     QuickFixRequest,
+    ResearchHints,
+    ResearchProfile,
 )
 from app.schemas.preparation import (
     PreparationApplyRequest,
@@ -137,6 +140,32 @@ async def get_quality_report(
     if report is None:
         raise not_found("report", str(dataset_id))
     return QualityReport.model_validate(report, from_attributes=True)
+
+
+@dataset_router.post("/{dataset_id}/research-profile", response_model=ResearchProfile)
+async def get_research_profile(
+    dataset_id: uuid.UUID,
+    hints: ResearchHints | None = None,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ResearchProfile:
+    """分析数据集的研究设计，并推荐模型与投稿期刊方向。"""
+    dataset = await dataset_service.get_dataset(db, user, dataset_id)
+    if dataset is None:
+        raise not_found("dataset", str(dataset_id))
+    try:
+        raw = storage_from_settings().get(key_from_uri(dataset.storage_uri))
+        dataframe = parser.parse(raw, dataset.source_type).df
+    except Exception as exc:
+        raise AppError(
+            code="DATASET_PARSE_FAILED",
+            status=400,
+            message="数据集无法解析，暂时无法生成研究画像",
+        ) from exc
+    result = detect_research_direction(
+        dataframe, hints.model_dump(exclude_none=True) if hints is not None else None
+    )
+    return ResearchProfile.model_validate(result)
 
 
 @dataset_router.post("/{dataset_id}/quick-fix", response_model=DatasetVersion)
