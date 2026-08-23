@@ -44,6 +44,7 @@ dependencies = [
     "xgboost~=2.1",
     "lightgbm~=4.5",
     "catboost~=1.2",
+    "pygam~=0.9",
     "statsmodels~=0.14",
     "shap~=0.46",
     "category-encoders~=2.6",
@@ -115,7 +116,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "minio.*", "redbeat.*", "sklearn.*", "simpleeval", "simpleeval.*", "sksurv.*", "lifelines.*", "catboost.*", "torch", "torch.*", "pycox.*", "torchtuples.*", "shap", "shap.*", "weasyprint", "weasyprint.*"]
+module = ["celery.*", "minio.*", "redbeat.*", "sklearn.*", "simpleeval", "simpleeval.*", "sksurv.*", "lifelines.*", "catboost.*", "torch", "torch.*", "pycox.*", "torchtuples.*", "shap", "shap.*", "pygam", "pygam.*", "weasyprint", "weasyprint.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -181,3 +182,4 @@ xgboost_reg = "app.plugins.builtin.regression:XgboostRegressorAdapter"
 deepsurv = "app.plugins.builtin.deepsurv:DeepsurvAdapter"
 poisson = "app.plugins.builtin.poisson_models:PoissonAdapter"
 negbin = "app.plugins.builtin.poisson_models:NegativeBinomialAdapter"
+gam = "app.plugins.builtin.gam_models:GAMAdapter"
