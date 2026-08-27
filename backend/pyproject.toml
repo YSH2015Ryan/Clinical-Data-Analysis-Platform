@@ -82,6 +82,10 @@ dev = [
     "pip-audit~=2.7",
     "pip-licenses~=5.0",
     "locust~=2.31",
+    # 本地调试：VS Code attach 断点（deploy/docker-compose.dev.yml 的 5678/5679 端口）
+    "debugpy~=1.8",
+    # Celery worker 代码变更自动重启（watchfiles CLI 包裹 celery 命令）
+    "watchfiles~=0.24",
 ]
 
 [tool.setuptools.packages.find]

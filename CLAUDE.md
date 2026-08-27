@@ -33,6 +33,7 @@ Python 3.11 / FastAPI / Celery + Redis / PostgreSQL 15 + SQLAlchemy 2.0 + Alembi
 | 测试要求 | docs/19-Test-Plan.md |
 | 预处理 DSL | docs/06-Preprocessing-Pipeline.md |
 | 状态机/编排 | docs/08-Analysis-Workflow.md |
+| 本地开发调试 | docs/23-Local-Development.md |
 
 ## 环境注意
 

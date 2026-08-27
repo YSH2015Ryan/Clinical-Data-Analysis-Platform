@@ -1,0 +1,33 @@
+{
+  // 本地调试:先启动 deploy/docker-compose.dev.yml,再 F5 attach
+  // 详见 docs/23-Local-Development.md
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach: API (FastAPI)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": { "host": "localhost", "port": 5678 },
+      "pathMappings": [
+        { "localRoot": "${workspaceFolder}/backend/app", "remoteRoot": "/app/app" }
+      ],
+      "justMyCode": false
+    },
+    {
+      "name": "Attach: Worker (Celery)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": { "host": "localhost", "port": 5679 },
+      "pathMappings": [
+        { "localRoot": "${workspaceFolder}/backend/app", "remoteRoot": "/app/app" }
+      ],
+      "justMyCode": false
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Attach: API + Worker",
+      "configurations": ["Attach: API (FastAPI)", "Attach: Worker (Celery)"]
+    }
+  ]
+}

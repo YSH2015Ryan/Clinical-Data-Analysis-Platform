@@ -21,6 +21,8 @@ dist/
 .env
 .env.*
 !.env.example
+# 本地开发占位密钥,不含真实值(docs/23)
+!.env.dev
 
 # Data —— 禁止真实患者数据入库
 *.xlsx
@@ -32,7 +34,10 @@ data/
 .DS_Store
 Thumbs.db
 .idea/
-.vscode/
+# 用 * 而非目录排除,以便放行团队共享配置
+.vscode/*
+# debugpy attach 配置(docs/23)
+!.vscode/launch.json
 
 # Docker volumes
 pgdata/

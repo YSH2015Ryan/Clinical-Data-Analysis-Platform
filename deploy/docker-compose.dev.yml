@@ -1,0 +1,227 @@
+# 本地开发/调试专用(docs/23-Local-Development.md)
+# 与 docker-compose.yml(生产)完全独立:无 Caddy/HTTPS、源码挂载热重载、debugpy 断点端口。
+# 用法:  cd deploy && docker compose -f docker-compose.dev.yml --env-file .env.dev up -d --build
+# 注意:  .env.dev 内的密钥仅供本机开发,严禁用于任何部署环境。
+name: cdap-dev
+
+services:
+  api:
+    build:
+      context: ../backend
+      target: dev # dev 镜像含 pytest/debugpy/watchfiles([project.optional-dependencies] dev)
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    # debugpy 常驻监听 5678(不阻塞启动,VS Code 随时 attach);--reload 热重载
+    command: >-
+      python -m debugpy --listen 0.0.0.0:5678
+      -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql+psycopg://cdap:${PG_PASSWORD}@postgres:5432/cdap
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: cdap
+      S3_ACCESS_KEY: ${MINIO_APP_USER}
+      S3_SECRET_KEY: ${MINIO_APP_PASSWORD}
+      S3_SECURE: "false"
+      # 预签名 URL 签给宿主机浏览器,必须浏览器可达(docs/12 §2.4)
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      JWT_SECRET: ${JWT_SECRET}
+      ACCESS_TOKEN_EXPIRE_MINUTES: "1440" # 开发期放宽,免频繁重登
+      MAX_UPLOAD_MB: "200"
+      LOG_LEVEL: DEBUG
+      COOKIE_SECURE: "false" # 本地无 HTTPS
+      # Windows Docker Desktop 挂载不传递 inotify 事件,热重载必须轮询
+      WATCHFILES_FORCE_POLLING: "true"
+      # LLM(T6.6 落地后生效):指向本机 Ollama 用 host.docker.internal,指向服务器填其 IP
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    volumes:
+      - ../backend/app:/app/app # 源码挂载,改代码即热重载
+      - ../backend/alembic:/app/alembic
+      - ../backend/alembic.ini:/app/alembic.ini
+      - ../backend/tests:/app/tests # 容器内跑 pytest(CLAUDE.md:本机 py3.9 不跑后端)
+    ports:
+      - "8000:8000" # API(前端 vite proxy 目标)
+      - "5678:5678" # debugpy attach
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../backend
+      target: dev
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    # --pool=solo:单进程,断点可命中、堆栈完整;watchfiles 监控代码变更自动重启 worker
+    command: >-
+      python -m debugpy --listen 0.0.0.0:5679
+      -m watchfiles --filter python
+      "celery -A app.workers.celery_app worker -Q default,model,report --pool=solo --loglevel=INFO"
+      /app/app
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql+psycopg://cdap:${PG_PASSWORD}@postgres:5432/cdap
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: cdap
+      S3_ACCESS_KEY: ${MINIO_APP_USER}
+      S3_SECRET_KEY: ${MINIO_APP_PASSWORD}
+      S3_SECURE: "false"
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      JWT_SECRET: ${JWT_SECRET}
+      COOKIE_SECURE: "false"
+      LOG_LEVEL: DEBUG
+      WATCHFILES_FORCE_POLLING: "true"
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    volumes:
+      - ../backend/app:/app/app
+    ports:
+      - "5679:5679" # debugpy attach(worker)
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  beat:
+    build:
+      context: ../backend
+      target: dev
+    command: celery -A app.workers.celery_app beat
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql+psycopg://cdap:${PG_PASSWORD}@postgres:5432/cdap
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: cdap
+      S3_ACCESS_KEY: ${MINIO_APP_USER}
+      S3_SECRET_KEY: ${MINIO_APP_PASSWORD}
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      JWT_SECRET: ${JWT_SECRET}
+      COOKIE_SECURE: "true"
+    volumes:
+      - ../backend/app:/app/app
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: cdap
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: cdap
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    ports:
+      - "5433:5432" # 宿主机 5433,避让本机可能已装的 PostgreSQL
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cdap"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - redisdata_dev:/data
+    ports:
+      - "6380:6379" # 避让本机 6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - miniodata_dev:/data
+    ports:
+      - "9000:9000" # S3 API(浏览器下载预签名 URL 也走这里)
+      - "9001:9001" # 控制台 http://localhost:9001
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_APP_USER: ${MINIO_APP_USER}
+      MINIO_APP_PASSWORD: ${MINIO_APP_PASSWORD}
+    volumes:
+      - ./minio-policy.json:/policy.json:ro
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        set -eu;
+        mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
+        mc mb --ignore-existing local/cdap;
+        mc admin policy detach local cdap-app-policy --user $$MINIO_APP_USER || true;
+        mc admin policy remove local cdap-app-policy || true;
+        mc admin policy create local cdap-app-policy /policy.json;
+        mc admin user add local $$MINIO_APP_USER $$MINIO_APP_PASSWORD || true;
+        mc admin policy attach local cdap-app-policy --user $$MINIO_APP_USER
+    restart: "no"
+
+  migrate:
+    build:
+      context: ../backend
+      target: dev
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    command: alembic upgrade head
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql+psycopg://cdap:${PG_PASSWORD}@postgres:5432/cdap
+    volumes:
+      - ../backend/app:/app/app
+      - ../backend/alembic:/app/alembic
+      - ../backend/alembic.ini:/app/alembic.ini
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  pgdata_dev:
+  redisdata_dev:
+  miniodata_dev:
