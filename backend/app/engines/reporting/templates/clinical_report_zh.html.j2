@@ -114,6 +114,26 @@
   {% endfor %}
 {% endcall %}
 {% endif %}
+{% if s.data.baseline_table %}
+{% set bt = s.data.baseline_table %}
+{% call tbl("基线特征表") %}
+  <tr><th>特征</th><th>总体 (N={{ bt.total_n }})</th>
+    {% for st in bt.strata %}{% if st.name != "Total" %}<th>{{ st.name }} (N={{ st.n }})</th>{% endif %}{% endfor %}
+    {% if bt.strata | length > 1 %}<th>p 值</th>{% endif %}</tr>
+  {% for r in bt.rows %}
+  {% if r.type == "categorical_header" %}
+  <tr><td><strong>{{ r.variable }}</strong></td><td></td>
+    {% for st in bt.strata %}{% if st.name != "Total" %}<td></td>{% endif %}{% endfor %}
+    {% if bt.strata | length > 1 %}<td></td>{% endif %}</tr>
+  {% else %}
+  <tr><td>{{ r.variable }}</td><td>{{ r.total or "—" }}</td>
+    {% for st in bt.strata %}{% if st.name != "Total" %}<td>{{ r["stratum_" ~ st.name] or "—" }}</td>{% endif %}{% endfor %}
+    {% if bt.strata | length > 1 %}<td>{{ r.p_value_text or "" }}</td>{% endif %}</tr>
+  {% endif %}
+  {% endfor %}
+{% endcall %}
+{% if bt.note %}<p class="meta">{{ bt.note }}</p>{% endif %}
+{% endif %}
 
 {% elif s.key == "quality" %}
 <p>校验结论：{{ s.data.status }}（阻塞 {{ s.data.blockers }} 项，警告 {{ s.data.warnings }} 项）。</p>
@@ -159,6 +179,7 @@
       {% if k not in ns.names %}{% set ns.names = ns.names + [k] %}{% endif %}
     {% endfor %}{% endfor %}
     {% for name in ns.names %}<th>{{ name }}</th>{% endfor %}
+    {% if s.data.has_pvalues %}<th>p 值(vs 最佳)</th>{% endif %}
   </tr>
   {% for row in s.data.table %}
   <tr><td>{{ row.model_key }}</td><td>{{ row.status }}</td>
@@ -166,9 +187,58 @@
       {% set cell = (row.metrics or {}).get(name) %}
       <td>{% if cell %}{{ '%.4f±%.4f' | format(cell.mean, cell.std) }}{% else %}—{% endif %}</td>
     {% endfor %}
+    {% if s.data.has_pvalues %}<td>{{ row.p_value_text or "—" }}</td>{% endif %}
   </tr>
   {% endfor %}
 {% endcall %}
+{% if s.data.significance_note %}<p class="meta">{{ s.data.significance_note | replace("**", "") }}</p>{% endif %}
+{% if s.data.calibration %}
+{% set cal = s.data.calibration %}
+{% if cal.hosmer_lemeshow and cal.hosmer_lemeshow.statistic is not none %}
+<p>校准度检验（推荐模型 {{ cal.model_key }}，基于交叉验证 OOF 概率）：{{ cal.hosmer_lemeshow.conclusion }}</p>
+{% endif %}
+{% if cal.optimal_threshold and cal.optimal_threshold.threshold is not none %}
+<p>{{ cal.optimal_threshold.interpretation }}</p>
+{% endif %}
+{% endif %}
+{% if s.data.diagnostics %}
+{% set d = s.data.diagnostics %}
+<p><strong>回归诊断</strong>（推荐模型 {{ d.model_key }}，基于交叉验证 OOF 残差与预处理特征空间）：</p>
+{% if d.coefficients %}
+{% call tbl("OLS 回归系数（全量数据）") %}
+  <tr><th>项</th><th>系数 β</th><th>95% CI</th><th>p 值</th></tr>
+  {% for c in d.coefficients %}
+  <tr><td>{{ c.term }}</td><td>{{ '%.4f' | format(c.coef) }}</td>
+      <td>[{{ '%.4f' | format(c.ci_lower) }}, {{ '%.4f' | format(c.ci_upper) }}]</td>
+      <td>{{ '%.3g' | format(c.p_value) }}</td></tr>
+  {% endfor %}
+{% endcall %}
+{% endif %}
+{% call tbl("回归假设诊断检验") %}
+  <tr><th>检验</th><th>统计量</th><th>p 值</th><th>结论</th></tr>
+  {% if d.shapiro and d.shapiro.statistic is not none %}
+  <tr><td>残差正态性（{{ d.shapiro.test_name }}）</td><td>{{ '%.4f' | format(d.shapiro.statistic) }}</td>
+      <td>{{ '%.3g' | format(d.shapiro.p_value) }}</td><td>{{ d.shapiro.conclusion }}</td></tr>
+  {% endif %}
+  {% if d.breusch_pagan and d.breusch_pagan.statistic is not none %}
+  <tr><td>同方差性（Breusch-Pagan）</td><td>{{ '%.4f' | format(d.breusch_pagan.statistic) }}</td>
+      <td>{{ '%.3g' | format(d.breusch_pagan.p_value) }}</td><td>{{ d.breusch_pagan.conclusion }}</td></tr>
+  {% endif %}
+  {% if d.durbin_watson and d.durbin_watson.statistic is not none %}
+  <tr><td>自相关（Durbin-Watson）</td><td>{{ '%.3f' | format(d.durbin_watson.statistic) }}</td>
+      <td>—</td><td>{{ d.durbin_watson.conclusion }}</td></tr>
+  {% endif %}
+{% endcall %}
+{% if d.vif and d.vif.vif_values %}
+{% call tbl("多重共线性（VIF）") %}
+  <tr><th>特征</th><th>VIF</th></tr>
+  {% for name, v in d.vif.vif_values.items() %}
+  <tr><td>{{ name }}</td><td>{{ '%.2f' | format(v) if v is not none else "∞" }}</td></tr>
+  {% endfor %}
+{% endcall %}
+{% if d.vif.conclusion %}<p class="meta">{{ d.vif.conclusion }}</p>{% endif %}
+{% endif %}
+{% endif %}
 {% for c in s.data.charts %}
   {% if c.image_b64 %}<img class="chart" src="data:image/png;base64,{{ c.image_b64 }}" alt="{{ c.title }}"/>
   {% else %}<p class="na">[图表] {{ c.title }}</p>{% endif %}

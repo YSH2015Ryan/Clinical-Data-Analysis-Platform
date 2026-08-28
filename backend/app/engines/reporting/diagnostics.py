@@ -8,7 +8,6 @@ from typing import Any
 
 import numpy as np
 from scipy import stats
-from scipy.stats import norm
 
 
 def shapiro_wilk_test(residuals: np.ndarray) -> dict[str, Any]:
@@ -261,11 +260,50 @@ def durbin_watson_test(residuals: np.ndarray) -> dict[str, Any]:
     }
 
 
+def ols_coefficient_table(
+    X: np.ndarray[Any, Any],
+    y: np.ndarray[Any, Any],
+    feature_names: list[str] | None = None,
+) -> list[dict[str, Any]] | None:
+    """OLS 系数表（β、95% CI、p 值；statsmodels，全量数据 + 预处理特征空间）。
+
+    供回归报告解读各特征的独立贡献；样本量不足（n < p + 3）或拟合失败 → None。
+    """
+    import statsmodels.api as sm
+
+    X = np.asarray(X, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if X.ndim != 2 or y.ndim != 1 or X.shape[0] != y.shape[0]:
+        return None
+    n_features = X.shape[1]
+    if feature_names is None:
+        feature_names = [f"X{i + 1}" for i in range(n_features)]
+    mask = np.isfinite(y) & np.all(np.isfinite(X), axis=1)
+    if int(mask.sum()) < n_features + 3:
+        return None
+    try:
+        X_const = sm.add_constant(X[mask], has_constant="add")
+        model = sm.OLS(y[mask], X_const).fit()
+    except Exception:
+        return None
+    ci = model.conf_int()
+    rows = []
+    for i, name in enumerate(["(截距)", *feature_names]):
+        rows.append(
+            {
+                "term": str(name),
+                "coef": float(model.params[i]),
+                "ci_lower": float(ci[i, 0]),
+                "ci_upper": float(ci[i, 1]),
+                "p_value": float(model.pvalues[i]),
+            }
+        )
+    return rows
+
+
 def vif_analysis(X: np.ndarray, feature_names: list[str] | None = None) -> dict[str, Any]:
     """
     方差膨胀因子 (VIF) 分析
-    
-    用于检测多重共线性。
     
     Args:
         X: 自变量矩阵 (n_samples, n_features)

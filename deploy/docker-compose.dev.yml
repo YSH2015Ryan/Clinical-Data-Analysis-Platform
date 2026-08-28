@@ -41,6 +41,7 @@ services:
       - ../backend/alembic:/app/alembic
       - ../backend/alembic.ini:/app/alembic.ini
       - ../backend/tests:/app/tests # 容器内跑 pytest(CLAUDE.md:本机 py3.9 不跑后端)
+      - ../backend/pyproject.toml:/app/pyproject.toml # lint/mypy 配置随源码生效(镜像内为构建时快照)
     ports:
       - "8000:8000" # API(前端 vite proxy 目标)
       - "5678:5678" # debugpy attach

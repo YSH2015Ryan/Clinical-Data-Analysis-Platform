@@ -132,6 +132,9 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
     quality = payload.get("quality_report")
     steps = payload.get("preprocess_steps")
     table = payload.get("table")
+    baseline_table = payload.get("baseline_table")
+    diagnostics = payload.get("diagnostics")
+    calibration = payload.get("calibration")
 
     # 图题（docs/10 §2.1）：全文统一编号（第 5 章先于第 6 章渲染），并注入说明文案
     for i, chart in enumerate([*perf_charts, *explain_charts], start=1):
@@ -142,6 +145,22 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
     top1 = (recommendation.get("top") or [None])[0]
 
     statements = _interpretation_statements(explain_charts)
+    # T6.3：回归诊断 / 分类校准结论进入临床解读（真实检验输出的结论文本）
+    if diagnostics:
+        paragraph = str(diagnostics.get("paragraph") or "").replace("**", "")
+        for chunk in paragraph.split("\n\n"):
+            if chunk and chunk != "模型诊断":
+                statements.append(chunk)
+        vif = diagnostics.get("vif") or {}
+        if vif.get("conclusion"):
+            statements.append(vif["conclusion"])
+    if calibration:
+        hl = calibration.get("hosmer_lemeshow") or {}
+        if hl.get("conclusion"):
+            statements.append(hl["conclusion"])
+        threshold = calibration.get("optimal_threshold") or {}
+        if threshold.get("interpretation"):
+            statements.append(threshold["interpretation"])
 
     conclusion_text = None
     if comparison and top1:
@@ -160,6 +179,8 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 **dict(target_summary or {}),
                 # Table 1 变量概况（真实列画像；docs/10 §2 数据概况）
                 "columns": (quality or {}).get("column_profiles") or [],
+                # T6.3：基线特征表（分层 + 组间差异检验）
+                "baseline_table": baseline_table,
             },
         ),
         _section(
@@ -187,7 +208,16 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
         _section(
             "performance",
             comparison is not None and table is not None,
-            {"table": table or [], "charts": perf_charts},
+            {
+                "table": table or [],
+                "charts": perf_charts,
+                # T6.4：p 值列存在性（模板据此决定是否渲染 p 值列）
+                "has_pvalues": any(r.get("p_value_text") for r in (table or [])),
+                "significance_note": payload.get("significance_note"),
+                # T6.3：回归诊断 / 分类校准（不适用任务类型 → None → 模板不渲染）
+                "diagnostics": diagnostics,
+                "calibration": calibration,
+            },
         ),
         _section(
             "comparison",

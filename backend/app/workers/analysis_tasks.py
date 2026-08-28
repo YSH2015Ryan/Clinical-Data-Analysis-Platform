@@ -111,6 +111,13 @@ def _aggregate_folds(folds: list[dict[str, float]]) -> dict[str, Any]:
     return out
 
 
+def _oof_frame(oof: np.ndarray[Any, Any]) -> pd.DataFrame:
+    """OOF 预测 → parquet 用 DataFrame：1D → 单列 oof；2D（多分类概率）→ oof_0..oof_k。"""
+    if oof.ndim == 1:
+        return pd.DataFrame({"oof": oof})
+    return pd.DataFrame({f"oof_{i}": oof[:, i] for i in range(oof.shape[1])})
+
+
 @celery_app.task(name="app.workers.analysis_tasks.preprocess_run")
 def preprocess_run(run_id: str) -> None:
     factory = get_sync_session_factory()
@@ -248,6 +255,8 @@ def run_model(run_id: str, model_key: str) -> None:
             full.fit(features, y, params)
             if oof is not None and not np.isnan(oof).any():
                 artifacts = full.predict_artifacts_from_predictions(oof, y)
+                # T6.3：OOF 持久化（报告回归诊断/校准检验的数据源；幂等覆盖）
+                _put_df(storage, f"{base}/oof_{model_key}.parquet", _oof_frame(oof))
             else:
                 artifacts = full.predict_artifacts(features, y)
             row.explainability = full.explain(features)

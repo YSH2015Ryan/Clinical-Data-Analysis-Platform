@@ -44,18 +44,21 @@
   - 置信度 <0.6 的判定降级为候选列表，交由用户确认（detect-task API 已有 candidates 机制，前端需展示）。
 - **DoD**:构造"含 0/1 标志列+连续结局"的回归数据集，识别结果为 regression;低置信度场景返回 candidates 而非单一结论；补对应失败测试先行。
 
-### T6.3 回归/报告三模块接线
+### T6.3 回归/报告三模块接线 ✅(2026-08-28 完成)
 
 - **改动**:
-  - `engines/reporting/context.py` + `workers/report_tasks.py`：回归任务报告装配 Table 1 基线表、系数/效应量表（β、95%CI、p)、诊断四图（残差/Q-Q/VIF/影响点）;分类/生存任务同步接入 baseline_table。
-  - 模板 `clinical_report_zh.html.j2` 增加对应章节。
-  - "临床解读"段落（`context.py:60-76`）改为从 effect_size 结果生成。
+  - `engines/reporting/context.py` + `workers/report_tasks.py`：回归任务报告装配 Table 1 基线表、OLS 系数表（β、95%CI、p)、诊断（Shapiro/BP/DW/VIF，基于 OOF 残差）;分类/生存任务同步接入 baseline_table；分类另接入 Hosmer-Lemeshow 校准 + Youden 最优阈值。
+  - `workers/analysis_tasks.py`:OOF 预测持久化 `runs/{id}/oof_{model}.parquet`（诊断/校准数据源）。
+  - 模板 `clinical_report_zh.html.j2` 增加基线表/系数表/诊断检验/VIF 块。
+  - "临床解读"段落（`context.py`）追加诊断与校准的真实检验结论。
 - **DoD**:回归任务报告至少含 基线表+效应量表+诊断图+预测散点；所有数字来自真实计算（红线8);PDF/HTML 双端渲染正常。
+- **落地说明**：诊断四图中的残差/预测散点图已由 comparison charts（基于 OOF 产物）覆盖；Q-Q/影响点图并入后续 T6.11 期刊结构报告统一处理。
 
-### T6.4 统计显著性进性能表
+### T6.4 统计显著性进性能表 ✅(2026-08-28 完成)
 
-- **改动**:报告性能表接入 `comparison/statistics.py` 的 `add_pvalues_to_performance_table`(Friedman + 成对 Wilcoxon)；差异不显著时明确标注。
+- **改动**:报告性能表接入 `comparison/statistics.py` 的 `add_pvalues_to_performance_table`（折级配对 t 检验）；性能表按 ranking 排序，首行标"参考"，表下附方法学说明（`add_statistical_significance_note`)。
 - **DoD**：报告性能表含 p 值列；推荐理由区分"显著优于"与"数值略高但差异不显著"。
+- **遗留**:推荐理由文案区分显著性（需 ranking 引擎感知 p 值）并入 T6.11 一并处理。
 
 ### T6.5 训练性能与失败治理
 

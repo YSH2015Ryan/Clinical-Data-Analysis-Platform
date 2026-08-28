@@ -15,9 +15,23 @@ import pandas as pd
 from sqlalchemy import select
 
 from app.core.logging import get_logger
+from app.engines.comparison.statistics import (
+    add_pvalues_to_performance_table,
+    add_statistical_significance_note,
+)
+from app.engines.reporting.baseline_table import generate_baseline_table
 from app.engines.reporting.chart_png import chart_to_b64
 from app.engines.reporting.context import build_report_context
+from app.engines.reporting.diagnostics import (
+    breusch_pagan_test,
+    durbin_watson_test,
+    generate_diagnostic_paragraph,
+    ols_coefficient_table,
+    shapiro_wilk_test,
+    vif_analysis,
+)
 from app.engines.reporting.docx_export import context_to_docx
+from app.engines.reporting.effect_size import compute_optimal_threshold, hosmer_lemeshow_test
 from app.engines.reporting.markdown_export import html_to_markdown
 from app.engines.reporting.pdf import html_to_pdf
 from app.engines.reporting.render import TEMPLATE_KEY, TEMPLATE_VERSION, render_html
@@ -105,6 +119,127 @@ def _target_summary(storage: Any, run_id: uuid.UUID, task_type: str) -> dict[str
     return summary
 
 
+def _enhanced_table(
+    results: list[ModelResult], comparison: Comparison | None, task_type: str
+) -> list[dict[str, Any]]:
+    """性能表（T6.4）：按 ranking 排序 + 与最佳模型配对检验 p 值列。
+
+    失败/无指标行排在末尾，不参与 p 值计算；数据源为 ModelResult.metrics
+    的折级数据（与训练落库同源，不重新计算指标）。
+    """
+    table = [
+        {
+            "model_key": r.model_key,
+            "status": r.status,
+            "metrics": r.metrics,
+            "duration_ms": r.duration_ms,
+        }
+        for r in results
+    ]
+    if comparison is None:
+        return table
+    ranking = [str(k) for k in (comparison.ranking or [])]
+    order = {key: i for i, key in enumerate(ranking)}
+    table.sort(key=lambda r: order.get(str(r["model_key"]), len(order)))
+    n_success = sum(1 for r in table if r["status"] == "SUCCESS" and r["metrics"])
+    succeeded = table[:n_success]
+    enhanced = add_pvalues_to_performance_table(succeeded, task_type, {"rows": succeeded})
+    return [*enhanced, *table[n_success:]]
+
+
+def _baseline_table_payload(storage: Any, run: AnalysisRun) -> dict[str, Any] | None:
+    """基线特征表（T6.3，Table 1）：原始特征 + 目标分层（分类按 label、生存按 event）。
+
+    真实列级统计 + 组间差异检验；任何异常 → None（报告降级为不适用，不阻断）。
+    """
+    raw = _read_parquet(storage, f"runs/{run.id}/raw_features.parquet")
+    target = _read_parquet(storage, f"runs/{run.id}/target.parquet")
+    if raw is None or target is None:
+        return None
+    df = raw.copy()
+    stratify_by: str | None = None
+    target_cfg = (run.preprocess_config or {}).get("target") or {}
+    if run.task_type == "classification":
+        label_col = str(target_cfg.get("label_col") or "label")
+        if target["label"].nunique() <= 5:
+            df[label_col] = target["label"].to_numpy()
+            stratify_by = label_col
+    elif run.task_type == "survival":
+        event_col = str(target_cfg.get("event_col") or "event")
+        df[event_col] = target["event"].to_numpy()
+        stratify_by = event_col
+    try:
+        table = generate_baseline_table(
+            df, stratify_by=stratify_by, test_difference=stratify_by is not None
+        )
+    except Exception as exc:
+        logger.error("baseline_table_failed", run_id=str(run.id), error=str(exc))
+        return None
+    return table if table["rows"] else None
+
+
+def _regression_diagnostics(
+    storage: Any, run_id: uuid.UUID, ranking: list[str]
+) -> dict[str, Any] | None:
+    """回归诊断（T6.3）：推荐模型 OOF 残差 → 正态/同方差/自相关/VIF + OLS 系数表。"""
+    if not ranking:
+        return None
+    top_key = ranking[0]
+    oof = _read_parquet(storage, f"runs/{run_id}/oof_{top_key}.parquet")
+    target = _read_parquet(storage, f"runs/{run_id}/target.parquet")
+    if oof is None or target is None or "oof" not in oof.columns:
+        return None
+    y = pd.to_numeric(target["label"], errors="coerce").to_numpy(dtype=float)
+    pred = oof["oof"].to_numpy(dtype=float)
+    if len(y) != len(pred):
+        return None
+    residuals = y - pred
+    features = _read_parquet(storage, f"runs/{run_id}/features.parquet")
+    feature_names = [str(c) for c in features.columns] if features is not None else None
+    X = features.to_numpy(dtype=float) if features is not None else None
+    shapiro = shapiro_wilk_test(residuals)
+    bp = breusch_pagan_test(X, residuals) if X is not None else None
+    return {
+        "model_key": top_key,
+        "shapiro": shapiro,
+        "breusch_pagan": bp,
+        "durbin_watson": durbin_watson_test(residuals),
+        "vif": vif_analysis(X, feature_names) if X is not None and X.shape[1] >= 2 else None,
+        "coefficients": ols_coefficient_table(X, y, feature_names) if X is not None else None,
+        "paragraph": generate_diagnostic_paragraph(shapiro, bp),
+    }
+
+
+def _classification_calibration(
+    storage: Any, run_id: uuid.UUID, ranking: list[str]
+) -> dict[str, Any] | None:
+    """分类校准（T6.3）：推荐模型 OOF 概率 → Hosmer-Lemeshow + Youden 最优阈值。
+
+    y 编码与训练一致（pd.Categorical codes，正类 = code 1）；仅二分类适用。
+    """
+    if not ranking:
+        return None
+    top_key = ranking[0]
+    oof = _read_parquet(storage, f"runs/{run_id}/oof_{top_key}.parquet")
+    target = _read_parquet(storage, f"runs/{run_id}/target.parquet")
+    if oof is None or target is None or target["label"].nunique() != 2:
+        return None
+    if "oof" in oof.columns:
+        p = oof["oof"].to_numpy(dtype=float)
+    elif "oof_1" in oof.columns:
+        p = oof["oof_1"].to_numpy(dtype=float)
+    else:
+        return None
+    y = pd.Categorical(target["label"]).codes.astype(float)
+    if len(y) != len(p):
+        return None
+    return {
+        "model_key": top_key,
+        "hosmer_lemeshow": hosmer_lemeshow_test(y, p),
+        "optimal_threshold": compute_optimal_threshold(y, p, method="youden"),
+    }
+
+
 def assemble_report_payload(db: Any, run: AnalysisRun) -> dict[str, Any]:
     """DB + 存储产物 → ReportContext payload（docs/10 §3 单一事实源）。"""
     version = db.get(DatasetVersion, run.dataset_version_id)
@@ -129,6 +264,7 @@ def assemble_report_payload(db: Any, run: AnalysisRun) -> dict[str, Any]:
     comparison = db.execute(select(Comparison).where(Comparison.run_id == run.id)).scalars().first()
 
     storage = storage_from_settings()
+    ranking = list(comparison.ranking) if comparison and comparison.ranking else []
     return {
         "run": {
             "task_type": run.task_type,
@@ -155,15 +291,20 @@ def assemble_report_payload(db: Any, run: AnalysisRun) -> dict[str, Any]:
         "transform_log": list(version.transform_log) if version else [],
         "preprocess_steps": list(snapshot.steps) if snapshot else None,
         "input_hash": snapshot.input_hash if snapshot else None,
-        "table": [
-            {
-                "model_key": r.model_key,
-                "status": r.status,
-                "metrics": r.metrics,
-                "duration_ms": r.duration_ms,
-            }
-            for r in results
-        ],
+        "table": _enhanced_table(results, comparison, run.task_type),
+        # T6.3：基线特征表 / 回归诊断 / 分类校准（真实计算；缺产物 → None → 不适用）
+        "baseline_table": _baseline_table_payload(storage, run),
+        "diagnostics": (
+            _regression_diagnostics(storage, run.id, ranking)
+            if run.task_type == "regression"
+            else None
+        ),
+        "calibration": (
+            _classification_calibration(storage, run.id, ranking)
+            if run.task_type == "classification"
+            else None
+        ),
+        "significance_note": add_statistical_significance_note() if comparison else None,
         "comparison": (
             {
                 "ranking": comparison.ranking,
