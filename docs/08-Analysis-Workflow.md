@@ -92,6 +92,31 @@ stateDiagram-v2
 - 取消：`celery.control.revoke(terminate=True)` + 状态置 CANCELED。
 - 重试：同快照重新入队；单模型可在结果页单独重跑。
 
+### 3.1 训练性能与失败治理（2026-08-28，T6.5）
+
+**软时间限制分档**：每个 `run_model` 签名携带 `soft_time_limit`，按模型分两档
+（`MODEL_SOFT_TIME_LIMIT_DEFAULT`=480s 轻量 / `MODEL_SOFT_TIME_LIMIT_HEAVY`=840s 重模型：
+rsf/gbs/svm/boosting 家族等）。软限在任务线程内抛 `SoftTimeLimitExceeded` → 立即分类落
+FAILED，不再等 janitor 5 分钟轮询。软限始终钳制在 `MODEL_TIMEOUT_S − 60s` 以内
+（硬超时 SIGKILL 先于软限触发会失去失败分类机会）。
+
+**失败原因分类**（`engines/failure.py`）：裸异常 → `timeout` / `memory` / `convergence`
+/ `data` / `unknown` 五类，每类附用户可读 message + suggestion（按异常类名鸭子识别，
+engines 不 import celery/billiard）；落库格式 `[分类] 说明。建议：…（原始错误：…）`。
+
+**janitor 超时语义**：ModelResult.updated_at（migration 0006，onupdate 心跳）判定僵死
+RUNNING；PREPROCESSING/COMPARING 是单任务阶段按 model_timeout_s 判定；MODELING 按
+run_timeout_s 且有模型仍 RUNNING 时豁免。
+
+**大样本采样保护**：重模型 `max_train_rows` 确定性分层子采样（seed=42）——回归按 y
+分位分箱分层、生存按 event 分层、分类按类别分层；抽样只影响拟合，评估仍在全量验证折。
+LightGBM 树复杂度约束（min_child_samples=100）仅在 ≥1 万行启用，小数据套用会欠拟合。
+
+**消除双训练**：有 OOF 且模型 capabilities 无 feature_importance/shap 时跳过全量 fit，
+artifacts 直接由 OOF 生成；未声明 capabilities 的第三方插件保守保留全量 fit。
+
+**并行度**：boosting 家族 n_jobs/thread_count=-1 吃满可用核（NFR 4C8G）。
+
 ## 4. 进度通知 API 契约
 
 `GET /analysis-runs/{id}/progress`

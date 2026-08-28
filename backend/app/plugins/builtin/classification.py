@@ -126,13 +126,11 @@ class _BaseClassifier:
             try:
                 y_bin = label_binarize(y, classes=labels)
                 n_classes = prob.shape[1]
-                all_fpr: list[float] = []
-                all_tpr: list[float] = []
                 # 在公共 FPR 网格上插值平均（macro 平均 ROC）
                 mean_fpr = np.linspace(0, 1, 100)
-                interp_tprs: list[np.ndarray] = []
+                interp_tprs: list[np.ndarray[Any, Any]] = []
                 for i in range(n_classes):
-                    fpr_i, tpr_i, thr_i = roc_curve(y_bin[:, i], prob[:, i])
+                    fpr_i, tpr_i, _ = roc_curve(y_bin[:, i], prob[:, i])
                     interp_tprs.append(np.interp(mean_fpr, fpr_i, tpr_i))
                 mean_tpr = np.mean(interp_tprs, axis=0)
                 # 宏平均 AUC（等于各类 AUC 的算术均值）
@@ -142,12 +140,12 @@ class _BaseClassifier:
                     "thresholds": [None] * 100,   # 宏平均无对应阈值
                     "macro_avg": True,
                 }
-            except Exception:
+            except Exception:  # noqa: S110
                 pass  # ROC 计算失败不影响混淆矩阵
             # OvR macro 校准曲线（等距 10 桶插值平均）
             try:
                 from sklearn.calibration import calibration_curve as _cal_curve
-                prob_trues: list[np.ndarray] = []
+                prob_trues: list[np.ndarray[Any, Any]] = []
                 mean_pred = np.linspace(0, 1, 10)
                 for i in range(n_classes):
                     pt, pp = _cal_curve(y_bin[:, i], prob[:, i], n_bins=10)
@@ -157,7 +155,7 @@ class _BaseClassifier:
                     "prob_pred": mean_pred.tolist(),
                     "macro_avg": True,
                 }
-            except Exception:
+            except Exception:  # noqa: S110
                 pass  # 校准曲线失败不影响其他产物
             return artifacts
 
@@ -280,6 +278,7 @@ class XgboostAdapter(_BaseClassifier):
         "max_depth": 3,
         "random_state": 42,
         "eval_metric": "logloss",
+        "n_jobs": -1,  # T6.5：吃满可用核
     }
 
     def _build(self, params: dict[str, Any]) -> Any:
@@ -299,22 +298,24 @@ class LightgbmAdapter(_BaseClassifier):
         "feature_importance": True,
         "calibration": True,
     }
-    # 大样本保护（docs/07 §6.1）：
-    # - num_leaves=31、min_child_samples=100 限制树复杂度，防止在大数据上过拟合+超时；
-    # - max_train_rows=200000：超过 20 万行时分层采样，保证单折训练在可接受时间内完成。
+    # 大样本保护（docs/07 §6.1）：max_train_rows=200000，超过 20 万行时分层采样，
+    # 保证单折训练在可接受时间内完成；树复杂度限制（min_child_samples）仅在大样本时启用，
+    # 小数据上该约束会严重欠拟合（AUC≈0.57 回归教训）。
     default_params: ClassVar[dict[str, Any]] = {
         "n_estimators": 100,
         "random_state": 42,
         "verbose": -1,
-        "num_leaves": 31,
-        "min_child_samples": 100,
         "max_train_rows": 200000,
+        "n_jobs": -1,  # T6.5：吃满可用核
     }
 
     def fit(self, X: Any, y: Any, params: dict[str, Any]) -> None:
         p = {**self.default_params, **params}
         max_rows = int(p.pop("max_train_rows"))
         self._X, self._y = _stratified_subsample(X, y, max_rows)
+        if len(self._X) >= 10000:
+            p.setdefault("num_leaves", 31)
+            p.setdefault("min_child_samples", 100)
         self._model = self._build(p)
         self._model.fit(self._X, self._y)
 
@@ -340,6 +341,7 @@ class CatboostAdapter(_BaseClassifier):
         "random_state": 42,
         "verbose": 0,
         "allow_writing_files": False,  # 禁止 catboost_info 落盘
+        "thread_count": -1,  # T6.5：吃满可用核
     }
 
     def _build(self, params: dict[str, Any]) -> Any:

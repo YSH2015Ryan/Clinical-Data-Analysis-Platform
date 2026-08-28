@@ -142,12 +142,13 @@ def _result_row(
         if status == "SUCCESS"
         else None
     )
+    stale = {"created_at": created_at, "updated_at": created_at} if created_at else {}
     return ModelResult(
         run_id=run.id,
         model_key=key,
         status=status,
         metrics=metrics,
-        **({"created_at": created_at} if created_at else {}),
+        **stale,
     )
 
 

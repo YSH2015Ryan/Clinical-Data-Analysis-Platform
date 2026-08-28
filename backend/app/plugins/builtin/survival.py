@@ -16,6 +16,7 @@ from sksurv.ensemble import GradientBoostingSurvivalAnalysis, RandomSurvivalFore
 from sksurv.util import Surv
 
 from app.engines.comparison.metrics import survival_metrics
+from app.plugins.builtin.sampling import stratified_row_subsample
 
 _TIME_COL, _EVENT_COL = "__time__", "__event__"
 
@@ -29,6 +30,19 @@ def _split_y(y: Any) -> tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]:
             np.asarray(arr["time"]).astype(float),
         )
     raise ValueError(f"生存任务 y 须为含 event/time 字段的结构化数组，当前 dtype={arr.dtype}")
+
+
+def _subsample_xy(
+    X: Any, y: Any, max_rows: int
+) -> tuple[pd.DataFrame, np.ndarray[Any, Any], np.ndarray[Any, Any]]:
+    """大样本保护（T6.5）：按 event 分层确定性采样；返回 (X_df, event, time)。"""
+    event, time = _split_y(y)
+    X_df = pd.DataFrame(X)
+    if len(X_df) <= max_rows:
+        return X_df, event, time
+    X_sub, y_sub = stratified_row_subsample(X_df, np.asarray(y), event, max_rows)
+    event, time = _split_y(y_sub)
+    return pd.DataFrame(X_sub), event, time
 
 
 def _time_grid(train_times: np.ndarray[Any, Any], n: int = 50) -> np.ndarray[Any, Any]:
@@ -130,14 +144,18 @@ class CoxphAdapter:
         "feature_importance": True,
         "calibration": False,
     }
-    default_params: ClassVar[dict[str, Any]] = {"penalizer": 0.1}
+    default_params: ClassVar[dict[str, Any]] = {
+        "penalizer": 0.1,
+        "max_train_rows": 100000,  # T6.5：大样本保护
+    }
 
     def fit(self, X: Any, y: Any, params: dict[str, Any]) -> None:
         p = {**self.default_params, **params}
-        event, time = _split_y(y)
+        max_rows = int(p.pop("max_train_rows"))
+        X_df, event, time = _subsample_xy(X, y, max_rows)
         self._train_event, self._train_time = event, time
         self._grid = _time_grid(time)
-        df = pd.DataFrame(X).copy()
+        df = X_df.copy()
         df[_TIME_COL] = time
         df[_EVENT_COL] = event.astype(int)
         self._model = CoxPHFitter(penalizer=p["penalizer"])
@@ -212,14 +230,15 @@ class RsfAdapter:
         "min_samples_split": 10,
         "random_state": 42,
         "n_jobs": -1,  # NFR 4C8G（T8.3 调优）
+        "max_train_rows": 20000,  # T6.5：RSF 复杂度近似 O(n log n × 树数),2 万行封顶采样
     }
 
     def fit(self, X: Any, y: Any, params: dict[str, Any]) -> None:
         p = {**self.default_params, **params}
-        event, time = _split_y(y)
+        max_rows = int(p.pop("max_train_rows"))
+        self._X, event, time = _subsample_xy(X, y, max_rows)
         self._train_event, self._train_time = event, time
         self._grid = _time_grid(time)
-        self._X = pd.DataFrame(X)
         self._y = Surv.from_arrays(event, time)
         self._model = RandomSurvivalForest(**p)
         self._model.fit(self._X, self._y)
@@ -268,14 +287,15 @@ class GbsAdapter:
         "n_estimators": 100,
         "learning_rate": 0.1,
         "random_state": 42,
+        "max_train_rows": 50000,  # T6.5：大样本保护
     }
 
     def fit(self, X: Any, y: Any, params: dict[str, Any]) -> None:
         p = {**self.default_params, **params}
-        event, time = _split_y(y)
+        max_rows = int(p.pop("max_train_rows"))
+        self._X, event, time = _subsample_xy(X, y, max_rows)
         self._train_event, self._train_time = event, time
         self._grid = _time_grid(time)
-        self._X = pd.DataFrame(X)
         self._y = Surv.from_arrays(event, time)
         self._model = GradientBoostingSurvivalAnalysis(**p)
         self._model.fit(self._X, self._y)

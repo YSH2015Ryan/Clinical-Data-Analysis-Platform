@@ -42,8 +42,12 @@ class Settings(BaseSettings):
     auth_rate_window_seconds: int = 300
 
     # 任务
-    model_timeout_s: int = 900   # 单个模型任务的超时（秒），超时后 worker SIGKILL
+    model_timeout_s: int = 900   # 单个模型任务的硬超时（秒），超时后 worker SIGKILL
     run_timeout_s: int = 7200    # 整个分析 run 的超时（秒，默认 2 小时）
+    # T6.5：软时间限制按模型分档（软限内抛异常 → 任务自我标记失败并给出分类原因，
+    # 不再等 janitor 5 分钟轮询）；0 < default ≤ heavy，超过硬超时的部分在使用处钳制。
+    model_soft_time_limit_default: int = 480  # 轻量模型（logreg/lasso/coxph/km 等）
+    model_soft_time_limit_heavy: int = 840    # 重模型（rsf/gbs/svm/boosting 家族等）
     max_upload_mb: int = 200
 
     # 排名权重（docs/09 §4.1）
@@ -82,6 +86,10 @@ class Settings(BaseSettings):
             or self.auth_rate_window_seconds <= 0
         ):
             raise ValueError("上传大小和认证限流参数必须为正数")
+        # 仅校验分档顺序；与 model_timeout_s 的关系在使用处动态钳制
+        # （MODEL_TIMEOUT_S 可能被部署调低，软限随之下探，见 _model_soft_time_limit）。
+        if not (0 < self.model_soft_time_limit_default <= self.model_soft_time_limit_heavy):
+            raise ValueError("软时间限制须满足 0 < default ≤ heavy")
         return self
 
 

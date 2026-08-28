@@ -14,6 +14,19 @@ from sklearn.linear_model import ElasticNet, Lasso
 
 from app.engines.comparison.metrics import regression_metrics
 from app.plugins.builtin.classification import _importances_dict
+from app.plugins.builtin.sampling import regression_strata, stratified_row_subsample
+
+
+def _subsampled_fit(adapter: Any, X: Any, y: Any, params: dict[str, Any]) -> None:
+    """大样本保护（T6.5，对齐分类插件）：连续 y 分位分箱分层采样后拟合。"""
+    p = {**adapter.default_params, **params}
+    max_rows = int(p.pop("max_train_rows"))
+    y_arr = np.asarray(y, dtype=float)
+    adapter._X, adapter._y = stratified_row_subsample(
+        X, y_arr, regression_strata(y_arr), max_rows
+    )
+    adapter._model = adapter._build(p)
+    adapter._model.fit(adapter._X, adapter._y)
 
 
 class _BaseRegressor:
@@ -128,10 +141,14 @@ class RfRegressorAdapter(_BaseRegressor):
         "n_estimators": 100,
         "random_state": 42,
         "n_jobs": -1,  # NFR 4C8G（T8.3 调优）
+        "max_train_rows": 100000,  # T6.5：森林内存随行数线性增长,10 万行封顶采样
     }
 
     def _build(self, params: dict[str, Any]) -> Any:
         return RandomForestRegressor(**params)
+
+    def fit(self, X: Any, y: Any, params: dict[str, Any]) -> None:
+        _subsampled_fit(self, X, y, params)
 
     # sklearn 森林：SHAP Python 慢路径不可行 → 内置重要性（docs/07 §6.1）；继承基类 explain
 
@@ -148,12 +165,17 @@ class XgboostRegressorAdapter(_BaseRegressor):
         "n_estimators": 100,
         "max_depth": 3,
         "random_state": 42,
+        "n_jobs": -1,  # T6.5：吃满可用核
+        "max_train_rows": 200000,  # T6.5：大样本保护
     }
 
     def _build(self, params: dict[str, Any]) -> Any:
         from xgboost import XGBRegressor
 
         return XGBRegressor(**params)
+
+    def fit(self, X: Any, y: Any, params: dict[str, Any]) -> None:
+        _subsampled_fit(self, X, y, params)
 
     def explain(self, X_val: Any) -> dict[str, Any] | None:
         return self._explain_shap_or_builtin(X_val)

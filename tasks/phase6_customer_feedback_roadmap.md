@@ -60,7 +60,7 @@
 - **DoD**：报告性能表含 p 值列；推荐理由区分"显著优于"与"数值略高但差异不显著"。
 - **遗留**:推荐理由文案区分显著性（需 ranking 引擎感知 p 值）并入 T6.11 一并处理。
 
-### T6.5 训练性能与失败治理
+### T6.5 训练性能与失败治理 ✅(2026-08-28 完成)
 
 - **改动** `workers/analysis_tasks.py` 及插件:
   - Celery `soft_time_limit` 按模型分档（替代仅靠 janitor 5 分钟轮询）。
@@ -69,6 +69,15 @@
   - `n_jobs=-1` 推广到所有支持的模型。
   - 失败原因分类化：裸异常（现 2000 字符截断）→ 分类（内存/超时/数据不适配/收敛失败）+ 用户可读提示 + 建议动作。
 - **DoD**：单模型超时后 1 分钟内标记失败并给出分类原因；10 万行数据集回归任务不 OOM；失败信息用户可直接理解。
+- **落地**:
+  - `engines/failure.py` 五类分类（timeout/memory/convergence/data/unknown）+ 建议文案，类名鸭子识别不依赖 celery；`plugins/builtin/sampling.py` 确定性分层采样（seed=42)。
+  - 软限分档 default=480s/heavy=840s，使用时钳制 ≤ `MODEL_TIMEOUT_S−60s`;`config.py` 仅校验分档顺序（部署可调低硬超时）。
+  - 生存插件 coxph/rsf/gbs 与回归 rf_reg/xgboost_reg 全部 `max_train_rows` 分层子采样；xgboost/lightgbm/catboost 吃满核。
+  - 有 OOF 且无可解释性产物的模型跳过全量 fit（km 类直接由 OOF 生成 artifacts)。
+- **顺带修复**（实施中暴露的存量 bug):
+  - `ModelResult.updated_at` 缺失致 janitor 每次巡检即 AttributeError → 补列 + migration 0006;janitor PREPROCESSING/COMPARING 僵死判定回归 model_timeout_s(f66e668 误改为 run_timeout_s 破坏 T5.9 契约）。
+  - LightGBM `min_child_samples=100` 在小数据严重欠拟合（AUC 0.57)→ 仅 ≥1 万行启用；实体 DateTime 列全部显式 `timezone=True` 对齐 DDL(create_all 测试库与 aware 比较崩溃）。
+- **测试**:`test_analysis_resilience.py` 20 例（分类/分档/签名/采样/跳过/n_jobs);lifecycle+config+adapters+orchestration+report_wiring 共 190+ 例全绿。
 
 ---
 

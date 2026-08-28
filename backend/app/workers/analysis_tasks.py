@@ -23,6 +23,7 @@ from sqlalchemy import delete, select
 
 from app.core.logging import get_logger
 from app.engines import parser
+from app.engines.failure import format_model_failure
 from app.engines.model_registry import ModelRegistry
 from app.engines.pipeline import build_pipeline, iter_cv_splits, run_preprocess
 from app.engines.preprocessing import validate_dsl
@@ -116,6 +117,61 @@ def _oof_frame(oof: np.ndarray[Any, Any]) -> pd.DataFrame:
     if oof.ndim == 1:
         return pd.DataFrame({"oof": oof})
     return pd.DataFrame({f"oof_{i}": oof[:, i] for i in range(oof.shape[1])})
+
+
+# T6.5：软时间限制分档——重模型（近似 O(n log n) 以上或原生迭代慢）给更长软限；
+# 软限内在任务线程抛 SoftTimeLimitExceeded → 立即分类落 FAILED（不再等 janitor 轮询）。
+_HEAVY_MODELS = {
+    "rsf",
+    "gbs",
+    "svm",
+    "catboost",
+    "xgboost",
+    "xgboost_reg",
+    "lightgbm",
+    "deepsurv",
+    "gam",
+    "gee",
+    "dlnm",
+}
+
+
+def _model_soft_time_limit(model_key: str) -> int:
+    """按模型分档的软时间限制（秒）；未知模型走默认档。
+
+    软限须低于硬超时 model_timeout_s（否则 SIGKILL 先于 SoftTimeLimitExceeded，
+    失去失败分类机会）；部署调低 MODEL_TIMEOUT_S 时随之下探，至少留 60s 余量。
+    """
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    tier = (
+        settings.model_soft_time_limit_heavy
+        if model_key in _HEAVY_MODELS
+        else settings.model_soft_time_limit_default
+    )
+    return int(min(tier, max(60, settings.model_timeout_s - 60)))
+
+
+def _sign_model_tasks(run_id: str, model_keys: list[str]) -> list[Any]:
+    """run_model 签名列表（携带按模型分档的 soft_time_limit 选项）。"""
+    return [
+        run_model.si(run_id, key).set(soft_time_limit=_model_soft_time_limit(key))
+        for key in model_keys
+    ]
+
+
+def _wants_explain(proto: Any) -> bool:
+    """全量 fit 是否必要（T6.5 消除双训练）：仅当模型产出可解释性内容时才需要。
+
+    无 feature_importance/shap 能力且已有 OOF 时,artifacts 直接由 OOF 生成,
+    跳过 K 折之外的全量 fit（如未来无解释产物的轻量模型;km 无 OOF 不受影响）。
+    未声明 capabilities 的第三方插件保持保守（仍全量 fit,不丢 explainability）。
+    """
+    caps = getattr(proto, "capabilities", None)
+    if caps is None:
+        return True
+    return bool(caps.get("feature_importance") or caps.get("shap"))
 
 
 @celery_app.task(name="app.workers.analysis_tasks.preprocess_run")
@@ -249,17 +305,26 @@ def run_model(run_id: str, model_key: str) -> None:
                             )
                         oof[val_idx] = prediction
 
-            # 全量 fit：用 preprocess 阶段固化的特征矩阵；explain/artifacts 供报告引用
-            features = _get_df(storage, key_from_uri(_feature_uri(db, run.id)))
-            full = type(proto)()
-            full.fit(features, y, params)
-            if oof is not None and not np.isnan(oof).any():
-                artifacts = full.predict_artifacts_from_predictions(oof, y)
-                # T6.3：OOF 持久化（报告回归诊断/校准检验的数据源；幂等覆盖）
+            # 全量 fit：用 preprocess 阶段固化的特征矩阵；explain/artifacts 供报告引用。
+            # T6.5：有 OOF 且模型无可解释性产物时跳过全量 fit（消除 K 折 + 全量双训练）。
+            have_oof = oof is not None and not np.isnan(oof).any()
+            if have_oof and not _wants_explain(proto):
+                assert oof is not None  # mypy: have_oof 已含非 None 判定
+                artifacts = type(proto)().predict_artifacts_from_predictions(oof, y)
                 _put_df(storage, f"{base}/oof_{model_key}.parquet", _oof_frame(oof))
+                row.explainability = None
             else:
-                artifacts = full.predict_artifacts(features, y)
-            row.explainability = full.explain(features)
+                features = _get_df(storage, key_from_uri(_feature_uri(db, run.id)))
+                full = type(proto)()
+                full.fit(features, y, params)
+                if have_oof:
+                    assert oof is not None  # mypy: have_oof 已含非 None 判定
+                    artifacts = full.predict_artifacts_from_predictions(oof, y)
+                    # T6.3：OOF 持久化（报告回归诊断/校准检验的数据源；幂等覆盖）
+                    _put_df(storage, f"{base}/oof_{model_key}.parquet", _oof_frame(oof))
+                else:
+                    artifacts = full.predict_artifacts(features, y)
+                row.explainability = full.explain(features)
 
             row.status = "SUCCESS"
             row.metrics = _aggregate_folds(folds)
@@ -271,7 +336,8 @@ def run_model(run_id: str, model_key: str) -> None:
         except Exception as exc:
             db.rollback()
             row.status = "FAILED"
-            row.error = str(exc)[:2000]
+            # T6.5：失败原因分类化（超时/内存/未收敛/数据不适配）+ 用户可读建议
+            row.error = format_model_failure(exc)[:2000]
             row.duration_ms = int((time.perf_counter() - started) * 1000)
             db.commit()
             logger.error("model_failed", run_id=run_id, model_key=model_key, error=str(exc))
@@ -380,7 +446,7 @@ def dispatch_analysis_run(run_id: str, model_keys: list[str]) -> str:
     workflow = chain(
         preprocess_run.si(run_id),
         chord(
-            (run_model.si(run_id, key) for key in model_keys),
+            _sign_model_tasks(run_id, model_keys),
             compare_run.s(run_id),
         ),
     )
@@ -390,7 +456,10 @@ def dispatch_analysis_run(run_id: str, model_keys: list[str]) -> str:
 
 def dispatch_model_rerun(run_id: str, model_key: str) -> str:
     """单模型重跑：chain(run_model → compare_run) 入队（08 §3 重跑后重算比较）。"""
-    workflow = chain(run_model.si(run_id, model_key), compare_run.s(run_id))
+    workflow = chain(
+        run_model.si(run_id, model_key).set(soft_time_limit=_model_soft_time_limit(model_key)),
+        compare_run.s(run_id),
+    )
     result = workflow.apply_async()
     return str(result.id)
 
@@ -404,10 +473,10 @@ def janitor_sweep() -> dict[str, int]:
     - 陈旧 PREPROCESSING / COMPARING / MODELING（无终态）→ FAILED。
 
     超时语义：
-    - model_timeout_s：单个 ModelResult 行从开始 RUNNING 到现在超过此值即视为僵死；
-    - run_timeout_s：整个 AnalysisRun 从创建到现在超过此值且仍无终态才视为超时；
-      MODELING 状态额外豁免：只要还有模型仍在 RUNNING（未被上面判定为僵死），
-      就继续等待，不提前杀掉 run。
+    - model_timeout_s：单个 ModelResult 行从开始 RUNNING（updated_at）到现在超过此值即视为僵死；
+      PREPROCESSING / COMPARING 是单任务阶段，同样按此值判定；
+    - run_timeout_s：MODELING 阶段（多模型并行）从创建到现在超过此值且仍有模型未终态才视为超时；
+      只要还有模型仍在 RUNNING（未被上面判定为僵死），就继续等待，不提前杀掉 run。
     """
     from datetime import UTC, datetime, timedelta
 
@@ -446,8 +515,9 @@ def janitor_sweep() -> dict[str, int]:
         for run in active_runs:
             run_stale = bool(run.created_at < run_cutoff)
             if run.status != "MODELING":
-                # PREPROCESSING / COMPARING：超过 run_timeout_s 才算超时
-                if run_stale:
+                # PREPROCESSING / COMPARING 是单任务阶段，按单任务超时（model_timeout_s）
+                # 判定僵死（T5.9 契约；run_timeout_s 是整个 run 的预算，不适用于此）。
+                if bool(run.created_at < model_cutoff):
                     run.status = "FAILED"
                     run.error = "janitor：运行超时"
                     run.finished_at = func_now(db)
