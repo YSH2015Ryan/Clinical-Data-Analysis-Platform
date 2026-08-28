@@ -162,6 +162,10 @@ export interface Issue {
   detail?: string | null;
   suggestion: string;
   affected_rows: number | null;
+  /** T6.1:受影响行号(0 基,升序,≤20;Excel 行号 = 值 + 2) */
+  row_indices?: number[] | null;
+  /** T6.1:富文案修复指引(原因+多种修法+一键操作),多行纯文本 */
+  guidance?: string | null;
 }
 
 export interface QualityReport {
@@ -280,7 +284,18 @@ export async function getQualityReport(id: string): Promise<QualityReport> {
 // ---- Quick Fix（docs/14 §3 POST /datasets/{id}/quick-fix） ----
 
 export interface QuickFixAction {
-  type: "drop_column" | "drop_duplicates" | "to_missing" | "remap_semantic";
+  type:
+    | "drop_column"
+    | "drop_duplicates"
+    | "to_missing"
+    | "remap_semantic"
+    // T6.8 扩展
+    | "rename_column"
+    | "pivot_long_to_wide"
+    | "winsorize_outliers"
+    | "impute_missing"
+    | "drop_rows_with_pattern"
+    | "normalize_units";
   column?: string;
   params?: Record<string, unknown>;
 }

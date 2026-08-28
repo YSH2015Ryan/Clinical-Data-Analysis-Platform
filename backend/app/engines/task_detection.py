@@ -77,6 +77,61 @@ def _sorted(cands: list[Candidate]) -> list[Candidate]:
     return sorted(cands, key=lambda c: c.confidence, reverse=True)
 
 
+# T6.2:≥0.6 视为「有语义支撑」的回归候选(Label 词典 0.85+;FollowUp 派生 0.6)。
+# 低于此值的泛猜(纯模式规则 0.5)不得压过有语义支撑的回归候选 ——
+# 修复「无语义 0/1 标志列抢在回归前面」的偏置(tasks/phase6 T6.2)。
+_SEMANTIC_BACKED_MIN_CONF = 0.6
+
+
+def _decide(
+    binary_label_cands: list[Candidate],
+    multiclass_cands: list[Candidate],
+    regression_cands: list[Candidate],
+    candidates: dict[str, list[Candidate]],
+) -> TaskDetection:
+    """分类/回归决策(detect_task 与 detect_task_from_profile 共用,保证逻辑等价)。
+
+    规则(T6.2):二分类/多分类的 top 候选若只是泛猜(conf<0.6 无语义),
+    且存在有语义支撑的回归候选(conf≥0.6),则推荐回归;泛猜列保留在候选中。
+    """
+    sem_reg = _sorted([c for c in regression_cands if c.confidence >= _SEMANTIC_BACKED_MIN_CONF])
+    for cands, kind in ((binary_label_cands, "二分类"), (multiclass_cands, "多分类")):
+        if not cands:
+            continue
+        top = _sorted(cands)[0]
+        if top.confidence < _SEMANTIC_BACKED_MIN_CONF and sem_reg:
+            r = sem_reg[0]
+            return TaskDetection(
+                recommended_task="regression",
+                confidence=r.confidence,
+                reason=(
+                    f"检测到连续结局候选列 {r.column}（{r.reason}）；"
+                    f"列 {top.column}（{top.reason}）无语义命中，更像标志/协变量，已降级为候选"
+                ),
+                candidates=candidates,
+            )
+        return TaskDetection(
+            recommended_task="classification",
+            confidence=top.confidence,
+            reason=f"检测到{kind}结局候选列 {top.column}（{top.reason}）",
+            candidates=candidates,
+        )
+    if regression_cands:
+        top = _sorted(regression_cands)[0]
+        return TaskDetection(
+            recommended_task="regression",
+            confidence=top.confidence,
+            reason=f"检测到连续结局候选列 {top.column}（{top.reason}）",
+            candidates=candidates,
+        )
+    return TaskDetection(
+        recommended_task=None,
+        confidence=0.0,
+        reason="未识别到时间/事件/标签候选列，请手动选择任务类型",
+        candidates=candidates,
+    )
+
+
 def detect_task(df: pd.DataFrame) -> TaskDetection:
     """识别任务类型；无法识别时 recommended_task=None（手动选择回退）。"""
     n = len(df)
@@ -151,39 +206,7 @@ def detect_task(df: pd.DataFrame) -> TaskDetection:
             candidates=candidates,
         )
 
-    if binary_label_cands:
-        top = _sorted(binary_label_cands)[0]
-        return TaskDetection(
-            recommended_task="classification",
-            confidence=top.confidence,
-            reason=f"检测到二分类结局候选列 {top.column}（{top.reason}）",
-            candidates=candidates,
-        )
-
-    if multiclass_cands:
-        top = _sorted(multiclass_cands)[0]
-        return TaskDetection(
-            recommended_task="classification",
-            confidence=top.confidence,
-            reason=f"检测到多分类结局候选列 {top.column}（{top.reason}）",
-            candidates=candidates,
-        )
-
-    if regression_cands:
-        top = _sorted(regression_cands)[0]
-        return TaskDetection(
-            recommended_task="regression",
-            confidence=top.confidence,
-            reason=f"检测到连续结局候选列 {top.column}（{top.reason}）",
-            candidates=candidates,
-        )
-
-    return TaskDetection(
-        recommended_task=None,
-        confidence=0.0,
-        reason="未识别到时间/事件/标签候选列，请手动选择任务类型",
-        candidates=candidates,
-    )
+    return _decide(binary_label_cands, multiclass_cands, regression_cands, candidates)
 
 
 def detect_task_from_profile(column_profile: list[dict[str, Any]]) -> TaskDetection:
@@ -283,33 +306,4 @@ def detect_task_from_profile(column_profile: list[dict[str, Any]]) -> TaskDetect
             reason=f"检测到生存时间列 {t.column}（{t.reason}）与事件列 {e.column}（{e.reason}）",
             candidates=candidates,
         )
-    if binary_label_cands:
-        top = _sorted(binary_label_cands)[0]
-        return TaskDetection(
-            recommended_task="classification",
-            confidence=top.confidence,
-            reason=f"检测到二分类结局候选列 {top.column}（{top.reason}）",
-            candidates=candidates,
-        )
-    if multiclass_cands:
-        top = _sorted(multiclass_cands)[0]
-        return TaskDetection(
-            recommended_task="classification",
-            confidence=top.confidence,
-            reason=f"检测到多分类结局候选列 {top.column}（{top.reason}）",
-            candidates=candidates,
-        )
-    if regression_cands:
-        top = _sorted(regression_cands)[0]
-        return TaskDetection(
-            recommended_task="regression",
-            confidence=top.confidence,
-            reason=f"检测到连续结局候选列 {top.column}（{top.reason}）",
-            candidates=candidates,
-        )
-    return TaskDetection(
-        recommended_task=None,
-        confidence=0.0,
-        reason="未识别到时间/事件/标签候选列，请手动选择任务类型",
-        candidates=candidates,
-    )
+    return _decide(binary_label_cands, multiclass_cands, regression_cands, candidates)

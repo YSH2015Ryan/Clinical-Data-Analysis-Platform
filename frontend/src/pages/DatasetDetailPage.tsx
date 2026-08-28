@@ -3,6 +3,7 @@ import {
   Button,
   Card,
   Descriptions,
+  Modal,
   Popconfirm,
   Select,
   Space,
@@ -81,13 +82,26 @@ const REPORT_LABEL: Record<QualityReport["status"], string> = {
 
 const POLL_MS = 2000;
 
-/** 规则 → 一键修复动作映射（docs/05 §5；可安全自动化的规则，阻塞/警告均开放） */
+/** 规则 → 一键修复动作映射（docs/05 §5；可安全自动化的规则，阻塞/警告均开放）
+ *  T6.8:覆盖高发规则——缺失插补、异常值截尾、高基数删列、药敏行删除 */
 function fixActionFor(issue: Issue): QuickFixAction | null {
   if (issue.rule_id === "RV201" && issue.column)
-    return { type: "drop_column", column: issue.column };
+    return { type: "impute_missing", column: issue.column, params: { strategy: "auto" } };
   if (issue.rule_id === "RV401" && !issue.column) return { type: "drop_duplicates" };
   if (issue.rule_id === "RV301" && issue.column)
     return { type: "to_missing", column: issue.column };
+  if (issue.rule_id === "RV501" && issue.column)
+    return { type: "winsorize_outliers", column: issue.column, params: {} };
+  if (issue.rule_id === "RV804" && issue.column)
+    return { type: "winsorize_outliers", column: issue.column, params: {} };
+  if (issue.rule_id === "RV601" && issue.column)
+    return { type: "drop_column", column: issue.column };
+  if (issue.rule_id === "RV802")
+    return {
+      type: "drop_rows_with_pattern",
+      column: issue.column ?? undefined,
+      params: { pattern: "敏感|耐药|中介" },
+    };
   return null;
 }
 
@@ -97,6 +111,19 @@ const FIX_RISK: Record<QuickFixAction["type"], string> = {
   drop_duplicates: "完全重复的数据行将被删除，仅保留一份；若重复本身是真实记录，会造成样本损失。",
   to_missing: "无法识别的取值将被置为缺失，原始取值在新版本不可恢复。",
   remap_semantic: "该列的语义将被重新标记，影响任务识别与校验结论。",
+  rename_column: "列名将被修改，内容不变。",
+  pivot_long_to_wide: "长表将透视为宽表，同一患者同一项目多条记录取均值。",
+  winsorize_outliers: "超出合理范围的极端值将被截断到边界值，原始取值在新版本不可恢复。",
+  impute_missing: "缺失值将被自动填充（数值列用中位数、分类列用众数），填充值不可逆。",
+  drop_rows_with_pattern: "匹配模式的行将被删除（如药敏判定记录），样本量会减少。",
+  normalize_units: "数值将按换算系数转换并统一单位，原始取值在新版本不可恢复。",
+};
+
+/** 各修复动作的按钮文案 */
+const FIX_LABEL: Partial<Record<QuickFixAction["type"], string>> = {
+  impute_missing: "一键插补",
+  winsorize_outliers: "一键截尾",
+  drop_rows_with_pattern: "一键删除",
 };
 
 /** 无一键修复动作时的原因与出路（docs/05 §5：行内明示为何不能自动修复） */
@@ -107,12 +134,9 @@ const NO_FIX_REASON: Record<string, string> = {
   RV101: "结局数据无法凭空生成：若结局列已存在但未被识别，请在下方「列画像」把该列角色重映射为 Label/Event；若数据本不含结局（如检验长表），请走项目页「数据准备」向导，关联诊断表生成带结局的宽表",
   RV302: "日期格式混乱，系统无法确定哪种写法才是对的：请在源文件中统一日期格式后重新上传",
   RV502: "取值超出临床合理范围，需人工核对是单位错误还是真实极端值，再决定如何处理",
-  RV601: "分类取值过多是数据本身的结构特征：可考虑合并稀有类别，或交由预处理阶段处理",
   RV701: "类别不平衡是数据本身的特征，无法靠修复消除：分析时将自动采用分层交叉验证来缓解",
   RV801: "检验长表需先重塑为宽表才能分析：请走项目页「数据准备」向导",
-  RV802: "药敏判定记录需筛选/重塑：请走项目页「数据准备」向导并勾选排除药敏记录",
   RV803: "同一项目存在多种单位，需人工统一单位口径，系统无法猜测哪个单位正确",
-  RV804: "极端值需人工核对是否录入错误，自动删除可能误伤真实数据",
 };
 
 const NO_FIX_DEFAULT = "该问题需人工判断，暂不支持自动修复：请按「建议」列的指引手动处理";
@@ -130,6 +154,7 @@ function IssueGroup({
   onFix: (action: QuickFixAction) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [guide, setGuide] = useState<Issue | null>(null); // T6.1:富文案修复指引弹窗
   const severity = issues.reduce(
     (top, i) => (SEVERITY_RANK[i.severity] < SEVERITY_RANK[top] ? i.severity : top),
     issues[0].severity,
@@ -168,10 +193,38 @@ function IssueGroup({
             width: 140,
             render: (c?: string) => (c ? <Tag>{c}</Tag> : "—"),
           },
-          { title: "问题", dataIndex: "message" },
+          {
+            title: "问题",
+            dataIndex: "message",
+            render: (msg: string, r) => (
+              <Space size={4} wrap>
+                <span>{msg}</span>
+                {r.row_indices && r.row_indices.length > 0 && (
+                  <Tooltip
+                    title={`影响的行(Excel 行号):${r.row_indices
+                      .map((i) => i + 2)
+                      .join("、")}${(r.affected_rows ?? 0) > r.row_indices.length ? " …(仅列前 20 行)" : ""}`}
+                  >
+                    <Tag color="orange" style={{ cursor: "help" }}>
+                      {r.affected_rows ?? r.row_indices.length} 行
+                    </Tag>
+                  </Tooltip>
+                )}
+              </Space>
+            ),
+          },
           {
             title: "建议",
-            render: (_, r) => r.suggestion || r.detail || "—",
+            render: (_, r) => (
+              <Space direction="vertical" size={0}>
+                <span>{r.suggestion || r.detail || "—"}</span>
+                {r.guidance && (
+                  <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setGuide(r)}>
+                    查看详细修复指引
+                  </Button>
+                )}
+              </Space>
+            ),
           },
           {
             title: "修复方式",
@@ -202,7 +255,7 @@ function IssueGroup({
                   onConfirm={() => void onFix(action)}
                 >
                   <Button size="small" danger={r.severity === "blocker"} loading={fixing}>
-                    一键修复
+                    {FIX_LABEL[action.type] ?? "一键修复"}
                   </Button>
                 </Popconfirm>
               );
@@ -217,9 +270,29 @@ function IssueGroup({
           icon={expanded ? <MinusOutlined /> : <PlusOutlined />}
           onClick={() => setExpanded((v) => !v)}
         >
-          {expanded ? "收起" : `展开全部（共 ${issues.length} 条）`}
+          {expanded ? "收起" : `展开全部(共 ${issues.length} 条)`}
         </Button>
       )}
+      <Modal
+        open={!!guide}
+        title={
+          guide && (
+            <Space>
+              <Typography.Text code>{guide.rule_id}</Typography.Text>
+              <span>详细修复指引{guide.column ? ` — 列「${guide.column}」` : ""}</span>
+            </Space>
+          )
+        }
+        footer={null}
+        onCancel={() => setGuide(null)}
+        width={640}
+      >
+        <Typography.Paragraph
+          style={{ whiteSpace: "pre-wrap", maxHeight: "60vh", overflowY: "auto", marginBottom: 0 }}
+        >
+          {guide?.guidance}
+        </Typography.Paragraph>
+      </Modal>
     </Card>
   );
 }

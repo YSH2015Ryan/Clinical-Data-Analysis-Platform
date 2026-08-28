@@ -26,7 +26,9 @@ npm install
 npm run dev
 ```
 
-访问:http://localhost:5173(前端)/ http://localhost:8000/docs(API)/ http://localhost:9001(MinIO 控制台,devroot/devroot123)。
+访问:http://localhost:5173(前端)/ http://localhost:8000/docs(API)/ http://localhost:9003(MinIO 控制台,devroot/devroot123)。
+
+> 端口说明:dev 栈 MinIO 用 9002/9003、Postgres 5433、Redis 6380,均避让本机可能运行的生产栈(9000/9001)与本地服务。
 
 **何时需要重新 `--build`**：只有改了 `backend/pyproject.toml` 依赖或 Dockerfile 时才需要；日常改 `app/` 下代码靠热重载，秒级生效。
 
@@ -87,7 +89,7 @@ docker compose -f docker-compose.dev.yml down -v
 - **热重载不生效**:compose 里已设 `WATCHFILES_FORCE_POLLING=true`(Docker Desktop 挂载不传 inotify 事件)；若仍不灵，确认改的是 `backend/app/`(已挂载）而非其他目录。
 - **行尾符**：仓库统一 LF;git 配置 `core.autocrlf=true` 即可，挂载进容器后不影响。
 - **性能**:Docker Desktop 建议用 WSL2 后端；仓库放在 Windows 盘挂载 I/O 较慢属正常，大型数据训练在容器内跑、数据走 MinIO 卷，不受影响。
-- **端口冲突**:5433/6380/5678/5679/9000/9001/8000/5173 被占时改 compose 左侧宿主端口。
+- **端口冲突**:5433/6380/5678/5679/9002/9003/8000/5173 被占时改 compose 左侧宿主端口。
 
 ## 8. 与服务器端同事的边界
 

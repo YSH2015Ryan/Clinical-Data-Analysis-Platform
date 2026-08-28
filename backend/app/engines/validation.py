@@ -14,6 +14,7 @@ from typing import Any
 import pandas as pd
 
 from app.engines.columns import infer_dtype, recognize_semantic
+from app.engines.validation_messages import get_optimized_suggestion
 
 # ---------- 配置（05 §6：所有阈值集中，项目级可覆盖） ----------
 
@@ -42,6 +43,10 @@ class Issue:
     suggestion: str = ""
     detail: str = ""
     affected_rows: int | None = None
+    # T6.1:受影响行号(0 基,升序,采样式上限 _ROW_INDEX_CAP);非行级规则为 None
+    row_indices: list[int] | None = None
+    # T6.1:富文案修复指引(原因+多种修法+一键操作;validation_messages)
+    guidance: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -52,6 +57,8 @@ class Issue:
             "detail": self.detail,
             "suggestion": self.suggestion,
             "affected_rows": self.affected_rows,
+            "row_indices": self.row_indices,
+            "guidance": self.guidance,
         }
 
 
@@ -83,6 +90,7 @@ def parse_error_issue(encoding_hint: str | None = None) -> Issue:
         "blocker",
         "文件无法解析（编码/格式错误）",
         suggestion=f"检测到编码可能为 {hint}，请转换后重传",
+        guidance=get_optimized_suggestion("RV001", {"encoding_hint": hint}),
     )
 
 
@@ -170,6 +178,153 @@ def _iqr_outliers(s_num: pd.Series, k: float) -> pd.Series:
     if iqr == 0:
         return pd.Series(False, index=s_num.index)
     return (s_num < q1 - k * iqr) | (s_num > q3 + k * iqr)
+
+
+# ---------- T6.1 富文案 + 行号后处理（validation_messages 接线） ----------
+
+_ROW_INDEX_CAP = 20  # row_indices 采样上限（前端展示 Excel 行号 = 索引 + 2）
+
+# RV102 推荐字段清单（创建与富文案重建共用单一来源）
+_RECOMMENDED_FIELDS: tuple[tuple[str, str, str], ...] = (
+    ("Age", "年龄", "可支持按年龄段分层分析（如不同年龄组的风险差异）"),
+    ("Gender", "性别", "可支持按性别分层分析"),
+)
+
+
+def _col_by_name(df: pd.DataFrame, name: str) -> pd.Series | None:
+    """按列名安全取列；重名列（RV003 场景）返回 None 避免歧义。"""
+    if list(df.columns).count(name) != 1:
+        return None
+    return df[name]
+
+
+def _row_indices_for(issue: Issue, df: pd.DataFrame, cfg: ValidationConfig) -> list[int] | None:
+    """行级规则反推受影响行号（0 基，升序，≤_ROW_INDEX_CAP）；非行级规则返回 None。"""
+    mask: pd.Series | None = None
+    if issue.rule_id == "RV401" and issue.column is None:
+        mask = df.duplicated(keep="first")
+    elif issue.column is not None:
+        s = _col_by_name(df, issue.column)
+        if s is None:
+            return None
+        s_num = pd.to_numeric(s, errors="coerce")
+        if issue.rule_id == "RV201":
+            mask = s.isna()
+        elif issue.rule_id == "RV301":
+            mask = s_num.isna() & s.notna()
+        elif issue.rule_id == "RV401":
+            mask = s.notna() & s.duplicated(keep="first")
+        elif issue.rule_id == "RV501":
+            mask = _iqr_outliers(s_num, cfg.iqr_k)
+        elif issue.rule_id == "RV502":
+            rng = _match_clinical_range(issue.column)
+            if rng is None and recognize_semantic(issue.column, s).semantic == "Age":
+                rng = (*_AGE_RANGE, "岁")
+            if rng is not None:
+                low, high, _ = rng
+                mask = (s_num < low) | (s_num > high)
+        elif issue.rule_id == "RV804":
+            mask = s_num.abs() > cfg.extreme_abs
+        elif issue.rule_id == "RV802":
+            mask = s.astype(str).str.contains(_SUS_VALUE_RE) & s.notna()
+    if mask is None:
+        return None
+    idx = [int(i) for i in df.index[mask.fillna(False)]]
+    return sorted(idx)[:_ROW_INDEX_CAP] or None
+
+
+def _guidance_for(
+    issue: Issue,
+    df: pd.DataFrame,
+    n_rows: int,
+    extra: dict[str, Any],
+) -> str:
+    """按 rule_id 生成富文案；validation.py 规则号 → validation_messages 生成器映射。"""
+    rid = issue.rule_id
+    col = issue.column or ""
+    ctx: dict[str, Any]
+    if rid == "RV101":
+        return get_optimized_suggestion("RV701")  # 缺目标变量
+    if rid == "RV102":
+        field_name = issue.message.rsplit("：", 1)[-1]
+        for name, zh, advice in _RECOMMENDED_FIELDS:
+            if name == field_name:
+                return get_optimized_suggestion(
+                    "RV702", {"field_name": name, "field_zh": zh, "advice": advice}
+                )
+        return get_optimized_suggestion("RV702", {"field_name": field_name})
+    if rid == "RV302":
+        return get_optimized_suggestion("RV401", {"column": col})  # 日期格式
+    if rid == "RV401":
+        if issue.column is None:
+            return get_optimized_suggestion("RV704", {"duplicate_count": issue.affected_rows or 0})
+        return get_optimized_suggestion(
+            "RV705", {"suspect_count": issue.affected_rows or 0, "id_column": col}
+        )
+    if rid == "RV701":
+        ratio = (issue.affected_rows or 0) / n_rows if n_rows else 0.0
+        return get_optimized_suggestion("RV703", {"minority_ratio": ratio})
+    if rid == "RV003":
+        return get_optimized_suggestion("RV003", {"duplicates": extra.get("dup_names", [])})
+    if rid == "RV201":
+        ctx = {
+            "column": col,
+            "missing_rate": (issue.affected_rows or 0) / n_rows if n_rows else 0.0,
+            "severity": issue.severity,
+        }
+    elif rid == "RV301":
+        ctx = {"column": col, "invalid_count": issue.affected_rows or 0}
+    elif rid == "RV501":
+        ctx = {"column": col, "outlier_count": issue.affected_rows or 0}
+    elif rid == "RV502":
+        rng = _match_clinical_range(col)
+        s = _col_by_name(df, col)
+        if rng is None and s is not None and recognize_semantic(col, s).semantic == "Age":
+            rng = (*_AGE_RANGE, "岁")
+        ctx = {
+            "column": col,
+            "unreasonable_count": issue.affected_rows or 0,
+            "expected_range": f"{rng[0]}–{rng[1]} {rng[2]}" if rng else "",
+        }
+        if s is not None:
+            s_num = pd.to_numeric(s, errors="coerce").dropna()
+            if len(s_num):
+                ctx["min_val"], ctx["max_val"] = _native(s_num.min()), _native(s_num.max())
+    elif rid == "RV601":
+        s = _col_by_name(df, col)
+        ctx = {"column": col, "unique_count": int(s.nunique()) if s is not None else 0}
+    elif rid == "RV801":
+        ctx = {
+            "item_column": extra.get("item_col", "检验项目"),
+            "value_column": extra.get("value_col", "结果"),
+        }
+    elif rid == "RV802":
+        ctx = {"sus_column": extra.get("sus_col", col), "sus_count": issue.affected_rows or 0}
+    elif rid == "RV803":
+        ctx = {"examples": extra.get("unit_examples", [])}
+    elif rid == "RV804":
+        s = _col_by_name(df, col)
+        extreme = 0.0
+        if s is not None:
+            s_num = pd.to_numeric(s, errors="coerce").dropna()
+            if len(s_num):
+                extreme = float(max(abs(s_num.min()), abs(s_num.max())))
+        ctx = {"column": col, "extreme": extreme}
+    else:
+        ctx = {}
+    return get_optimized_suggestion(rid, ctx)
+
+
+def _enrich_issues(
+    issues: list[Issue], df: pd.DataFrame, cfg: ValidationConfig, extra: dict[str, Any]
+) -> None:
+    """原地为每条 Issue 补 guidance（富文案）与 row_indices（行号采样）。"""
+    n_rows = len(df)
+    for issue in issues:
+        if not issue.guidance:
+            issue.guidance = _guidance_for(issue, df, n_rows, extra)
+        if issue.row_indices is None:
+            issue.row_indices = _row_indices_for(issue, df, cfg)
 
 
 # ---------- 主入口 ----------
@@ -273,6 +428,7 @@ def validate(
                     "RV802",
                     "warning",
                     "检测到疑似药敏试验记录",
+                    column=str(df.columns[sus_idx]),
                     detail=f"列 {df.columns[sus_idx]} 含 敏感/耐药/中介 判定值 {n_sus} 行",
                     affected_rows=n_sus,
                     suggestion="药敏结果不是检验指标，直接入模会干扰分析；"
@@ -281,6 +437,7 @@ def validate(
             )
 
     # RV803 同一检验项目多种单位
+    unit_examples: list[str] = []
     if n_rows > 0 and item_idx is not None and unit_idx is not None:
         tmp = df.iloc[:, [item_idx, unit_idx]].dropna()
         tmp.columns = pd.Index(["item", "unit"])
@@ -288,6 +445,7 @@ def validate(
         multi = unit_counts[unit_counts > 1]
         if len(multi):
             top = "、".join(f"{k}（{v} 种）" for k, v in multi.head(3).items())
+            unit_examples = [str(k) for k in multi.head(3).index]
             issues.append(
                 Issue(
                     "RV803",
@@ -329,10 +487,7 @@ def validate(
         )
 
     # RV102 推荐字段缺失
-    for field_name, zh, advice in (
-        ("Age", "年龄", "可支持按年龄段分层分析（如不同年龄组的风险差异）"),
-        ("Gender", "性别", "可支持按性别分层分析"),
-    ):
+    for field_name, zh, advice in _RECOMMENDED_FIELDS:
         if field_name not in found:
             issues.append(
                 Issue(
@@ -502,6 +657,19 @@ def validate(
     blockers = sum(1 for i in issues if i.severity == "blocker")
     warnings = sum(1 for i in issues if i.severity == "warning")
     status = "FAILED" if blockers else ("PASSED_WITH_WARNINGS" if warnings else "PASSED")
+    # T6.1:统一补富文案指引与受影响行号(docs/05 §3,tasks/phase6 T6.1)
+    _enrich_issues(
+        issues,
+        df,
+        cfg,
+        {
+            "dup_names": dup_names,
+            "item_col": str(df.columns[item_idx]) if item_idx is not None else "",
+            "value_col": str(df.columns[value_idx]) if value_idx is not None else "",
+            "sus_col": str(df.columns[sus_idx]) if sus_idx is not None else "",
+            "unit_examples": unit_examples,
+        },
+    )
     return ValidationReport(
         status=status,
         blockers=blockers,

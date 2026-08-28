@@ -35,6 +35,8 @@ async def user(db_session: AsyncSession) -> tuple[Project, User]:
 async def _add_dataset(
     db_session: AsyncSession, proj: Project, name: str, content: bytes
 ) -> Dataset:
+    from app.engines import parser, validation
+
     storage = storage_from_settings()
     ds = Dataset(
         project_id=proj.id,
@@ -50,6 +52,10 @@ async def _add_dataset(
     ds.storage_uri = storage.put(
         f"datasets/{proj.id}/{ds.id}/{name}", io.BytesIO(content), len(content)
     )
+    # detect-task 已改为基于 column_profile 推断(不再下载文件,T5.1),
+    # 测试数据需带验证阶段生成的列画像
+    df = parser.parse(content, "csv").df
+    ds.column_profile = validation.validate(df).column_profiles
     await db_session.commit()
     return ds
 

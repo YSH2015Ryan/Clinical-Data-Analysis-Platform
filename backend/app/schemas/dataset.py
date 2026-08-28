@@ -28,6 +28,9 @@ class Issue(BaseModel):
     detail: str | None = None
     suggestion: str = ""
     affected_rows: int | None = None
+    # T6.1(docs/14 §5 变更记录 2026-08-28):受影响行号(0 基,≤20)与富文案修复指引
+    row_indices: list[int] | None = None
+    guidance: str | None = None
 
 
 class QualityReport(BaseModel):
@@ -43,8 +46,40 @@ class DatasetPage(BaseModel):
     next_cursor: str | None = None
 
 
+class ResearchHints(BaseModel):
+    """研究画像用户提示(POST /datasets/{id}/research-profile 请求体,全部可选)。"""
+
+    research_type: str | None = None  # 期望的研究设计(cohort/time_series/...)
+    time_column: str | None = None  # 随访/时间列名
+    event_column: str | None = None  # 事件(结局)列名
+    group_column: str | None = None  # 分组列名
+    outcome: str | None = None  # 结局变量列名
+
+
+class ResearchProfile(BaseModel):
+    """研究画像结果(engines/research_profiler.detect_research_direction 输出契约)。"""
+
+    research_type: str
+    recommended_models: list[str]
+    recommended_journals: list[str]
+    confidence: float
+    reasoning: str
+
+
 class QuickFixAction(BaseModel):
-    type: Literal["drop_column", "drop_duplicates", "to_missing", "remap_semantic"]
+    type: Literal[
+        "drop_column",
+        "drop_duplicates",
+        "to_missing",
+        "remap_semantic",
+        # T6.8 扩展(docs/14 §5 变更记录 2026-08-28)
+        "rename_column",
+        "pivot_long_to_wide",
+        "winsorize_outliers",
+        "impute_missing",
+        "drop_rows_with_pattern",
+        "normalize_units",
+    ]
     column: str | None = None
     params: dict[str, Any] = {}
 

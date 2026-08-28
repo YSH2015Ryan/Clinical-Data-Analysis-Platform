@@ -536,6 +536,8 @@ components:
               message: {type: string}
               affected_rows: {type: integer}
               suggestion: {type: string}
+              row_indices: {type: array, items: {type: integer}, nullable: true, description: 受影响行号(0 基,升序,≤20;前端展示 Excel 行号=索引+2)}
+              guidance: {type: string, nullable: true, description: 富文案修复指引(原因+多种修法+一键操作)}
         column_profiles: {type: array, items: {type: object}}
     QuickFixRequest:
       type: object
@@ -547,7 +549,7 @@ components:
             type: object
             required: [type]
             properties:
-              type: {type: string, enum: [drop_column, drop_duplicates, to_missing, remap_semantic]}
+              type: {type: string, enum: [drop_column, drop_duplicates, to_missing, remap_semantic, rename_column, pivot_long_to_wide, winsorize_outliers, impute_missing, drop_rows_with_pattern, normalize_units]}
               column: {type: string}
               params: {type: object}
 
@@ -791,3 +793,5 @@ components:
 | 2026-07-30 | 新增 `POST /datasets/{dataset_id}/preprocess/validate` | 非破坏（新增端点） | T3.1 DoD「非法 DSL 400」前置落地 + T3.6 前端配置面板即时校验；受影响消费方：前端预处理面板 |
 | 2026-07-30 | 新增 `POST /datasets/{dataset_id}/preprocess/recommend` | 非破坏（新增端点） | T3.5 推荐配置生成器落地 + T3.6 前端「推荐配置」一键填充；受影响消费方：前端预处理面板 |
 | 2026-08-03 | 新增 `POST /datasets/{id}/preparation/preview`、`POST /datasets/{id}/preparation/apply`、`GET /preparations/{id}` + PreparationDecisions/Preview/Job schema | 非破坏（新增端点） | P0-1 数据准备向导（05 §8）：真实 EHR 长表组装为宽表；受影响消费方：前端数据准备向导页、worker（新任务）、DB（新表 preparation_jobs） |
+| 2026-08-28 | `QualityReport.issues[]` 新增可选 `row_indices`（受影响行号，0 基 ≤20）与 `guidance`（富文案修复指引） | 非破坏（新增可选字段） | T6.1 校验报错可操作化：客户反馈阻塞报错看不懂、不会修；受影响消费方：前端 DatasetDetailPage 问题清单 |
+| 2026-08-28 | `QuickFixAction.type` 枚举新增 6 值：`rename_column`/`pivot_long_to_wide`/`winsorize_outliers`/`impute_missing`/`drop_rows_with_pattern`/`normalize_units` | 非破坏（扩展枚举） | T6.8 quick-fix 全覆盖：高发规则（RV201/501/601/802/804）一键修复；受影响消费方：前端 DatasetDetailPage 修复按钮、worker quick-fix 任务 |
