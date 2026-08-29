@@ -1,4 +1,7 @@
-/** 结果比较页 /runs/:id/comparison（docs/11 §2.4）：性能表/图表/可解释性/模型详情 4 Tab。 */
+/** 结果比较页 /runs/:id/comparison（docs/11 §2.4）：性能表/图表/可解释性/模型详情 4 Tab。
+ * T6.13：性能表 Tab 内嵌「迭代问答」卡（POST /analysis-runs/{id}/iterate），
+ * 回答「如果把 X 当协变量会怎样」并可按结构化建议跳转向导重跑。
+ */
 
 import {
   Alert,
@@ -6,6 +9,7 @@ import {
   Card,
   Col,
   Empty,
+  Input,
   Row,
   Space,
   Table,
@@ -20,10 +24,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   getComparison,
   getRun,
+  iterateRun,
   rerunModel,
   type AnalysisRunDetail,
   type ApiError,
   type ComparisonResult,
+  type IterateResponse,
   type ModelMetricsRow,
 } from "../api";
 import { buildPanels } from "../chartOptions";
@@ -203,6 +209,114 @@ function ModelDetailCards({
   );
 }
 
+function IterateCard({ runId }: { runId: string }) {
+  const navigate = useNavigate();
+  const [question, setQuestion] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [result, setResult] = useState<IterateResponse | null>(null);
+
+  const ask = async () => {
+    const q = question.trim();
+    if (!q) return;
+    setAsking(true);
+    try {
+      setResult(await iterateRun(runId, q));
+    } catch (e) {
+      message.error((e as ApiError).message || "提问失败");
+    } finally {
+      setAsking(false);
+    }
+  };
+
+  const rerunBySuggestion = () => {
+    if (!result?.suggestion) return;
+    navigate(
+      `/projects/${result.project_id}/analysis/new?dataset=${result.dataset_id}`,
+      { state: { iterate: result.suggestion } },
+    );
+  };
+
+  const s = result?.suggestion;
+  return (
+    <Card title="迭代问答" size="small" style={{ marginTop: 16 }}>
+      <Space direction="vertical" style={{ width: "100%" }}>
+        <Typography.Text type="secondary">
+          例如「如果把某列当协变量会怎样」「去掉某列再跑一遍」。回答基于本次运行的真实指标，
+          如有可执行的重跑建议会给出结构化方案。
+        </Typography.Text>
+        <Space.Compact style={{ width: "100%" }}>
+          <Input
+            value={question}
+            maxLength={500}
+            placeholder="输入你的问题…"
+            onChange={(e) => setQuestion(e.target.value)}
+            onPressEnter={() => void ask()}
+          />
+          <Button type="primary" loading={asking} onClick={() => void ask()}>
+            提问
+          </Button>
+        </Space.Compact>
+        {result && (
+          <Alert
+            type="info"
+            message={
+              <Space>
+                回答
+                <Tag color={result.llm_enhanced ? "blue" : "default"}>
+                  {result.llm_enhanced ? "AI 增强" : "规则回答"}
+                </Tag>
+              </Space>
+            }
+            description={result.answer}
+          />
+        )}
+        {s && (
+          <Alert
+            type="success"
+            message="重跑建议"
+            description={
+              <Space direction="vertical" size={4}>
+                <Typography.Text>{s.summary}</Typography.Text>
+                {s.add_features.length > 0 && (
+                  <Space wrap>
+                    加入协变量：
+                    {s.add_features.map((f) => (
+                      <Tag key={f} color="green">
+                        {f}
+                      </Tag>
+                    ))}
+                  </Space>
+                )}
+                {s.drop_features.length > 0 && (
+                  <Space wrap>
+                    剔除变量：
+                    {s.drop_features.map((f) => (
+                      <Tag key={f} color="red">
+                        {f}
+                      </Tag>
+                    ))}
+                  </Space>
+                )}
+                {s.selected_models && (
+                  <Space wrap>
+                    模型集：
+                    {s.selected_models.map((m) => (
+                      <Tag key={m}>{m}</Tag>
+                    ))}
+                  </Space>
+                )}
+                <Button size="small" type="primary" onClick={rerunBySuggestion}>
+                  按建议重跑（进入分析向导）
+                </Button>
+              </Space>
+            }
+          />
+        )}
+      </Space>
+    </Card>
+  );
+}
+
 const CHART_TAB_KINDS = ["roc", "calibration", "dca", "confusion_matrix", "km", "cindex_forest", "prediction_scatter"];
 const EXPLAIN_TAB_KINDS = ["feature_importance", "hr_forest"];
 
@@ -279,6 +393,7 @@ export default function ComparisonPage() {
                 <>
                   <MetricsTable cmp={cmp} />
                   <RecommendationCards cmp={cmp} />
+                  {id && run?.status === "COMPLETED" && <IterateCard runId={id} />}
                 </>
               ),
             },

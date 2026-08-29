@@ -146,7 +146,9 @@
 - **T6.12 模型分层套餐**：每任务"标准套餐"3–5 个（基线+强模型+可解释模型），其余折叠为高级选项，取代堆量。✅
   - **落地**:`engines/model_tiers.py`（纯引擎）——标准套餐：分类 logreg/rf/xgboost、回归 lasso/rf_reg/gam/xgboost_reg、生存 coxph/rsf/gbs，角色标注（基线/强模型/可解释）随套餐给出；tier 与任务类型相关（gam 回归=standard/分类=advanced）;`ModelPlugin` 契约新增 `tier`/`role`(docs/14 §5 变更记录 2026-08-27),`GET /models` 按查询任务判定分层且标准套餐在前；前端向导 Step 4 默认仅勾选标准套餐，高级选项折叠展示（Collapse)。**顺带修复存量缺陷**：补建 `engines/adapters.py`(BaseModelAdapter 名义基类，phase2a 遗漏致 gam/gee/poisson/dlnm 四插件从未加载）、补建 `tests/fixtures/poisson_data.py` 合成夹具、`timeseries_cv` 移出与 `preprocessing.py` 同名的目录（模块/包冲突致测试收集失败）——T6.9 模板推荐的 gam/gee 至此真正可用。
   - **测试**:`test_model_tiers.py` 12 例（套餐规模 3–5/key 合法且真实注册/角色齐备/tier 任务相关）+ `test_admin_plugins.py` 新增 4 例（tier/role 字段、标准在前排序、跨任务分层、admin 视图）+ 四插件既有套件（gam 11/gee/poisson/dlnm）随修复转绿；全量 sweep 除 5 例存量失败（test_statistical_tests×3、test_e2e、test_preprocess_recommend,HEAD 上同样失败，与本次无关）外全绿；ruff/mypy 改动文件全净，前端 tsc 净。
-- **T6.13 对话式迭代**:LLM 回答"如果把 X 当协变量会怎样" → 生成重跑建议。
+- **T6.13 对话式迭代**:LLM 回答"如果把 X 当协变量会怎样" → 生成重跑建议。✅
+  - **落地**:`engines/iteration.py` 规则版兜底恒可用（列名长名优先匹配、剔除词识别、未知列名回声提示、结局列自动排除、回答只引用 comparison 真实指标均值）;LLM 增强走 `llm_tasks.generate_iteration_advice`(JSON-only 输出 → 列名/模型白名单校验 + 幻觉数值校验，任一不合格回退规则版，红线8)，新增 `iteration` 分功能开关（默认 off,AI 设置页可配）;POST /analysis-runs/{id}/iterate(docs/14 §5 变更记录 2026-08-27)，响应含 suggestion(add/drop_features/selected_models)+ dataset_id/project_id，审计 analysis.iterate；前端比较页性能表 Tab 内嵌「迭代问答」卡（AI 增强/规则回答标记、建议标签化）,「按建议重跑」跳分析向导经 location.state 预填模型集并把 add/drop 落到 drop_columns 步骤。
+  - **测试**:`test_iteration.py` 8 例 + `test_iterate_api.py` 6 例（规则兜底/LLM 失败回退/401/404/400)+ llm_settings/llm_wiring 联动共 57 例全绿；全量回归仅剩 T6.12 已核实的 5 例存量失败；ruff/mypy 改动文件全净，前端 tsc 通过。
 - **明确不做**：自动选题、自动写论文（违背红线8 结果真实）。
 
 ---

@@ -58,14 +58,14 @@ def _numbers_in(obj: Any) -> list[float]:
     numbers: list[float] = []
     if isinstance(obj, bool):
         return numbers
-    if isinstance(obj, (int, float)):
+    if isinstance(obj, int | float):
         numbers.append(float(obj))
     elif isinstance(obj, str):
         numbers.extend(validator._extract_numbers(obj))
     elif isinstance(obj, dict):
         for value in obj.values():
             numbers.extend(_numbers_in(value))
-    elif isinstance(obj, (list, tuple)):
+    elif isinstance(obj, list | tuple):
         for item in obj:
             numbers.extend(_numbers_in(item))
     return numbers
@@ -303,3 +303,99 @@ def explain_validation_issues(
         issue["llm_explanation"] = text
         explained += 1
     return explained
+
+
+# ---------------------------------------------------------------------------
+# 4. 对话式迭代（T6.13）："如果把 X 当协变量会怎样" → 回答 + 结构化重跑建议
+# ---------------------------------------------------------------------------
+
+
+def _iteration_prompt(question: str, facts: dict[str, Any]) -> str:
+    facts_json = json.dumps(facts, ensure_ascii=False, indent=2)
+    return f"""你是医学统计建模顾问。研究者基于已完成的模型比较运行提问，请回答并给出重跑建议。
+
+【输出要求】
+- 只输出 JSON 对象，不要输出任何其他文字（不要解释、不要 Markdown 代码块）
+- 格式：{{"answer": "回答（80-200 字，通俗但专业）",
+  "summary": "重跑建议一句话",
+  "add_features": ["建议纳入的协变量列名"],
+  "drop_features": ["建议剔除的列名"],
+  "selected_models": ["建议的模型集合"] 或 null}}
+- add_features / drop_features 只能从 Facts 的 available_columns 中选取，空则给 []
+- selected_models 只能从 Facts 的 available_models 中选取；无需调整模型则给 null
+- 数值只能引用 Facts 中出现的数值，不得编造任何统计量
+- 必须说明：协变量的实际影响需要重跑后以真实指标判断
+
+研究者问题：{question}
+
+Facts:
+{facts_json}
+
+直接输出 JSON 对象："""
+
+
+def _parse_iteration_advice(raw: str, facts: dict[str, Any]) -> dict[str, Any] | None:
+    """解析 LLM 迭代输出；结构/白名单/幻觉数值任一不合格 → None（调用方回退规则版）。"""
+    start, end = raw.find("{"), raw.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        data = json.loads(raw[start : end + 1])
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    answer = str(data.get("answer") or "").strip()
+    summary = str(data.get("summary") or "").strip()
+    if not answer or not summary:
+        return None
+    columns = {str(c) for c in facts.get("available_columns") or []}
+    models = {str(m) for m in facts.get("available_models") or []}
+    add = [str(c) for c in (data.get("add_features") or []) if str(c) in columns]
+    drop = [str(c) for c in (data.get("drop_features") or []) if str(c) in columns]
+    selected_raw = data.get("selected_models")
+    selected = (
+        [str(m) for m in selected_raw if str(m) in models]
+        if isinstance(selected_raw, list)
+        else None
+    )
+    if not add and not drop and not selected:
+        return None  # 无实质建议 → 回退规则版（避免空建议卡片）
+    # 幻觉拦截：回答/摘要中的数值必须来自 Facts
+    if _hallucinated_numbers(f"{answer} {summary}", facts):
+        logger.warning("iteration_advice_hallucination")
+        return None
+    return {
+        "answer": answer,
+        "suggestion": {
+            "summary": summary,
+            "add_features": add,
+            "drop_features": drop,
+            "selected_models": selected,
+        },
+    }
+
+
+def generate_iteration_advice(
+    service: "LLMService",
+    question: str,
+    facts: dict[str, Any],
+    switch: FeatureSwitch,
+    temperature: float = 0.3,
+) -> dict[str, Any] | None:
+    """LLM 迭代建议；关闭/失败/输出不合格 → None（调用方用 rule_based_advice 兜底）。"""
+    choice = switch_to_choice(switch)
+    if choice is None:
+        return None
+    try:
+        raw = service.complete(
+            _iteration_prompt(question, facts),
+            facts=facts,
+            model_choice=choice,
+            temperature=temperature,
+            max_tokens=600,
+        )
+    except Exception as exc:
+        logger.warning(f"iteration_advice_llm_failed: {exc}")
+        return None
+    return _parse_iteration_advice(raw, facts)

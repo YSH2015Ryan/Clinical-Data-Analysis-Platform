@@ -68,6 +68,7 @@ class TestSettingsService:
             "research_profile": "off",
             "report_interpretation": "off",
             "validation_explain": "off",
+            "iteration": "off",  # T6.13
         }
 
     async def test_partial_update_and_key_clear(self, db_session: AsyncSession) -> None:
@@ -170,9 +171,7 @@ class TestLlmSettingsApi:
         assert logs, "审计缺失"
         assert "sk-live" not in json.dumps(logs[-1].detail)
 
-    async def test_put_validates_temperature(
-        self, client: AsyncClient, admin: User
-    ) -> None:
+    async def test_put_validates_temperature(self, client: AsyncClient, admin: User) -> None:
         resp = await client.put(
             "/api/v1/admin/settings/llm",
             json={"temperature": 1.5},
@@ -205,9 +204,7 @@ class TestLlmSettingsApi:
                 return _FakeResp()
 
         monkeypatch.setattr(settings_api.httpx, "AsyncClient", _FakeClient)
-        resp = await client.get(
-            "/api/v1/admin/settings/llm/ollama-models", headers=_auth(admin)
-        )
+        resp = await client.get("/api/v1/admin/settings/llm/ollama-models", headers=_auth(admin))
         assert resp.status_code == 200
         assert resp.json() == {"available": True, "models": ["qwen2.5:7b", "qwen2.5:3b"]}
 

@@ -31,6 +31,7 @@ DEFAULT_FEATURE_SWITCHES: dict[str, FeatureSwitch] = {
     "research_profile": "off",
     "report_interpretation": "off",
     "validation_explain": "off",
+    "iteration": "off",  # T6.13 对话式迭代（重跑建议）
 }
 
 

@@ -652,6 +652,30 @@ export async function rerunModel(runId: string, modelKey: string): Promise<{ sta
   return apiFetch(`/analysis-runs/${runId}/models/${modelKey}/rerun`, { method: "POST" });
 }
 
+// ---- T6.13 对话式迭代（docs/14 POST /analysis-runs/{id}/iterate） ----
+
+export interface RerunSuggestion {
+  summary: string;
+  add_features: string[];
+  drop_features: string[];
+  selected_models: string[] | null;
+}
+
+export interface IterateResponse {
+  answer: string;
+  suggestion: RerunSuggestion | null;
+  llm_enhanced: boolean;
+  dataset_id: string;
+  project_id: string; // 向导路由所需项目 id
+}
+
+export async function iterateRun(runId: string, question: string): Promise<IterateResponse> {
+  return apiFetch<IterateResponse>(`/analysis-runs/${runId}/iterate`, {
+    method: "POST",
+    body: JSON.stringify({ question }),
+  });
+}
+
 // ---- 比较结果（docs/14 §3 ComparisonResult；docs/09 §5） ----
 
 export interface ModelMetricsRow {
@@ -801,6 +825,7 @@ export interface LlmSettings {
       research_profile: LlmFeatureSwitch;
       report_interpretation: LlmFeatureSwitch;
       validation_explain: LlmFeatureSwitch;
+      iteration: LlmFeatureSwitch;
     };
   };
 }
@@ -814,6 +839,7 @@ export interface LlmSettingsPatch {
     research_profile: LlmFeatureSwitch;
     report_interpretation: LlmFeatureSwitch;
     validation_explain: LlmFeatureSwitch;
+    iteration: LlmFeatureSwitch;
   };
 }
 

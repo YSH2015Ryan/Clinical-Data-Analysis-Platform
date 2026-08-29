@@ -251,6 +251,14 @@ async def get_run(db: AsyncSession, user: CurrentUser, run_id: uuid.UUID) -> Ana
     return run
 
 
+async def get_run_dataset(db: AsyncSession, run: AnalysisRun) -> Dataset | None:
+    """运行 → 源数据集（经 dataset_version；T6.13 迭代问答取列清单用）。"""
+    version = await db.get(DatasetVersion, run.dataset_version_id)
+    if version is None:
+        return None
+    return await db.get(Dataset, version.dataset_id)
+
+
 async def list_runs(
     db: AsyncSession, user: CurrentUser, project_id: uuid.UUID
 ) -> list[AnalysisRun]:

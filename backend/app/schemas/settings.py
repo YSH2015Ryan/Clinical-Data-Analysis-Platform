@@ -12,6 +12,7 @@ class LlmFeatureSwitches(BaseModel):
     research_profile: FeatureSwitch = "off"
     report_interpretation: FeatureSwitch = "off"
     validation_explain: FeatureSwitch = "off"
+    iteration: FeatureSwitch = "off"  # T6.13 对话式迭代（重跑建议）
 
 
 class LlmProviderStatus(BaseModel):

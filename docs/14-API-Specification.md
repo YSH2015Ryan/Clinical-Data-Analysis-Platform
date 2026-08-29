@@ -443,6 +443,22 @@ paths:
       summary: 单模型重跑
       responses: {'202': {description: 已入队}}
 
+  /analysis-runs/{run_id}/iterate:
+    post:
+      tags: [analysis]
+      summary: 对话式迭代（T6.13）：提问「如果把 X 当协变量会怎样」→ 回答 + 结构化重跑建议；LLM 关闭/失败时规则引擎兜底
+      parameters: [{name: run_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/IterateRequest'}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/IterateResponse'}
+
   /analysis-runs/{run_id}/reports:
     get:
       tags: [reports]
@@ -1006,6 +1022,7 @@ components:
                 research_profile: {$ref: '#/components/schemas/LlmFeatureSwitch'}
                 report_interpretation: {$ref: '#/components/schemas/LlmFeatureSwitch'}
                 validation_explain: {$ref: '#/components/schemas/LlmFeatureSwitch'}
+                iteration: {$ref: '#/components/schemas/LlmFeatureSwitch'}
     LlmSettingsUpdate:
       type: object
       properties:
@@ -1019,6 +1036,7 @@ components:
             research_profile: {$ref: '#/components/schemas/LlmFeatureSwitch'}
             report_interpretation: {$ref: '#/components/schemas/LlmFeatureSwitch'}
             validation_explain: {$ref: '#/components/schemas/LlmFeatureSwitch'}
+            iteration: {$ref: '#/components/schemas/LlmFeatureSwitch'}
     LlmTestRequest:
       type: object
       required: [provider]
@@ -1031,6 +1049,26 @@ components:
         provider: {type: string}
         latency_ms: {type: integer}
         detail: {type: string, description: 失败原因（不含密钥等敏感信息）}
+    IterateRequest:
+      type: object
+      required: [question]
+      properties:
+        question: {type: string, minLength: 1, maxLength: 500}
+    RerunSuggestion:
+      type: object
+      properties:
+        summary: {type: string}
+        add_features: {type: array, items: {type: string}, description: 建议纳入的协变量（数据集真实列，白名单校验）}
+        drop_features: {type: array, items: {type: string}}
+        selected_models: {type: array, items: {type: string}, nullable: true, description: 建议模型集（任务可用模型白名单）；null=无需调整}
+    IterateResponse:
+      type: object
+      properties:
+        answer: {type: string, description: 只引用该运行真实指标（红线8）}
+        suggestion: {$ref: '#/components/schemas/RerunSuggestion', nullable: true}
+        llm_enhanced: {type: boolean, description: true=LLM 增强；false=规则回退}
+        dataset_id: {type: string, format: uuid, description: 「按建议重跑」跳转向导的数据集预选}
+        project_id: {type: string, format: uuid, description: 向导路由所需项目 id}
     ErrorResponse:
       type: object
       properties:
@@ -1083,3 +1121,4 @@ components:
 | 2026-08-27 | 新增 `GET /datasets/{dataset_id}/research-templates` + ResearchTemplatesResponse/ResearchTemplateSuggestion/SampleSizeAdvice schema | 非破坏（新增端点） | T6.9 科研流程模板库：预后模型/危险因素/剂量反应/纵向四类模板，按数据集真实统计（行数/事件数/特征数）给出适用性判定、推荐任务/模型/图表与样本量经验规则核对（EPV≥10、n/p≥20 等，全部真实计算不虚构）；受影响消费方：前端分析向导模板选择卡片 |
 | 2026-08-27 | 新增 `POST /datasets/{dataset_id}/univariate-screen`、`POST /datasets/{dataset_id}/subgroup-analysis` + 对应 Request/Result schema | 非破坏（新增端点） | T6.10 单因素→多因素筛选流程 + 亚组分析：单因素筛选（Mann-Whitney/卡方/单因素Cox/相关/方差分析，p<alpha 入选供多因素建模）与亚组效应估计（OR/HR/β + 95%CI + 交互 p），全部统计量真实计算（红线8）；受影响消费方：前端数据集详情页科研助手卡片 |
 | 2026-08-27 | `ModelPlugin` 新增 `tier`（standard/advanced）与 `role`（可空）字段；`GET /models` 响应按标准套餐在前排序 | 非破坏（新增字段） | T6.12 模型分层套餐：每任务标准套餐 3–5 个（基线+强模型+可解释模型），其余折叠为高级选项；分层定义在引擎 `model_tiers.py`（与任务类型相关，非 DB 字段）；受影响消费方：前端分析向导 Step 4 模型选择（默认仅勾选标准套餐，高级选项折叠） |
+| 2026-08-27 | 新增 `POST /analysis-runs/{run_id}/iterate` + IterateRequest/IterateResponse/RerunSuggestion schema；LlmSettingsOut/Update 的 feature_switches 新增 `iteration` 开关 | 非破坏（新增端点 + 新增开关键） | T6.13 对话式迭代：针对已完成运行提问（如「把 X 当协变量会怎样」），规则引擎恒可用（列/模型白名单 + 真实指标引用），iteration 开关打开时 LLM 增强回答（幻觉数值拦截，不合格回退规则版）；响应含 dataset_id 供前端「按建议重跑」跳转向导；受影响消费方：前端结果比较页迭代问答卡、分析向导预填 |

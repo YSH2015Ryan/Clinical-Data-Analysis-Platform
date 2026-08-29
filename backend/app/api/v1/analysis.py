@@ -10,24 +10,34 @@ POST /{id}/models/{key}/rerun（单模型重跑 → 重算 comparison）。compa
 import uuid
 from typing import Any
 
+from anyio import to_thread
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_registry, require_role
-from app.core.errors import AppError
+from app.core.errors import AppError, not_found
 from app.core.logging import get_logger
 from app.db import get_db
+from app.engines import parser
+from app.engines.iteration import rule_based_advice
 from app.engines.model_registry import ModelRegistry
 from app.schemas.analysis import (
     AnalysisRunCreate,
     AnalysisRunDetail,
     AnalysisRunOut,
     ComparisonResult,
+    IterateRequest,
+    IterateResponse,
     RunProgress,
 )
 from app.schemas.auth import CurrentUser
 from app.services import analysis as analysis_service
 from app.services import audit as audit_service
+from app.services import llm_tasks
+from app.services import plugins as plugin_service
+from app.services import settings as settings_service
+from app.services.llm import init_llm_service_from_runtime
+from app.services.storage import key_from_uri, storage_from_settings
 from app.workers.analysis_tasks import dispatch_analysis_run, dispatch_model_rerun
 from app.workers.celery_app import celery_app
 
@@ -166,3 +176,101 @@ async def rerun_model(
         await db.rollback()
         raise AppError("TASK_DISPATCH_FAILED", 503, "重跑任务暂时无法排队，请稍后重试") from exc
     return {"status": "MODELING"}
+
+
+@router.post("/analysis-runs/{run_id}/iterate", response_model=IterateResponse)
+async def iterate_run(
+    run_id: uuid.UUID,
+    body: IterateRequest,
+    user: CurrentUser = Depends(require_role("researcher")),
+    db: AsyncSession = Depends(get_db),
+) -> IterateResponse:
+    """T6.13 对话式迭代：回答「如果把 X 当协变量会怎样」并给结构化重跑建议。
+
+    规则引擎兜底恒可用；iteration 分功能开关打开时 LLM 增强
+    （列名/模型白名单 + 幻觉数值校验，不合格回退规则版，红线8）。
+    """
+    run = await analysis_service.get_run(db, user, run_id)
+    dataset = await analysis_service.get_run_dataset(db, run)
+    if dataset is None:
+        raise not_found("dataset", str(run.dataset_version_id))
+
+    available = await plugin_service.list_available(db, run.task_type)
+    target = (run.preprocess_config or {}).get("target") or {}
+    target_cols = {
+        str(c)
+        for c in (target.get("label_col"), target.get("time_col"), target.get("event_col"))
+        if c
+    }
+    columns = [
+        str(c.get("name"))
+        for c in (dataset.column_profile or [])
+        if c.get("name") and str(c.get("name")) not in target_cols
+    ]
+    if not columns:
+        # 旧数据集无列画像：解析源文件表头兜底（只取列名元数据）
+        try:
+            raw = storage_from_settings().get(key_from_uri(dataset.storage_uri))
+            columns = [
+                str(c)
+                for c in parser.parse(raw, dataset.source_type).df.columns
+                if str(c) not in target_cols
+            ]
+        except Exception:
+            columns = []
+    comparison = await analysis_service.get_comparison(db, user, run_id)
+    top = ((comparison.get("recommendation") or {}).get("top") or [{}])[0]
+    metrics = {
+        row["model_key"]: {
+            k: v.get("mean")
+            for k, v in (row.get("metrics") or {}).items()
+            if isinstance(v, dict) and v.get("mean") is not None
+        }
+        for row in comparison.get("table") or []
+        if row.get("metrics")
+    }
+    facts: dict[str, Any] = {
+        "task_type": run.task_type,
+        "available_columns": columns[:80],
+        "available_models": [m.key for m in available],
+        "selected_models": list(run.selected_models),
+        "top_model": top.get("model_key"),
+        "top_reason": top.get("reason"),
+        "metrics": metrics,
+    }
+
+    base = rule_based_advice(body.question, facts)
+    llm_out: dict[str, Any] | None = None
+    cfg = await settings_service.get_llm_config(db)
+    switch = cfg.feature_switches.get("iteration", "off")
+    if switch != "off":
+        service = init_llm_service_from_runtime(cfg)
+        try:
+            llm_out = await to_thread.run_sync(
+                llm_tasks.generate_iteration_advice,
+                service,
+                body.question,
+                facts,
+                switch,
+                cfg.temperature,
+            )
+        except Exception as exc:  # LLM 链路任何异常都不阻塞主流程（规则版兜底）
+            logger.warning("iteration_llm_failed", run_id=str(run_id), error=str(exc))
+    result = llm_out if llm_out is not None else base
+
+    await audit_service.record(
+        db,
+        "analysis.iterate",
+        user_id=user.id,
+        resource_type="analysis_run",
+        resource_id=run.id,
+        detail={"question": body.question[:200], "llm_enhanced": llm_out is not None},
+    )
+    await db.commit()
+    return IterateResponse(
+        answer=result["answer"],
+        suggestion=result.get("suggestion"),
+        llm_enhanced=llm_out is not None,
+        dataset_id=dataset.id,
+        project_id=dataset.project_id,
+    )

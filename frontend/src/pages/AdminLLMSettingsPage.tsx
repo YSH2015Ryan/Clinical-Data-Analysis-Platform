@@ -45,6 +45,7 @@ const FEATURE_LABELS: Record<string, string> = {
   research_profile: "研究画像（研究问题与设计建议）",
   report_interpretation: "报告解读段落",
   validation_explain: "校验报错人话解释",
+  iteration: "对话式迭代（重跑建议）",
 };
 
 export default function AdminLLMSettingsPage() {

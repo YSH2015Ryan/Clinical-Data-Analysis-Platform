@@ -26,7 +26,7 @@ import {
   message,
 } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   createRun,
   detectTask,
@@ -42,6 +42,7 @@ import {
   type ModelPlugin,
   type PreprocessConfig,
   type ResearchTemplateSuggestion,
+  type RerunSuggestion,
   type TaskDetectionResult,
   type TaskType,
 } from "../api";
@@ -55,10 +56,46 @@ const TASK_LABEL: Record<TaskType, string> = {
 
 const STEP_TITLES = ["选择数据集", "预处理配置", "任务类型确认", "选择模型", "确认并提交"];
 
+/**
+ * T6.13：把迭代建议落到推荐预处理配置上（drop_columns 步骤是剔除变量的具体机制）。
+ * add_features 从既有 drop_columns 中移除（确保保留）；drop_features 并入/新增 drop_columns 步骤。
+ */
+function applyIterateSuggestion(
+  cfg: PreprocessConfig,
+  suggestion: RerunSuggestion,
+): PreprocessConfig {
+  const add = new Set(suggestion.add_features);
+  const drop = new Set(suggestion.drop_features);
+  if (add.size === 0 && drop.size === 0) return cfg;
+  const steps = cfg.steps.map((s) => {
+    if (s.type !== "drop_columns") return s;
+    const cols = ((s.params?.columns as string[] | undefined) ?? []).filter((c) => !add.has(c));
+    return { ...s, params: { ...s.params, columns: cols } };
+  });
+  if (drop.size > 0) {
+    const idx = steps.findIndex((s) => s.type === "drop_columns");
+    if (idx >= 0) {
+      const cols = (steps[idx].params?.columns as string[] | undefined) ?? [];
+      steps[idx] = {
+        ...steps[idx],
+        params: { ...steps[idx].params, columns: [...new Set([...cols, ...drop])] },
+      };
+    } else {
+      steps.push({ type: "drop_columns", params: { columns: [...drop] } });
+    }
+  }
+  return { ...cfg, steps };
+}
+
 export default function AnalysisWizardPage() {
   const { id: projectId } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  // T6.13：比较页「按建议重跑」经 location.state 传入结构化建议（仅首次装载生效）
+  const location = useLocation();
+  const [iterateSuggestion] = useState<RerunSuggestion | null>(
+    () => (location.state as { iterate?: RerunSuggestion } | null)?.iterate ?? null,
+  );
 
   const [step, setStep] = useState(0);
   // Step 1
@@ -77,7 +114,9 @@ export default function AnalysisWizardPage() {
   const [taskType, setTaskType] = useState<TaskType | null>(null);
   // Step 4
   const [models, setModels] = useState<ModelPlugin[] | null>(null);
-  const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  const [selectedModels, setSelectedModels] = useState<string[]>(
+    () => iterateSuggestion?.selected_models ?? [],
+  );
   // Step 5
   const [submitting, setSubmitting] = useState(false);
 
@@ -117,9 +156,11 @@ export default function AnalysisWizardPage() {
       })
       .catch(() => setColumns([]));
     recommendPreprocess(datasetId)
-      .then((cfg) => setRecommended(cfg))
+      .then((cfg) =>
+        setRecommended(iterateSuggestion ? applyIterateSuggestion(cfg, iterateSuggestion) : cfg),
+      )
       .catch((e) => message.error((e as ApiError).message || "推荐配置生成失败"));
-  }, [step, datasetId, recommended]);
+  }, [step, datasetId, recommended, iterateSuggestion]);
 
   // 进入 Step 3：自动识别任务类型（推荐项默认选中）
   useEffect(() => {
@@ -534,6 +575,15 @@ export default function AnalysisWizardPage() {
         </Button>
       </Space>
       <Steps current={step} items={STEP_TITLES.map((title) => ({ title }))} size="small" />
+      {iterateSuggestion && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginTop: 16 }}
+          message="已按迭代建议预填"
+          description={`${iterateSuggestion.summary}（预处理步骤与模型选择可在后续步骤调整）`}
+        />
+      )}
       <div style={{ margin: "24px 0" }}>{stepContent[step]}</div>
       <Space style={{ width: "100%", justifyContent: "flex-end" }}>
         {step > 0 && <Button onClick={() => setStep((s) => s - 1)}>上一步</Button>}

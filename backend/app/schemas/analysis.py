@@ -61,3 +61,26 @@ class ComparisonResult(BaseModel):
     ranking: list[str]
     recommendation: dict[str, Any]
     charts: list[ChartAsset]
+
+
+class IterateRequest(BaseModel):
+    """T6.13 对话式迭代提问（docs/14 POST /analysis-runs/{id}/iterate）。"""
+
+    question: str = Field(min_length=1, max_length=500)
+
+
+class RerunSuggestion(BaseModel):
+    """结构化重跑建议：列名/模型均已按数据集真实列与任务可用模型白名单校验。"""
+
+    summary: str
+    add_features: list[str] = []
+    drop_features: list[str] = []
+    selected_models: list[str] | None = None  # None = 模型集无需调整
+
+
+class IterateResponse(BaseModel):
+    answer: str
+    suggestion: RerunSuggestion | None
+    llm_enhanced: bool  # True=LLM 增强回答；False=规则回退
+    dataset_id: uuid.UUID  # 「按建议重跑」跳转向导的数据集预选
+    project_id: uuid.UUID  # 向导路由所需项目 id
