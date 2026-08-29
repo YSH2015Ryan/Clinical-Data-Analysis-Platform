@@ -451,6 +451,54 @@ paths:
       summary: 启用/禁用插件、更新默认参数
       responses: {'200': {description: 已更新}}
 
+  /admin/settings/llm:
+    get:
+      tags: [admin]
+      summary: LLM 配置与 provider 状态（admin；云端 key 只回显掩码）
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LlmSettingsOut'}
+    put:
+      tags: [admin]
+      summary: 更新 LLM 运行层配置（admin；立即生效不重启；key 只写不读）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LlmSettingsUpdate'}
+      responses: {'200': {description: 已更新, content: {application/json: {schema: {$ref: '#/components/schemas/LlmSettingsOut'}}}}}
+
+  /admin/settings/llm/test:
+    post:
+      tags: [admin]
+      summary: 真实连通性测试（admin；发最小请求测延迟）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LlmTestRequest'}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LlmTestResult'}
+
+  /admin/settings/llm/ollama-models:
+    get:
+      tags: [admin]
+      summary: Ollama 已安装模型列表代理（admin；免手敲模型名）
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available: {type: boolean}
+                  models: {type: array, items: {type: string}}
+
   /healthz:
     get: {tags: [admin], summary: 存活检查, responses: {'200': {description: ok}}}
   /readyz:
@@ -749,6 +797,59 @@ components:
         task_types: {type: array, items: {type: string}}
         capability: {type: object}
         enabled: {type: boolean}
+    LlmFeatureSwitch:
+      type: string
+      enum: [off, local, local_first, cloud]
+      description: 分功能开关：关闭 / 仅本地 / 本地优先(降级云端) / 仅云端
+    LlmSettingsOut:
+      type: object
+      properties:
+        status:
+          type: object
+          properties:
+            local: {type: object, description: "{available, provider, model}"}
+            cloud: {type: object, description: "{available, provider, model}"}
+            default_choice: {type: string, enum: [auto, local, cloud]}
+        config:
+          type: object
+          properties:
+            model_choice: {type: string, enum: [auto, local, cloud]}
+            temperature: {type: number}
+            ollama_model: {type: string}
+            cloud_enabled: {type: boolean, description: 部署层是否允许云端（env 锁定）}
+            cloud_has_key: {type: boolean}
+            cloud_key_preview: {type: string, description: "掩码回显，如 sk-****abcd；无 key 为空串"}
+            feature_switches:
+              type: object
+              properties:
+                research_profile: {$ref: '#/components/schemas/LlmFeatureSwitch'}
+                report_interpretation: {$ref: '#/components/schemas/LlmFeatureSwitch'}
+                validation_explain: {$ref: '#/components/schemas/LlmFeatureSwitch'}
+    LlmSettingsUpdate:
+      type: object
+      properties:
+        model_choice: {type: string, enum: [auto, local, cloud]}
+        temperature: {type: number, minimum: 0, maximum: 1}
+        ollama_model: {type: string}
+        openai_api_key: {type: string, description: 只写不读；传空串清除；不传保持原值}
+        feature_switches:
+          type: object
+          properties:
+            research_profile: {$ref: '#/components/schemas/LlmFeatureSwitch'}
+            report_interpretation: {$ref: '#/components/schemas/LlmFeatureSwitch'}
+            validation_explain: {$ref: '#/components/schemas/LlmFeatureSwitch'}
+    LlmTestRequest:
+      type: object
+      required: [provider]
+      properties:
+        provider: {type: string, enum: [local, cloud]}
+    LlmTestResult:
+      type: object
+      properties:
+        ok: {type: boolean}
+        provider: {type: string}
+        latency_ms: {type: integer}
+        detail: {type: string, description: 失败原因（不含密钥等敏感信息）}
     ErrorResponse:
       type: object
       properties:
@@ -795,3 +896,4 @@ components:
 | 2026-08-03 | 新增 `POST /datasets/{id}/preparation/preview`、`POST /datasets/{id}/preparation/apply`、`GET /preparations/{id}` + PreparationDecisions/Preview/Job schema | 非破坏（新增端点） | P0-1 数据准备向导（05 §8）：真实 EHR 长表组装为宽表；受影响消费方：前端数据准备向导页、worker（新任务）、DB（新表 preparation_jobs） |
 | 2026-08-28 | `QualityReport.issues[]` 新增可选 `row_indices`（受影响行号，0 基 ≤20）与 `guidance`（富文案修复指引） | 非破坏（新增可选字段） | T6.1 校验报错可操作化：客户反馈阻塞报错看不懂、不会修；受影响消费方：前端 DatasetDetailPage 问题清单 |
 | 2026-08-28 | `QuickFixAction.type` 枚举新增 6 值：`rename_column`/`pivot_long_to_wide`/`winsorize_outliers`/`impute_missing`/`drop_rows_with_pattern`/`normalize_units` | 非破坏（扩展枚举） | T6.8 quick-fix 全覆盖：高发规则（RV201/501/601/802/804）一键修复；受影响消费方：前端 DatasetDetailPage 修复按钮、worker quick-fix 任务 |
+| 2026-08-28 | 新增 `GET/PUT /admin/settings/llm`、`POST /admin/settings/llm/test`、`GET /admin/settings/llm/ollama-models` + LlmSettingsOut/Update/LlmTestRequest/LlmTestResult/LlmFeatureSwitch schema | 非破坏（新增端点） | T6.6 LLM 设置界面：运行层配置（模型策略/分功能开关/云端 key/温度）管理员可视化调整免改代码；云端 key 只写不读（掩码回显）；受影响消费方：前端 AI 设置页（新建）、DB（新表 admin_settings）、worker/启动流程（init_llm_service 从 DB 注入） |

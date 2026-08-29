@@ -3,6 +3,7 @@ import zhCN from "antd/locale/zh_CN";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { getRole, getToken, restoreSession } from "./api";
+import AdminLLMSettingsPage from "./pages/AdminLLMSettingsPage";
 import AdminPluginsPage from "./pages/AdminPluginsPage";
 import AnalysisWizardPage from "./pages/AnalysisWizardPage";
 import ComparisonPage from "./pages/ComparisonPage";
@@ -129,6 +130,14 @@ export default function App() {
             element={
               <RequireAdmin>
                 <AdminPluginsPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/ai-settings"
+            element={
+              <RequireAdmin>
+                <AdminLLMSettingsPage />
               </RequireAdmin>
             }
           />

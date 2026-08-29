@@ -658,6 +658,82 @@ export async function updateAdminPlugin(
   });
 }
 
+// ---- LLM 设置（docs/14 /admin/settings/llm*；T6.6） ----
+
+export type LlmFeatureSwitch = "off" | "local" | "local_first" | "cloud";
+export type LlmModelChoice = "auto" | "local" | "cloud";
+
+export interface LlmProviderStatus {
+  available: boolean;
+  provider: string | null;
+  model: string | null;
+  enabled?: boolean | null;
+}
+
+export interface LlmSettings {
+  status: {
+    local: LlmProviderStatus;
+    cloud: LlmProviderStatus;
+    default_choice: LlmModelChoice;
+  };
+  config: {
+    model_choice: LlmModelChoice;
+    temperature: number;
+    ollama_model: string;
+    cloud_enabled: boolean;
+    cloud_has_key: boolean;
+    cloud_key_preview: string;
+    feature_switches: {
+      research_profile: LlmFeatureSwitch;
+      report_interpretation: LlmFeatureSwitch;
+      validation_explain: LlmFeatureSwitch;
+    };
+  };
+}
+
+export interface LlmSettingsPatch {
+  model_choice?: LlmModelChoice;
+  temperature?: number;
+  ollama_model?: string;
+  openai_api_key?: string; // 只写不读；空串清除
+  feature_switches?: {
+    research_profile: LlmFeatureSwitch;
+    report_interpretation: LlmFeatureSwitch;
+    validation_explain: LlmFeatureSwitch;
+  };
+}
+
+export interface LlmTestResult {
+  ok: boolean;
+  provider: string;
+  latency_ms: number;
+  detail: string;
+}
+
+export async function getLlmSettings(): Promise<LlmSettings> {
+  return apiFetch<LlmSettings>("/admin/settings/llm");
+}
+
+export async function updateLlmSettings(patch: LlmSettingsPatch): Promise<LlmSettings> {
+  return apiFetch<LlmSettings>("/admin/settings/llm", {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function testLlmProvider(provider: "local" | "cloud"): Promise<LlmTestResult> {
+  return apiFetch<LlmTestResult>("/admin/settings/llm/test", {
+    method: "POST",
+    body: JSON.stringify({ provider }),
+  });
+}
+
+export async function listOllamaModels(): Promise<{ available: boolean; models: string[] }> {
+  return apiFetch<{ available: boolean; models: string[] }>(
+    "/admin/settings/llm/ollama-models",
+  );
+}
+
 /** 从 access token 解出角色（UI 门控；服务端仍做 RBAC 强校验）。 */
 export function getRole(): string | null {
   const token = getToken();

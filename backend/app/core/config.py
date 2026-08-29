@@ -50,6 +50,15 @@ class Settings(BaseSettings):
     model_soft_time_limit_heavy: int = 840    # 重模型（rsf/gbs/svm/boosting 家族等）
     max_upload_mb: int = 200
 
+    # LLM 部署层（T6.6，docs/12 §2.1；运行层策略/开关/key 在 DB admin_settings，管理员界面调整）
+    ollama_base_url: str = "http://localhost:11434"  # compose 内为 http://ollama:11434
+    ollama_model: str = "qwen2.5:7b"
+    openai_model: str = "gpt-4o-mini"
+    llm_default_choice: str = "auto"  # auto | local | cloud
+    llm_cloud_enabled: bool = False  # 部署层云端总闸：false 时云端功能一律不可用
+    # admin_settings 敏感字段 Fernet 密钥；空 = dev 用 JWT_SECRET 派生（prod 必须显式设置）
+    settings_encryption_key: str = ""
+
     # 排名权重（docs/09 §4.1）
     ranking_weight_primary: float = 0.6
     ranking_weight_stability: float = 0.2
@@ -80,6 +89,8 @@ class Settings(BaseSettings):
                 raise ValueError("ENVIRONMENT=prod 必须启用 Secure Cookie")
             if self.access_token_expire_minutes > 30:
                 raise ValueError("生产 access token 有效期不得超过 30 分钟")
+            if not self.settings_encryption_key:
+                raise ValueError("ENVIRONMENT=prod 必须设置 SETTINGS_ENCRYPTION_KEY（Fernet 密钥）")
         if (
             self.max_upload_mb <= 0
             or self.auth_rate_limit <= 0

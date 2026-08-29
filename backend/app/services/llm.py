@@ -8,11 +8,15 @@ LLM 服务统一接口
 """
 
 import logging
-from typing import Dict, Any, Literal, Optional
+from typing import TYPE_CHECKING, Any, Literal
 
+from .llm_privacy import assert_cloud_payload_safe
 from .llm_providers.ollama_provider import OllamaProvider
 from .llm_providers.openai_provider import OpenAIProvider
 from .llm_validators import get_validator
+
+if TYPE_CHECKING:
+    from .settings import LlmRuntimeConfig
 
 logger = logging.getLogger(__name__)
 
@@ -21,29 +25,33 @@ ModelChoice = Literal["auto", "local", "cloud"]
 
 class LLMService:
     """LLM 服务统一接口"""
-    
+
     def __init__(
         self,
         default_choice: ModelChoice = "auto",
         ollama_base_url: str = "http://localhost:11434",
         ollama_model: str = "qwen2.5:7b",
-        openai_api_key: Optional[str] = None,
-        openai_model: str = "gpt-4o-mini"
+        openai_api_key: str | None = None,
+        openai_model: str = "gpt-4o-mini",
+        cloud_enabled: bool = True,
     ):
         """
         初始化 LLM Service
-        
+
         Args:
             default_choice: 默认模型选择策略
             ollama_base_url: Ollama 服务地址
             ollama_model: Ollama 模型名称
             openai_api_key: OpenAI API key
             openai_model: OpenAI 模型名称
+            cloud_enabled: 部署层云端总闸（False 时云端路径一律拒绝，T6.6）
         """
         self.default_choice = default_choice
+        self.cloud_enabled = cloud_enabled
         self.validator = get_validator()
-        
+
         # 初始化本地 provider
+        self.ollama: OllamaProvider | None
         try:
             self.ollama = OllamaProvider(
                 base_url=ollama_base_url,
@@ -53,10 +61,10 @@ class LLMService:
         except Exception as e:
             logger.warning(f"Failed to initialize Ollama provider: {e}")
             self.ollama = None
-        
-        # 初始化云端 provider（可选）
-        self.openai = None
-        if openai_api_key:
+
+        # 初始化云端 provider（可选；部署层总闸关闭时跳过）
+        self.openai: OpenAIProvider | None = None
+        if cloud_enabled and openai_api_key:
             try:
                 self.openai = OpenAIProvider(
                     api_key=openai_api_key,
@@ -68,9 +76,9 @@ class LLMService:
     
     def generate_interpretation(
         self,
-        facts: Dict[str, Any],
+        facts: dict[str, Any],
         section_type: str,
-        model_choice: Optional[ModelChoice] = None,
+        model_choice: ModelChoice | None = None,
         temperature: float = 0.3,
         seed: int = 42
     ) -> str:
@@ -136,6 +144,13 @@ class LLMService:
         
         # 降级到云端
         if choice in ["auto", "cloud"]:
+            if not self.cloud_enabled:
+                raise RuntimeError(
+                    "云端 LLM 已被部署层禁用（LLM_CLOUD_ENABLED=false）；"
+                    "请改用本地模型或由服务器开发人员开启。"
+                )
+            # 红线（T6.6）：云端只发聚合统计 facts，行级患者数据禁止出域
+            assert_cloud_payload_safe(facts)
             if not self.openai:
                 raise RuntimeError(
                     "OpenAI provider not configured. "
@@ -193,7 +208,7 @@ class LLMService:
         """检查云端模型是否可用"""
         return self.openai is not None and self.openai.is_available()
     
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """获取服务状态"""
         return {
             "local": {
@@ -204,7 +219,8 @@ class LLMService:
             "cloud": {
                 "available": self.is_cloud_available(),
                 "provider": "OpenAI" if self.openai else None,
-                "model": self.openai.model if self.openai else None
+                "model": self.openai.model if self.openai else None,
+                "enabled": self.cloud_enabled,
             },
             "default_choice": self.default_choice
         }
@@ -226,12 +242,13 @@ def init_llm_service(
     default_choice: ModelChoice = "auto",
     ollama_base_url: str = "http://localhost:11434",
     ollama_model: str = "qwen2.5:7b",
-    openai_api_key: Optional[str] = None,
-    openai_model: str = "gpt-4o-mini"
+    openai_api_key: str | None = None,
+    openai_model: str = "gpt-4o-mini",
+    cloud_enabled: bool = True,
 ) -> LLMService:
     """
     初始化全局 LLM Service
-    
+
     应该在应用启动时调用一次
     """
     global _llm_service
@@ -240,6 +257,22 @@ def init_llm_service(
         ollama_base_url=ollama_base_url,
         ollama_model=ollama_model,
         openai_api_key=openai_api_key,
-        openai_model=openai_model
+        openai_model=openai_model,
+        cloud_enabled=cloud_enabled,
     )
     return _llm_service
+
+
+def init_llm_service_from_runtime(cfg: "LlmRuntimeConfig") -> LLMService:
+    """T6.6：从运行层配置（env 默认 + DB 覆盖）初始化/热更新全局 LLM Service。
+
+    启动时与管理员 PUT /admin/settings/llm 后调用——无需重启服务即可切换模型与策略。
+    """
+    return init_llm_service(
+        default_choice=cfg.model_choice,
+        ollama_base_url=cfg.ollama_base_url,
+        ollama_model=cfg.ollama_model,
+        openai_api_key=cfg.openai_api_key,
+        openai_model=cfg.openai_model,
+        cloud_enabled=cfg.cloud_enabled,
+    )

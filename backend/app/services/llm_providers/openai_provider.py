@@ -88,16 +88,16 @@ class OpenAIProvider:
             )
             
             output = response.choices[0].message.content
-            
+
             if not output:
                 raise RuntimeError("OpenAI returned empty response")
-            
+
             logger.info(
                 f"Generated {len(output)} chars for {section_type} using {self.model}, "
                 f"tokens: {response.usage.total_tokens}"
             )
-            
-            return output.strip()
+
+            return str(output).strip()
             
         except Exception as e:
             raise RuntimeError(f"OpenAI API request failed: {e}") from e

@@ -1,5 +1,6 @@
 from app.models.base import Base
 from app.models.entities import (
+    AdminSetting,
     AnalysisRun,
     AuditLog,
     Comparison,
@@ -15,6 +16,7 @@ from app.models.entities import (
 )
 
 __all__ = [
+    "AdminSetting",
     "AnalysisRun",
     "AuditLog",
     "Base",

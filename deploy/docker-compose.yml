@@ -56,6 +56,13 @@ services:
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       COOKIE_SECURE: "true"
+      # LLM 部署层（T6.6；运行层策略/开关/key 在管理员「AI 设置」页调整）
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      LLM_CLOUD_ENABLED: ${LLM_CLOUD_ENABLED:-false}
+      LLM_DEFAULT_CHOICE: ${LLM_DEFAULT_CHOICE:-auto}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:?need SETTINGS_ENCRYPTION_KEY}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -94,6 +101,13 @@ services:
       S3_PUBLIC_ENDPOINT: https://${STORAGE_DOMAIN}
       JWT_SECRET: ${JWT_SECRET}
       COOKIE_SECURE: "true"
+      # worker 执行报告解读等 LLM 任务，需同一份部署层配置（T6.6）
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      LLM_CLOUD_ENABLED: ${LLM_CLOUD_ENABLED:-false}
+      LLM_DEFAULT_CHOICE: ${LLM_DEFAULT_CHOICE:-auto}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY}
     deploy:
       resources:
         limits:
@@ -134,6 +148,19 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  # 可选本地 LLM（T6.6）：docker compose --profile llm up -d ollama 启动；
+  # 首次需拉取模型：docker compose exec ollama ollama pull ${OLLAMA_MODEL:-qwen2.5:7b}
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["llm"]
+    volumes:
+      - ollamadata:/root/.ollama
+    deploy:
+      resources:
+        limits:
+          memory: 8G
     restart: unless-stopped
 
   postgres:
@@ -223,5 +250,6 @@ volumes:
   pgdata:
   redisdata:
   miniodata:
+  ollamadata:
   caddy_data:
   caddy_config:

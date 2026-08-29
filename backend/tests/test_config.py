@@ -38,5 +38,6 @@ def test_prod_rejects_default_jwt_secret() -> None:
         s3_access_key="cdap-storage",
         s3_secret_key="storage-secret",
         cookie_secure=True,
+        settings_encryption_key="gQ9k2mXwJvR8sY3hN5bT6cL1zP4eU7aF0oK9iD2xM8s=",
     )  # type: ignore[call-arg]
     assert s.environment == "prod"

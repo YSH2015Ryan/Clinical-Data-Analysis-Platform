@@ -30,6 +30,7 @@ dependencies = [
     # bcrypt 直用替代 passlib：passlib 休眠且与 bcrypt>=4.1 不兼容）
     "pyjwt[crypto]~=2.10",
     "bcrypt~=4.2",
+    "cryptography>=43.0",  # Fernet：admin_settings 敏感字段加密（T6.6；Apache-2.0/BSD）
     # 数据处理
     "pandas~=2.2",
     "openpyxl~=3.1",  # xlsx 解析（MIT）
@@ -121,7 +122,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "minio.*", "redbeat.*", "sklearn.*", "simpleeval", "simpleeval.*", "sksurv.*", "lifelines.*", "catboost.*", "torch", "torch.*", "pycox.*", "torchtuples.*", "shap", "shap.*", "pygam", "pygam.*", "weasyprint", "weasyprint.*", "statsmodels", "statsmodels.*", "scipy", "scipy.*"]
+module = ["celery.*", "minio.*", "redbeat.*", "sklearn.*", "simpleeval", "simpleeval.*", "sksurv.*", "lifelines.*", "catboost.*", "torch", "torch.*", "pycox.*", "torchtuples.*", "shap", "shap.*", "pygam", "pygam.*", "weasyprint", "weasyprint.*", "statsmodels", "statsmodels.*", "scipy", "scipy.*", "openai"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

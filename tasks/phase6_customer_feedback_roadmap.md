@@ -83,7 +83,7 @@
 
 ## P1 任务（LLM 接线，质变"智能感")
 
-### T6.6 LLM 设置界面（前置依赖，P1 最先做）
+### T6.6 LLM 设置界面（前置依赖，P1 最先做）✅(2026-08-28 完成)
 
 **背景**:LLM 配置全部硬编码，无配置项、无状态接口、无界面。服务器端另有开发人员会调整代码与环境参数，必须提供图形化配置入口，避免改代码。
 
@@ -100,6 +100,13 @@
   - 部署：docker-compose 增加 Ollama service（或挂宿主机）;`deploy/.env.example` 补 `OLLAMA_BASE_URL`、`OLLAMA_MODEL`、`LLM_DEFAULT_CHOICE` 等。
 - **红线**：任何情况下不向云端 LLM 发送行级患者数据，只允许聚合统计 facts 与列元数据；cloud provider 入口强制校验 payload 结构；界面云端开关旁配合规说明文字（医疗机构采购门槛）。
 - **DoD**：管理员不重启服务即可切换模型与策略；连接测试真实反映可用性；云端关闭时所有 LLM 功能自动回退本地/模板；key 不明文出现在任何 API 响应与日志中。
+- **落地**（端点按 docs/14 §5 定稿为 `/admin/settings/llm*` 前缀，与既有 /admin/plugins 对齐）:
+  - `admin_settings` 表（migration 0007)+ `services/settings.py`(Fernet,dev 由 JWT_SECRET 派生密钥，prod 必须显式 `SETTINGS_ENCRYPTION_KEY`,config fail-fast);
+  - `GET/PUT /admin/settings/llm`、`POST .../test`、`GET .../ollama-models`;PUT 后 `init_llm_service_from_runtime` 热更新；启动 lifespan 从 DB 注入；
+  - 隐私守卫 `services/llm_privacy.py`:cloud 入口强制校验（禁用键/集合长度/体积）,`LLMService.cloud_enabled` 部署层总闸；
+  - 前端 `/admin/ai-settings` 页 + 项目页入口按钮；compose `ollama` service(profile=llm）与 `.env.example` 部署层键。
+- **测试**:`test_llm_settings.py` 22 例（加密往返/合并/掩码/无明文泄露/审计不含值/admin 门控/test 端点 mock 传输层/总闸拒绝/守卫拦截）。
+- **遗留**:`test_llm_service.py::TestOutputValidator::test_validate_format_with_numbers` 为存量失败（干净 HEAD 复现，与 T6.6 无关），校验器阈值调优并入 T6.7。
 
 ### T6.7 LLM 接线三处业务
 

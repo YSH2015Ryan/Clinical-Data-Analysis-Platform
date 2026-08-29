@@ -72,7 +72,10 @@ export default function ProjectsPage() {
           </div>
           <Space>
             {getRole() === "admin" && (
-              <Button onClick={() => navigate("/admin/plugins")}>插件管理</Button>
+              <>
+                <Button onClick={() => navigate("/admin/plugins")}>插件管理</Button>
+                <Button onClick={() => navigate("/admin/ai-settings")}>AI 设置</Button>
+              </>
             )}
             <Button type="primary" onClick={() => setModalOpen(true)}>
               新建项目

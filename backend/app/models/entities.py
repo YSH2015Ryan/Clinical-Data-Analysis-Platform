@@ -404,3 +404,20 @@ class AuditLog(Base):
         Index("ix_audit_logs_user_created", "user_id", "created_at"),
         Index("ix_audit_logs_resource", "resource_type", "resource_id"),
     )
+
+
+class AdminSetting(Base):
+    """运行层管理配置（T6.6）：部署层走环境变量，运行层由管理员界面写库。
+
+    is_secret=True 的行 value 为 Fernet 密文（密钥由 SETTINGS_ENCRYPTION_KEY 注入），
+    任何 API 响应与日志不得出现明文（docs/12 红线、roadmap T6.6 DoD）。
+    """
+
+    __tablename__ = "admin_settings"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    is_secret: Mapped[bool] = mapped_column(nullable=False, default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )

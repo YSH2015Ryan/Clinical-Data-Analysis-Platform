@@ -13,6 +13,7 @@ from app.api.v1 import auth as auth_api
 from app.api.v1 import datasets as datasets_api
 from app.api.v1 import projects as projects_api
 from app.api.v1 import reports as reports_api
+from app.api.v1 import settings as settings_api
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
@@ -40,6 +41,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if settings.environment == "prod":
             raise
         logger.warning("plugin_sync_deferred", exc_info=True)
+    # T6.6：启动时从 DB 读运行层 LLM 配置注入全局服务（管理员界面改动前的生效值）。
+    try:
+        from app.services import settings as settings_service
+        from app.services.llm import init_llm_service_from_runtime
+
+        async with get_session_factory()() as db:
+            init_llm_service_from_runtime(await settings_service.get_llm_config(db))
+    except Exception:
+        if settings.environment == "prod":
+            raise
+        logger.warning("llm_init_deferred", exc_info=True)
     logger.info("app_started", app=settings.app_name)
     yield
     await dispose_engine()
@@ -61,6 +73,7 @@ def create_app() -> FastAPI:
     v1.include_router(analysis_api.router)
     v1.include_router(reports_api.router)
     v1.include_router(admin_api.router)
+    v1.include_router(settings_api.router)
 
     @v1.get("/healthz")
     async def healthz() -> dict[str, str]:
