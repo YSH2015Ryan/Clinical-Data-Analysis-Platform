@@ -8,6 +8,7 @@ GET /datasets/{id}/quality-report 最新质量报告。
 import uuid
 from typing import Any
 
+from anyio import to_thread
 from fastapi import APIRouter, Depends, Form, Query, UploadFile
 from fastapi.encoders import jsonable_encoder
 from pydantic import ValidationError
@@ -42,9 +43,12 @@ from app.schemas.preparation import (
 )
 from app.services import audit as audit_service
 from app.services import datasets as dataset_service
+from app.services import llm_tasks
 from app.services import preparation as preparation_service
 from app.services import projects as project_service
 from app.services import quickfix as quickfix_service
+from app.services import settings as settings_service
+from app.services.llm import init_llm_service_from_runtime
 from app.services.storage import key_from_uri, storage_from_settings
 from app.workers.dataset_tasks import validate_dataset
 from app.workers.preparation_tasks import run_preparation
@@ -165,6 +169,22 @@ async def get_research_profile(
     result = detect_research_direction(
         dataframe, hints.model_dump(exclude_none=True) if hints is not None else None
     )
+    # T6.7：研究画像 LLM 增强（分功能开关门控；失败回退纯规则结果，不阻塞）
+    cfg = await settings_service.get_llm_config(db)
+    switch = cfg.feature_switches.get("research_profile", "off")
+    questions = None
+    if switch != "off":
+        facts = {
+            **result,
+            "n_rows": len(dataframe),
+            "n_columns": len(dataframe.columns),
+            "columns": [str(c) for c in dataframe.columns][:50],
+        }
+        service = init_llm_service_from_runtime(cfg)
+        questions = await to_thread.run_sync(
+            llm_tasks.generate_research_questions, service, facts, switch, cfg.temperature
+        )
+    result["research_questions"] = questions
     return ResearchProfile.model_validate(result)
 
 

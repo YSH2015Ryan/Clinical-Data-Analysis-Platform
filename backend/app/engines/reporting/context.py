@@ -144,6 +144,9 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
     recommendation = (comparison or {}).get("recommendation") or {}
     top1 = (recommendation.get("top") or [None])[0]
 
+    # T6.7：LLM 解读段落（worker 装配 payload 时按分功能开关生成；缺省 → 模板拼句兜底）
+    llm_interp = payload.get("llm_interpretations") or {}
+
     statements = _interpretation_statements(explain_charts)
     # T6.3：回归诊断 / 分类校准结论进入临床解读（真实检验输出的结论文本）
     if diagnostics:
@@ -217,6 +220,8 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 # T6.3：回归诊断 / 分类校准（不适用任务类型 → None → 模板不渲染）
                 "diagnostics": diagnostics,
                 "calibration": calibration,
+                # T6.7：LLM 解读段落（None → 模板不渲染）
+                "llm_paragraph": llm_interp.get("performance"),
             },
         ),
         _section(
@@ -228,6 +233,7 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 "not_recommended": recommendation.get("not_recommended") or [],
                 "primary_metric": recommendation.get("primary_metric"),
                 "formula": recommendation.get("formula"),
+                "llm_paragraph": llm_interp.get("model_comparison"),
             },
         ),
         _section(
@@ -237,11 +243,12 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
         ),
         _section(
             "clinical_interpretation",
-            bool(statements),
+            bool(statements) or bool(llm_interp.get("clinical_interpretation")),
             {
                 "auto_generated": True,
                 "notice": INTERPRETATION_NOTICE,
                 "statements": statements,
+                "llm_paragraph": llm_interp.get("clinical_interpretation"),
             },
         ),
         _section("limitations", True, {"items": list(_LIMITATIONS)}),

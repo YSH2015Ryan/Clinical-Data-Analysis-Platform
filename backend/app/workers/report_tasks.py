@@ -45,6 +45,9 @@ from app.models.entities import (
     QualityReport,
     Report,
 )
+from app.services import llm_tasks
+from app.services.llm import init_llm_service_from_runtime
+from app.services.settings import get_llm_config_sync
 from app.services.storage import key_from_uri, storage_from_settings
 from app.workers.celery_app import celery_app
 from app.workers.db import get_sync_session_factory
@@ -240,6 +243,92 @@ def _classification_calibration(
     }
 
 
+def _trim_diagnostics(diag: dict[str, Any] | None) -> dict[str, Any] | None:
+    """LLM facts 用诊断子集：系数表/VIF 截断（控制 payload 体积，值仍为真实计算结果）。"""
+    if not diag:
+        return None
+    trimmed = {k: v for k, v in diag.items() if k != "coefficients"}
+    coeffs = diag.get("coefficients")
+    if coeffs:
+        trimmed["coefficients_top"] = list(coeffs)[:5]
+    vif = diag.get("vif") or {}
+    if vif.get("vif_values"):
+        trimmed["vif"] = {
+            "conclusion": vif.get("conclusion"),
+            "vif_values": dict(list((vif.get("vif_values") or {}).items())[:10]),
+        }
+    return trimmed
+
+
+def _interpretation_facts(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """报告解读 facts（T6.7）：全部由 payload 真实计算值组装，LLM 只做表达不做计算。"""
+    comparison = payload.get("comparison") or {}
+    recommendation = comparison.get("recommendation") or {}
+    table = payload.get("table") or []
+    if not comparison or not table:
+        return {}
+    task_type = (payload.get("run") or {}).get("task_type")
+    perf_rows = [
+        {
+            "model_key": r.get("model_key"),
+            "status": r.get("status"),
+            "metrics": r.get("metrics"),
+            "p_value_text": r.get("p_value_text"),
+        }
+        for r in table
+    ]
+    diagnostics = _trim_diagnostics(payload.get("diagnostics"))
+    calibration = payload.get("calibration")
+
+    facts: dict[str, dict[str, Any]] = {
+        "model_comparison": {
+            "task_type": task_type,
+            "primary_metric": recommendation.get("primary_metric"),
+            "ranking": comparison.get("ranking") or [],
+            "top": recommendation.get("top") or [],
+            "not_recommended": recommendation.get("not_recommended") or [],
+            "performance": perf_rows,
+        },
+        "performance": {
+            "task_type": task_type,
+            "performance": perf_rows,
+            "significance_note": payload.get("significance_note"),
+            "diagnostics": diagnostics,
+            "calibration": calibration,
+        },
+    }
+    clinical: dict[str, Any] = {}
+    for chart in comparison.get("charts") or []:
+        if chart.get("kind") == "hr_forest":
+            clinical["hazard_ratios"] = [
+                {"model_key": m.get("model_key"), "rows": (m.get("rows") or [])[:5]}
+                for m in (chart.get("data") or {}).get("models", [])
+            ]
+        if chart.get("kind") == "feature_importance":
+            clinical["top_features"] = ((chart.get("data") or {}).get("features") or [])[:5]
+    if diagnostics:
+        clinical["diagnostics"] = diagnostics
+    if calibration:
+        clinical["calibration"] = calibration
+    if clinical:
+        facts["clinical_interpretation"] = clinical
+    return facts
+
+
+def _llm_interpretations(db: Any, payload: dict[str, Any]) -> dict[str, str] | None:
+    """T6.7：报告解读段落（分功能开关门控；关闭/失败 → None，context 模板拼句兜底）。"""
+    cfg = get_llm_config_sync(db)
+    switch = cfg.feature_switches.get("report_interpretation", "off")
+    if switch == "off":
+        return None
+    facts = _interpretation_facts(payload)
+    if not facts:
+        return None
+    service = init_llm_service_from_runtime(cfg)
+    paragraphs = llm_tasks.generate_report_interpretations(service, facts, switch, cfg.temperature)
+    return paragraphs or None
+
+
 def assemble_report_payload(db: Any, run: AnalysisRun) -> dict[str, Any]:
     """DB + 存储产物 → ReportContext payload（docs/10 §3 单一事实源）。"""
     version = db.get(DatasetVersion, run.dataset_version_id)
@@ -265,7 +354,7 @@ def assemble_report_payload(db: Any, run: AnalysisRun) -> dict[str, Any]:
 
     storage = storage_from_settings()
     ranking = list(comparison.ranking) if comparison and comparison.ranking else []
-    return {
+    payload: dict[str, Any] = {
         "run": {
             "task_type": run.task_type,
             "status": run.status,
@@ -316,6 +405,9 @@ def assemble_report_payload(db: Any, run: AnalysisRun) -> dict[str, Any]:
         ),
         "software": _software_versions(),
     }
+    # T6.7：LLM 解读段落（真实指标 facts；关闭或失败 → None，模板拼句兜底）
+    payload["llm_interpretations"] = _llm_interpretations(db, payload)
+    return payload
 
 
 def _embed_images(context: dict[str, Any]) -> None:

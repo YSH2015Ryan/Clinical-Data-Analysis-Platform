@@ -116,7 +116,15 @@
 2. **报告解读段落**：替代 `context.py` 模板拼句，用真实指标 + LLM 生成解读；validators 拦截编造数值。
 3. **校验报错自然语言解释**:Issue + 富文案 → "人话版"修复指引（与 T6.1 衔接）。
 
-- **DoD**:LLM 不可用时三处均自动回退现有规则/模板输出，主流程不阻塞；validators 单测覆盖幻觉数值拦截。
+- **DoD**:LLM 不可用时三处均自动回退现有规则/模板输出，主流程不阻塞；validators 单测覆盖幻觉数值拦截。✅
+- **落地**（三处均经 T6.6 分功能开关门控 off/local/local_first/cloud，关闭或 LLM 失败自动回退）:
+  - 研究画像：`services/llm_tasks.py::generate_research_questions`,facts=规则画像+行列数+列名（≤50),JSON 解析+模型/图表白名单过滤+逐条幻觉拦截，接线 `api/v1/datasets.py::get_research_profile`(to_thread 防阻塞事件循环）;
+  - 报告解读：`workers/report_tasks.py::_llm_interpretations` 装配三章节 facts（真实 payload 值组装，`citable_numbers` 把结论字符串内数值注入 facts 防误杀）,`context.py`/模板渲染 `llm_paragraph`，模板拼句兜底；
+  - 校验解释：`workers/dataset_tasks.py::_explain_blockers` 为阻塞级 Issue 生成 ≤5 条通俗解释（`llm_explanation` 字段，长度+幻觉双重校验）;
+  - `settings.py` 补 sync 读配置（Celery worker 用）;`OllamaProvider/OpenAIProvider.complete()` 通用补全接口；
+  - 校验器阈值调优：最短 100→80，分点关键词收窄为 首先|其次|最后（修复 T6.6 遗留存量失败 `test_validate_format_with_numbers`);
+  - docs/14 补录 `POST /datasets/{id}/research-profile` 契约 + `research_questions`/`llm_explanation` 字段（变更记录 2026-08-27 ×2)。
+- **测试**:`test_llm_wiring.py` 22 例（开关映射/三站点幻觉拦截/失败回退/报告 facts 装配/诊断截断/sync 接线）+ `test_llm_service.py` 25 例（含 80 字边界、分点词仍拦截）+ API/context/settings/report wiring 套件，合计 96 例全绿；ruff/mypy 改动文件全净。
 
 ### T6.8 quick-fix 全覆盖
 

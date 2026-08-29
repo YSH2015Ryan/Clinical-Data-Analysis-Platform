@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from cryptography.fernet import Fernet
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.models.entities import AdminSetting
@@ -53,6 +54,16 @@ async def get_value(db: AsyncSession, key: str) -> str | None:
     return row.value
 
 
+def _get_value_sync(db: Session, key: str) -> str | None:
+    """get_value 的同步版（Celery worker 用 sync Session，T6.7）。"""
+    row = db.get(AdminSetting, key)
+    if row is None:
+        return None
+    if row.is_secret:
+        return _fernet().decrypt(row.value.encode()).decode()
+    return row.value
+
+
 async def set_value(db: AsyncSession, key: str, value: str, *, secret: bool = False) -> None:
     stored = _fernet().encrypt(value.encode()).decode() if secret else value
     row = await db.get(AdminSetting, key)
@@ -86,18 +97,24 @@ class LlmRuntimeConfig:
     )
 
 
-async def get_llm_config(db: AsyncSession) -> LlmRuntimeConfig:
+def _build_config(
+    *,
+    choice_raw: str | None,
+    temperature_raw: str | None,
+    switches_raw: str | None,
+    ollama_model_raw: str | None,
+    api_key: str | None,
+) -> LlmRuntimeConfig:
+    """env 默认值 + DB 覆盖的合并逻辑（async/sync 两个入口共用）。"""
     settings = get_settings()
-    choice = (await get_value(db, KEY_MODEL_CHOICE)) or settings.llm_default_choice
+    choice = choice_raw or settings.llm_default_choice
     if choice not in ("auto", "local", "cloud"):
         choice = "auto"
-    temperature_raw = await get_value(db, KEY_TEMPERATURE)
     try:
         temperature = float(temperature_raw) if temperature_raw is not None else 0.3
     except ValueError:
         temperature = 0.3
     switches: dict[str, Any] = dict(DEFAULT_FEATURE_SWITCHES)
-    switches_raw = await get_value(db, KEY_FEATURE_SWITCHES)
     if switches_raw:
         try:
             stored = json.loads(switches_raw)
@@ -110,11 +127,32 @@ async def get_llm_config(db: AsyncSession) -> LlmRuntimeConfig:
         model_choice=choice,  # type: ignore[arg-type]
         temperature=temperature,
         ollama_base_url=settings.ollama_base_url,
-        ollama_model=(await get_value(db, KEY_OLLAMA_MODEL)) or settings.ollama_model,
+        ollama_model=ollama_model_raw or settings.ollama_model,
         openai_model=settings.openai_model,
-        openai_api_key=await get_value(db, KEY_OPENAI_API_KEY),
+        openai_api_key=api_key,
         cloud_enabled=settings.llm_cloud_enabled,
         feature_switches=switches,
+    )
+
+
+async def get_llm_config(db: AsyncSession) -> LlmRuntimeConfig:
+    return _build_config(
+        choice_raw=await get_value(db, KEY_MODEL_CHOICE),
+        temperature_raw=await get_value(db, KEY_TEMPERATURE),
+        switches_raw=await get_value(db, KEY_FEATURE_SWITCHES),
+        ollama_model_raw=await get_value(db, KEY_OLLAMA_MODEL),
+        api_key=await get_value(db, KEY_OPENAI_API_KEY),
+    )
+
+
+def get_llm_config_sync(db: Session) -> LlmRuntimeConfig:
+    """get_llm_config 的同步版（Celery worker 内读取运行层配置，T6.7）。"""
+    return _build_config(
+        choice_raw=_get_value_sync(db, KEY_MODEL_CHOICE),
+        temperature_raw=_get_value_sync(db, KEY_TEMPERATURE),
+        switches_raw=_get_value_sync(db, KEY_FEATURE_SWITCHES),
+        ollama_model_raw=_get_value_sync(db, KEY_OLLAMA_MODEL),
+        api_key=_get_value_sync(db, KEY_OPENAI_API_KEY),
     )
 
 

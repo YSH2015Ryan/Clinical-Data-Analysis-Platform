@@ -164,6 +164,44 @@ class TestFigureCaptions:
         assert "不构成临床诊断建议" in appendix["disclaimer"]
 
 
+class TestLlmInterpretations:
+    """T6.7：LLM 解读段落经 payload 注入对应章节；缺省时章节结构不变（模板拼句兜底）。"""
+
+    def test_llm_paragraphs_injected_into_sections(self) -> None:
+        payload = _payload()
+        payload["llm_interpretations"] = {
+            "model_comparison": "配对检验显示 rf 显著优于 logreg。",
+            "performance": "各模型交叉验证性能整体稳定。",
+            "clinical_interpretation": "重要特征具有明确临床意义。",
+        }
+        ctx = build_report_context(payload)
+        perf = next(s for s in ctx["sections"] if s["key"] == "performance")
+        comp = next(s for s in ctx["sections"] if s["key"] == "comparison")
+        interp = next(s for s in ctx["sections"] if s["key"] == "clinical_interpretation")
+        assert perf["data"]["llm_paragraph"] == "各模型交叉验证性能整体稳定。"
+        assert comp["data"]["llm_paragraph"] == "配对检验显示 rf 显著优于 logreg。"
+        assert interp["data"]["llm_paragraph"] == "重要特征具有明确临床意义。"
+
+    def test_absent_llm_interpretations_no_keys(self) -> None:
+        ctx = build_report_context(_payload())
+        for key in ("performance", "comparison", "clinical_interpretation"):
+            section = next(s for s in ctx["sections"] if s["key"] == key)
+            assert not section["data"].get("llm_paragraph")
+
+    def test_llm_paragraph_marks_section_applicable_without_statements(self) -> None:
+        """无模板语句（无诊断/校准/可解释产物）但有 LLM 段落时，临床解读章节仍适用。"""
+        payload = _payload()
+        payload["comparison"]["charts"] = [
+            {"kind": "roc", "title": "ROC 曲线对比", "data": {"series": []}}
+        ]
+        payload["llm_interpretations"] = {"clinical_interpretation": "基于真实指标的解读。"}
+        ctx = build_report_context(payload)
+        interp = next(s for s in ctx["sections"] if s["key"] == "clinical_interpretation")
+        assert interp["applicable"] is True
+        assert interp["data"]["llm_paragraph"] == "基于真实指标的解读。"
+        assert interp["data"]["statements"] == []
+
+
 class TestMissingData:
     def test_missing_quality_report_not_applicable(self) -> None:
         payload = _payload()

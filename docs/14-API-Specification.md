@@ -232,6 +232,21 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/DatasetVersion'}
 
+  /datasets/{dataset_id}/research-profile:
+    post:
+      tags: [datasets]
+      summary: 研究画像（规则引擎识别研究设计并推荐模型/期刊；T6.7 起 research_profile 开关打开时附 LLM 研究问题建议）
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ResearchHints'}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResearchProfile'}
+        '404': {$ref: '#/components/responses/Error'}
+
   /datasets/{dataset_id}/preprocess/validate:
     post:
       tags: [datasets]
@@ -586,6 +601,7 @@ components:
               suggestion: {type: string}
               row_indices: {type: array, items: {type: integer}, nullable: true, description: 受影响行号(0 基,升序,≤20;前端展示 Excel 行号=索引+2)}
               guidance: {type: string, nullable: true, description: 富文案修复指引(原因+多种修法+一键操作)}
+              llm_explanation: {type: string, nullable: true, description: LLM 人话版修复解释(T6.7;validation_explain 开关打开且生成成功时存在,仅 blocker)}
         column_profiles: {type: array, items: {type: object}}
     QuickFixRequest:
       type: object
@@ -600,6 +616,34 @@ components:
               type: {type: string, enum: [drop_column, drop_duplicates, to_missing, remap_semantic, rename_column, pivot_long_to_wide, winsorize_outliers, impute_missing, drop_rows_with_pattern, normalize_units]}
               column: {type: string}
               params: {type: object}
+
+    ResearchHints:
+      type: object
+      description: 研究画像用户提示（全部可选）
+      properties:
+        research_type: {type: string, nullable: true, description: 期望的研究设计(cohort/time_series/case_control/cross_sectional)}
+        time_column: {type: string, nullable: true}
+        event_column: {type: string, nullable: true}
+        group_column: {type: string, nullable: true}
+        outcome: {type: string, nullable: true}
+    ResearchQuestion:
+      type: object
+      required: [question, design, models, charts]
+      properties:
+        question: {type: string}
+        design: {type: string}
+        models: {type: array, items: {type: string}, description: 必为 recommended_models 子集}
+        charts: {type: array, items: {type: string}, description: 平台图表白名单内}
+    ResearchProfile:
+      type: object
+      required: [research_type, recommended_models, recommended_journals, confidence, reasoning]
+      properties:
+        research_type: {type: string, enum: [cohort, time_series, case_control, cross_sectional]}
+        recommended_models: {type: array, items: {type: string}}
+        recommended_journals: {type: array, items: {type: string}}
+        confidence: {type: number}
+        reasoning: {type: string}
+        research_questions: {type: array, items: {$ref: '#/components/schemas/ResearchQuestion'}, nullable: true, description: LLM 研究问题建议(T6.7);开关关闭或 LLM 不可用时为 null,规则结果兜底}
 
     TaskDetectionResult:
       type: object
@@ -897,3 +941,5 @@ components:
 | 2026-08-28 | `QualityReport.issues[]` 新增可选 `row_indices`（受影响行号，0 基 ≤20）与 `guidance`（富文案修复指引） | 非破坏（新增可选字段） | T6.1 校验报错可操作化：客户反馈阻塞报错看不懂、不会修；受影响消费方：前端 DatasetDetailPage 问题清单 |
 | 2026-08-28 | `QuickFixAction.type` 枚举新增 6 值：`rename_column`/`pivot_long_to_wide`/`winsorize_outliers`/`impute_missing`/`drop_rows_with_pattern`/`normalize_units` | 非破坏（扩展枚举） | T6.8 quick-fix 全覆盖：高发规则（RV201/501/601/802/804）一键修复；受影响消费方：前端 DatasetDetailPage 修复按钮、worker quick-fix 任务 |
 | 2026-08-28 | 新增 `GET/PUT /admin/settings/llm`、`POST /admin/settings/llm/test`、`GET /admin/settings/llm/ollama-models` + LlmSettingsOut/Update/LlmTestRequest/LlmTestResult/LlmFeatureSwitch schema | 非破坏（新增端点） | T6.6 LLM 设置界面：运行层配置（模型策略/分功能开关/云端 key/温度）管理员可视化调整免改代码；云端 key 只写不读（掩码回显）；受影响消费方：前端 AI 设置页（新建）、DB（新表 admin_settings）、worker/启动流程（init_llm_service 从 DB 注入） |
+| 2026-08-27 | 补录 `POST /datasets/{dataset_id}/research-profile` + ResearchHints/ResearchProfile/ResearchQuestion schema；`ResearchProfile` 新增可选 `research_questions`（LLM 研究问题建议） | 非破坏（补录端点 + 新增可选字段） | T6.7 LLM 接线（研究画像增强）：该端点此前未录入契约，本次补录；research_profile 分功能开关打开时返回 LLM 生成的 2-3 个研究问题（模型/图表均来自引擎白名单），关闭或 LLM 不可用时为 null 回退纯规则结果；受影响消费方：前端研究画像展示 |
+| 2026-08-27 | `QualityReport.issues[]` 新增可选 `llm_explanation`（LLM 人话版修复解释，仅 blocker） | 非破坏（新增可选字段） | T6.7 LLM 接线（校验报错解释）：validation_explain 分功能开关打开时，校验 worker 为阻塞级问题生成通俗解释（≤5 条），失败回退缺省；受影响消费方：前端 DatasetDetailPage 问题清单 |

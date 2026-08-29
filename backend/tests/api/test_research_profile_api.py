@@ -9,7 +9,6 @@ from app.services.storage import storage_from_settings
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
 CSV_BYTES = (
     "age,os_months,death\n" + "\n".join(f"{40 + i},{6 + i},{i % 2}" for i in range(12))
 ).encode()
@@ -87,4 +86,78 @@ class TestResearchProfileAPI:
             "recommended_journals",
             "confidence",
             "reasoning",
+            "research_questions",
         }
+
+    async def test_research_questions_none_when_switch_off(
+        self, client: AsyncClient, dataset: tuple[Dataset, User]
+    ) -> None:
+        """T6.7：分功能开关默认 off → research_questions 为 None（纯规则结果）。"""
+        ds, user = dataset
+        response = await client.post(
+            f"/api/v1/datasets/{ds.id}/research-profile", headers=_auth(user)
+        )
+        assert response.status_code == 200
+        assert response.json()["research_questions"] is None
+
+    async def test_research_questions_from_llm_when_enabled(
+        self,
+        client: AsyncClient,
+        dataset: tuple[Dataset, User],
+        db_session: AsyncSession,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """T6.7：开关打开 → LLM 增强研究问题进入响应（LLM 层 mock，不依赖真实模型）。"""
+        from app.services import llm_tasks
+        from app.services import settings as settings_service
+
+        await settings_service.update_llm_config(
+            db_session, feature_switches={"research_profile": "local"}
+        )
+        await db_session.commit()
+        monkeypatch.setattr(
+            "app.api.v1.datasets.init_llm_service_from_runtime", lambda cfg: object()
+        )
+        questions = [
+            {
+                "question": "年龄是否与死亡风险相关？",
+                "design": "单因素 Cox 回归",
+                "models": ["coxph"],
+                "charts": ["KM 生存曲线"],
+            }
+        ]
+        monkeypatch.setattr(llm_tasks, "generate_research_questions", lambda *args: questions)
+        ds, user = dataset
+        response = await client.post(
+            f"/api/v1/datasets/{ds.id}/research-profile", headers=_auth(user)
+        )
+        assert response.status_code == 200
+        assert response.json()["research_questions"] == questions
+
+    async def test_llm_failure_falls_back_to_rule_result(
+        self,
+        client: AsyncClient,
+        dataset: tuple[Dataset, User],
+        db_session: AsyncSession,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """T6.7 DoD：LLM 不可用时回退规则输出（research_questions=None），主流程不阻塞。"""
+        from app.services import llm_tasks
+        from app.services import settings as settings_service
+
+        await settings_service.update_llm_config(
+            db_session, feature_switches={"research_profile": "local"}
+        )
+        await db_session.commit()
+        monkeypatch.setattr(
+            "app.api.v1.datasets.init_llm_service_from_runtime", lambda cfg: object()
+        )
+        monkeypatch.setattr(llm_tasks, "generate_research_questions", lambda *args: None)
+        ds, user = dataset
+        response = await client.post(
+            f"/api/v1/datasets/{ds.id}/research-profile", headers=_auth(user)
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["research_type"] == "cohort"  # 规则结果仍在
+        assert body["research_questions"] is None

@@ -13,6 +13,9 @@ from sqlalchemy import select
 from app.core.logging import get_logger
 from app.engines import parser, validation
 from app.models.entities import Dataset, DatasetVersion, QualityReport
+from app.services import llm_tasks
+from app.services.llm import init_llm_service_from_runtime
+from app.services.settings import get_llm_config_sync
 from app.services.storage import key_from_uri, storage_from_settings
 from app.workers.celery_app import celery_app
 from app.workers.db import get_sync_session_factory
@@ -60,7 +63,9 @@ def validate_dataset(dataset_id: str) -> None:
             dataset.preview = _redact_preview(parser.preview_json(result.df))
             dataset.column_profile = parser.normalize_json_value(report.column_profiles)
             dataset.status = "FAILED" if report.status == "FAILED" else "VALIDATED"
-            db.add(_quality_report(dataset, version, report))
+            quality = _quality_report(dataset, version, report)
+            _explain_blockers(db, quality.issues)  # T6.7：就地写入 llm_explanation
+            db.add(quality)
             db.commit()
             logger.info(
                 "dataset_validated",
@@ -90,6 +95,22 @@ def validate_dataset(dataset_id: str) -> None:
             )
             db.commit()
             logger.error("dataset_parse_failed", dataset_id=dataset_id, error=type(exc).__name__)
+
+
+def _explain_blockers(db: Any, issues: list[dict[str, Any]]) -> None:
+    """T6.7：校验报错自然语言解释（分功能开关门控；失败跳过，不影响校验主流程）。"""
+    try:
+        cfg = get_llm_config_sync(db)
+    except Exception as exc:
+        logger.warning("llm_explain_config_failed", error=str(exc))
+        return
+    switch = cfg.feature_switches.get("validation_explain", "off")
+    if switch == "off":
+        return
+    service = init_llm_service_from_runtime(cfg)
+    explained = llm_tasks.explain_validation_issues(service, issues, switch, cfg.temperature)
+    if explained:
+        logger.info("llm_issue_explanations", explained=explained)
 
 
 def _quality_report(

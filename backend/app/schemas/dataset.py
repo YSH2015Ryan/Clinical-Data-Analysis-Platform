@@ -31,6 +31,8 @@ class Issue(BaseModel):
     # T6.1(docs/14 §5 变更记录 2026-08-28):受影响行号(0 基,≤20)与富文案修复指引
     row_indices: list[int] | None = None
     guidance: str | None = None
+    # T6.7(docs/14 §5 变更记录 2026-08-27):LLM 人话版解释；功能关闭或生成失败时缺省
+    llm_explanation: str | None = None
 
 
 class QualityReport(BaseModel):
@@ -56,6 +58,15 @@ class ResearchHints(BaseModel):
     outcome: str | None = None  # 结局变量列名
 
 
+class ResearchQuestion(BaseModel):
+    """LLM 生成的研究问题建议（T6.7；模型/图表均来自引擎白名单）。"""
+
+    question: str
+    design: str
+    models: list[str]
+    charts: list[str]
+
+
 class ResearchProfile(BaseModel):
     """研究画像结果(engines/research_profiler.detect_research_direction 输出契约)。"""
 
@@ -64,6 +75,8 @@ class ResearchProfile(BaseModel):
     recommended_journals: list[str]
     confidence: float
     reasoning: str
+    # T6.7(docs/14 §5 变更记录 2026-08-27):LLM 增强研究问题；功能关闭或 LLM 不可用时为 None
+    research_questions: list[ResearchQuestion] | None = None
 
 
 class QuickFixAction(BaseModel):

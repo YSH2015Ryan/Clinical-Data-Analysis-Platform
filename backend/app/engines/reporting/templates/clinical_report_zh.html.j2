@@ -49,6 +49,8 @@
   details.fold > table { margin: 6px 0 4px; }
   .na { color: #999; font-style: italic; }
   .notice { background: #fafafa; border-left: 3px solid #999; padding: 8px 12px; font-size: 12px; }
+  .llm-paragraph { background: #f5f7fa; border-left: 3px solid #7a9cc6; padding: 8px 12px;
+                   text-align: justify; line-height: 1.8; }
   .disclaimer { border-top: 1.5px solid #333; border-bottom: 1.5px solid #333; padding: 10px 4px;
                 font-weight: bold; margin-top: 20px; text-align: center; }
   img.chart { max-width: 100%; display: block; margin: 12px auto 0; }
@@ -192,6 +194,7 @@
   {% endfor %}
 {% endcall %}
 {% if s.data.significance_note %}<p class="meta">{{ s.data.significance_note | replace("**", "") }}</p>{% endif %}
+{% if s.data.llm_paragraph %}<p class="llm-paragraph">{{ s.data.llm_paragraph }}</p>{% endif %}
 {% if s.data.calibration %}
 {% set cal = s.data.calibration %}
 {% if cal.hosmer_lemeshow and cal.hosmer_lemeshow.statistic is not none %}
@@ -247,6 +250,7 @@
 
 {% elif s.key == "comparison" %}
 <p>排名：{{ s.data.ranking | join(" > ") }}</p>
+{% if s.data.llm_paragraph %}<p class="llm-paragraph">{{ s.data.llm_paragraph }}</p>{% endif %}
 {% for t in s.data.top %}
 <p><strong>Top{{ t.rank }} {{ t.model_key }}</strong>：{{ t.reason }}</p>
 {% endfor %}
@@ -264,6 +268,7 @@
 
 {% elif s.key == "clinical_interpretation" %}
 <p class="notice">{{ s.data.notice }}</p>
+{% if s.data.llm_paragraph %}<p class="llm-paragraph">{{ s.data.llm_paragraph }}</p>{% endif %}
 <ul>{% for st in s.data.statements %}<li>{{ st }}</li>{% endfor %}</ul>
 
 {% elif s.key == "limitations" %}
