@@ -30,6 +30,7 @@ import {
   createRun,
   detectTask,
   getDataset,
+  getResearchTemplates,
   listDatasetVersions,
   listDatasets,
   listModels,
@@ -39,6 +40,7 @@ import {
   type DatasetDetail,
   type ModelPlugin,
   type PreprocessConfig,
+  type ResearchTemplateSuggestion,
   type TaskDetectionResult,
   type TaskType,
 } from "../api";
@@ -61,6 +63,8 @@ export default function AnalysisWizardPage() {
   // Step 1
   const [datasets, setDatasets] = useState<DatasetDetail[] | null>(null);
   const [datasetId, setDatasetId] = useState<string | null>(searchParams.get("dataset"));
+  // T6.9 科研流程模板（Step 1 选定数据集后加载）
+  const [templates, setTemplates] = useState<ResearchTemplateSuggestion[] | null>(null);
   // Step 2
   const [columns, setColumns] = useState<string[]>([]);
   const [profile, setProfile] = useState<ColumnProfile[] | null>(null);
@@ -83,6 +87,24 @@ export default function AnalysisWizardPage() {
       .then((page) => setDatasets(page.items))
       .catch((e) => message.error((e as ApiError).message || "数据集加载失败"));
   }, [projectId]);
+
+  // T6.9：选定数据集后加载科研流程模板（适用性 + 样本量核对，失败不阻塞向导）
+  useEffect(() => {
+    if (!datasetId) {
+      setTemplates(null);
+      return;
+    }
+    getResearchTemplates(datasetId)
+      .then((res) => setTemplates(res.templates))
+      .catch(() => setTemplates(null));
+  }, [datasetId]);
+
+  /** 应用模板：预填任务类型与推荐模型（进入后续步骤可改）。 */
+  const applyTemplate = (t: ResearchTemplateSuggestion) => {
+    setTaskType(t.task_type);
+    setSelectedModels(t.models);
+    message.success(`已应用「${t.name}」模板：任务类型与推荐模型已预填，后续步骤可调整`);
+  };
 
   // 进入 Step 2：取列名 + 自动推荐配置（默认值策略：推荐配置已填充）
   useEffect(() => {
@@ -250,8 +272,55 @@ export default function AnalysisWizardPage() {
           setTaskType(null);
           setModels(null);
           setSelectedModels([]);
+          setTemplates(null);
         }}
       />
+      {templates && datasetId && (
+        <div style={{ marginTop: 16 }}>
+          <Typography.Text strong>科研流程模板（可选）：</Typography.Text>
+          <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
+            {templates.map((t) => (
+              <Alert
+                key={t.key}
+                type={t.applicable ? "info" : "warning"}
+                showIcon
+                message={
+                  <Space wrap>
+                    <span>{t.name}</span>
+                    <Tag color={t.applicable ? "green" : "default"}>
+                      {t.applicable ? "适用" : "不适用"}
+                    </Tag>
+                    <Tag>{TASK_LABEL[t.task_type]}</Tag>
+                    {t.sample_size.map((a, i) => (
+                      <Tag key={i} color={a.meets ? "green" : "orange"}>
+                        {a.rule}
+                        {a.value != null ? `（当前 ${a.value}）` : ""}
+                      </Tag>
+                    ))}
+                  </Space>
+                }
+                description={
+                  <>
+                    <div>{t.reasons.join("；")}</div>
+                    {t.sample_size.map((a, i) => (
+                      <div key={i} style={{ color: "rgba(0,0,0,0.55)" }}>
+                        {a.text}
+                      </div>
+                    ))}
+                  </>
+                }
+                action={
+                  t.applicable ? (
+                    <Button size="small" type="primary" onClick={() => applyTemplate(t)}>
+                      使用此模板
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ))}
+          </Space>
+        </div>
+      )}
       {datasets !== null && !datasets.some((d) => d.status === "VALIDATED") && (
         <Alert
           type="warning"

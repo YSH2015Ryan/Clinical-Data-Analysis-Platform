@@ -470,6 +470,38 @@ export async function detectTask(datasetId: string): Promise<TaskDetectionResult
   });
 }
 
+// ---- 科研流程模板库（T6.9；docs/14 §3 /datasets/{id}/research-templates） ----
+
+export interface SampleSizeAdvice {
+  rule: string;
+  value: number | null;
+  threshold: number;
+  meets: boolean;
+  text: string;
+}
+
+export interface ResearchTemplateSuggestion {
+  key: "prognostic_model" | "risk_factor" | "dose_response" | "longitudinal";
+  name: string;
+  description: string;
+  applicable: boolean;
+  reasons: string[];
+  task_type: TaskType;
+  models: string[];
+  charts: string[];
+  sample_size: SampleSizeAdvice[];
+}
+
+export interface ResearchTemplatesResponse {
+  templates: ResearchTemplateSuggestion[];
+}
+
+export async function getResearchTemplates(
+  datasetId: string,
+): Promise<ResearchTemplatesResponse> {
+  return apiFetch<ResearchTemplatesResponse>(`/datasets/${datasetId}/research-templates`);
+}
+
 // ---- 分析运行（docs/14 §3 /analysis-runs；docs/08 §3 状态机） ----
 
 export type RunStatus =

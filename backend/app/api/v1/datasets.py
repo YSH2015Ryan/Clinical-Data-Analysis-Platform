@@ -23,6 +23,7 @@ from app.engines.preprocessing import validate_dsl
 from app.engines.quickfix import QuickFixAction
 from app.engines.recommender import recommend_config_from_profile
 from app.engines.research_profiler import detect_research_direction
+from app.engines.research_templates import evaluate_templates
 from app.engines.task_detection import detect_task_from_profile
 from app.schemas.auth import CurrentUser
 from app.schemas.dataset import (
@@ -34,6 +35,7 @@ from app.schemas.dataset import (
     QuickFixRequest,
     ResearchHints,
     ResearchProfile,
+    ResearchTemplatesResponse,
 )
 from app.schemas.preparation import (
     PreparationApplyRequest,
@@ -186,6 +188,29 @@ async def get_research_profile(
         )
     result["research_questions"] = questions
     return ResearchProfile.model_validate(result)
+
+
+@dataset_router.get("/{dataset_id}/research-templates", response_model=ResearchTemplatesResponse)
+async def get_research_templates(
+    dataset_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ResearchTemplatesResponse:
+    """T6.9 科研流程模板库：四类模板按数据集真实统计给出适用性与样本量核对。"""
+    dataset = await dataset_service.get_dataset(db, user, dataset_id)
+    if dataset is None:
+        raise not_found("dataset", str(dataset_id))
+    try:
+        raw = storage_from_settings().get(key_from_uri(dataset.storage_uri))
+        dataframe = parser.parse(raw, dataset.source_type).df
+    except Exception as exc:
+        raise AppError(
+            code="DATASET_PARSE_FAILED",
+            status=400,
+            message="数据集无法解析，暂时无法评估研究模板",
+        ) from exc
+    templates = await to_thread.run_sync(evaluate_templates, dataframe)
+    return ResearchTemplatesResponse.model_validate({"templates": templates})
 
 
 @dataset_router.post("/{dataset_id}/quick-fix", response_model=DatasetVersion)

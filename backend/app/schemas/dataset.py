@@ -79,6 +79,34 @@ class ResearchProfile(BaseModel):
     research_questions: list[ResearchQuestion] | None = None
 
 
+class SampleSizeAdvice(BaseModel):
+    """样本量/功效经验规则核对（T6.9；数值全部来自数据集真实统计）。"""
+
+    rule: str
+    value: float | None = None  # 无法计算时（缺事件计数等）为 None
+    threshold: float
+    meets: bool
+    text: str
+
+
+class ResearchTemplateSuggestion(BaseModel):
+    """科研流程模板建议（T6.9，docs/14 §5 变更记录 2026-08-27）。"""
+
+    key: Literal["prognostic_model", "risk_factor", "dose_response", "longitudinal"]
+    name: str
+    description: str
+    applicable: bool
+    reasons: list[str]
+    task_type: Literal["survival", "classification", "regression"]
+    models: list[str]
+    charts: list[str]
+    sample_size: list[SampleSizeAdvice]
+
+
+class ResearchTemplatesResponse(BaseModel):
+    templates: list[ResearchTemplateSuggestion]
+
+
 class QuickFixAction(BaseModel):
     type: Literal[
         "drop_column",

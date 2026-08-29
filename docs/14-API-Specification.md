@@ -247,6 +247,17 @@ paths:
               schema: {$ref: '#/components/schemas/ResearchProfile'}
         '404': {$ref: '#/components/responses/Error'}
 
+  /datasets/{dataset_id}/research-templates:
+    get:
+      tags: [datasets]
+      summary: 科研流程模板库（T6.9）：预后模型/危险因素/剂量反应/纵向四类模板，按数据集真实统计给出适用性、推荐任务/模型/图表与样本量/功效提示（全部数值真实计算，不虚构）
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResearchTemplatesResponse'}
+        '404': {$ref: '#/components/responses/Error'}
+
   /datasets/{dataset_id}/preprocess/validate:
     post:
       tags: [datasets]
@@ -645,6 +656,34 @@ components:
         reasoning: {type: string}
         research_questions: {type: array, items: {$ref: '#/components/schemas/ResearchQuestion'}, nullable: true, description: LLM 研究问题建议(T6.7);开关关闭或 LLM 不可用时为 null,规则结果兜底}
 
+    SampleSizeAdvice:
+      type: object
+      required: [rule, meets, text]
+      properties:
+        rule: {type: string, description: 经验规则名称(如 EPV≥10)}
+        value: {type: number, nullable: true, description: 当前数据实际值(EPV 或 n/p 等),无法计算时为 null}
+        threshold: {type: number, description: 规则阈值}
+        meets: {type: boolean, description: 当前数据是否满足规则;value 为 null 时按 false}
+        text: {type: string, description: 人话版说明(含真实数值)}
+    ResearchTemplateSuggestion:
+      type: object
+      required: [key, name, description, applicable, reasons, task_type, models, charts, sample_size]
+      properties:
+        key: {type: string, enum: [prognostic_model, risk_factor, dose_response, longitudinal]}
+        name: {type: string}
+        description: {type: string}
+        applicable: {type: boolean, description: 数据集是否满足该模板的最小数据条件}
+        reasons: {type: array, items: {type: string}, description: 适用/不适用的判定理由(含真实列名与数值)}
+        task_type: {type: string, enum: [survival, classification, regression]}
+        models: {type: array, items: {type: string}, description: 推荐模型 key(模型注册表内)}
+        charts: {type: array, items: {type: string}, description: 推荐图表 kind(docs/14 ChartAsset.kind 枚举内)}
+        sample_size: {type: array, items: {$ref: '#/components/schemas/SampleSizeAdvice'}}
+    ResearchTemplatesResponse:
+      type: object
+      required: [templates]
+      properties:
+        templates: {type: array, items: {$ref: '#/components/schemas/ResearchTemplateSuggestion'}}
+
     TaskDetectionResult:
       type: object
       properties:
@@ -943,3 +982,4 @@ components:
 | 2026-08-28 | 新增 `GET/PUT /admin/settings/llm`、`POST /admin/settings/llm/test`、`GET /admin/settings/llm/ollama-models` + LlmSettingsOut/Update/LlmTestRequest/LlmTestResult/LlmFeatureSwitch schema | 非破坏（新增端点） | T6.6 LLM 设置界面：运行层配置（模型策略/分功能开关/云端 key/温度）管理员可视化调整免改代码；云端 key 只写不读（掩码回显）；受影响消费方：前端 AI 设置页（新建）、DB（新表 admin_settings）、worker/启动流程（init_llm_service 从 DB 注入） |
 | 2026-08-27 | 补录 `POST /datasets/{dataset_id}/research-profile` + ResearchHints/ResearchProfile/ResearchQuestion schema；`ResearchProfile` 新增可选 `research_questions`（LLM 研究问题建议） | 非破坏（补录端点 + 新增可选字段） | T6.7 LLM 接线（研究画像增强）：该端点此前未录入契约，本次补录；research_profile 分功能开关打开时返回 LLM 生成的 2-3 个研究问题（模型/图表均来自引擎白名单），关闭或 LLM 不可用时为 null 回退纯规则结果；受影响消费方：前端研究画像展示 |
 | 2026-08-27 | `QualityReport.issues[]` 新增可选 `llm_explanation`（LLM 人话版修复解释，仅 blocker） | 非破坏（新增可选字段） | T6.7 LLM 接线（校验报错解释）：validation_explain 分功能开关打开时，校验 worker 为阻塞级问题生成通俗解释（≤5 条），失败回退缺省；受影响消费方：前端 DatasetDetailPage 问题清单 |
+| 2026-08-27 | 新增 `GET /datasets/{dataset_id}/research-templates` + ResearchTemplatesResponse/ResearchTemplateSuggestion/SampleSizeAdvice schema | 非破坏（新增端点） | T6.9 科研流程模板库：预后模型/危险因素/剂量反应/纵向四类模板，按数据集真实统计（行数/事件数/特征数）给出适用性判定、推荐任务/模型/图表与样本量经验规则核对（EPV≥10、n/p≥20 等，全部真实计算不虚构）；受影响消费方：前端分析向导模板选择卡片 |
