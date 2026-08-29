@@ -31,6 +31,7 @@ import {
 } from "../api";
 import PreprocessPanel from "./PreprocessPanel";
 import TaskDetectCard from "./TaskDetectCard";
+import ScreeningCard from "./ScreeningCard";
 
 const SEVERITY_COLOR: Record<Issue["severity"], string> = {
   blocker: "error",
@@ -493,6 +494,10 @@ export default function DatasetDetailPage() {
           <TaskDetectCard
             datasetId={id}
             onConfirm={(taskType) => message.success(`已确认任务类型：${taskType}（将随分析运行快照保存）`)}
+          />
+          <ScreeningCard
+            datasetId={id}
+            columns={report?.column_profiles.map((c) => c.name) ?? []}
           />
         </>
       )}

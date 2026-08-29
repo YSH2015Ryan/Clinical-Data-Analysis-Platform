@@ -258,6 +258,38 @@ paths:
               schema: {$ref: '#/components/schemas/ResearchTemplatesResponse'}
         '404': {$ref: '#/components/responses/Error'}
 
+  /datasets/{dataset_id}/univariate-screen:
+    post:
+      tags: [datasets]
+      summary: 单因素筛选（T6.10）：逐特征与结局的关联检验（分类=Mann-Whitney/卡方，生存=单因素Cox，回归=相关/方差分析），p<alpha 入选供多因素建模；全部统计量真实计算
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UnivariateScreenRequest'}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/UnivariateScreenResult'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+
+  /datasets/{dataset_id}/subgroup-analysis:
+    post:
+      tags: [datasets]
+      summary: 亚组分析（T6.10）：按亚组变量分层估计暴露效应（OR/HR/β + 95%CI）并给出交互作用 p 值；全部统计量真实计算
+      requestBody:
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SubgroupAnalysisRequest'}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SubgroupAnalysisResult'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+
   /datasets/{dataset_id}/preprocess/validate:
     post:
       tags: [datasets]
@@ -684,6 +716,70 @@ components:
       properties:
         templates: {type: array, items: {$ref: '#/components/schemas/ResearchTemplateSuggestion'}}
 
+    UnivariateScreenRequest:
+      type: object
+      required: [task_type]
+      properties:
+        task_type: {type: string, enum: [survival, classification, regression]}
+        label_col: {type: string, nullable: true, description: 分类/回归结局列}
+        time_col: {type: string, nullable: true, description: 生存随访时间列}
+        event_col: {type: string, nullable: true, description: 生存事件列}
+        features: {type: array, items: {type: string}, nullable: true, description: 待筛特征；为空时自动取除结局外的全部列(上限 50)}
+        alpha: {type: number, default: 0.05, description: 入选阈值 p<alpha}
+    UnivariateScreenRow:
+      type: object
+      required: [feature, test, p_value, selected]
+      properties:
+        feature: {type: string}
+        test: {type: string, description: 检验方法名}
+        statistic: {type: number, nullable: true, description: 检验统计量(部分方法无)}
+        effect: {type: number, nullable: true, description: 效应量(HR/r/中位数差等,视方法而定)}
+        p_value: {type: number}
+        n_used: {type: integer, description: 实际入检验的非缺失样本数}
+        selected: {type: boolean, description: p<alpha}
+    UnivariateScreenResult:
+      type: object
+      required: [task_type, alpha, rows, selected_features]
+      properties:
+        task_type: {type: string}
+        alpha: {type: number}
+        rows: {type: array, items: {$ref: '#/components/schemas/UnivariateScreenRow'}, description: 按 p 值升序}
+        selected_features: {type: array, items: {type: string}}
+    SubgroupAnalysisRequest:
+      type: object
+      required: [task_type, exposure, subgroup_vars]
+      properties:
+        task_type: {type: string, enum: [survival, classification, regression]}
+        exposure: {type: string, description: 暴露/处理变量(二分类或连续)}
+        subgroup_vars: {type: array, items: {type: string}, minItems: 1, description: 亚组变量(分类,2-6 水平)}
+        label_col: {type: string, nullable: true}
+        time_col: {type: string, nullable: true}
+        event_col: {type: string, nullable: true}
+    SubgroupLevelEffect:
+      type: object
+      required: [level, n]
+      properties:
+        level: {type: string}
+        n: {type: integer}
+        effect: {type: number, nullable: true, description: 该亚组内暴露效应(OR/HR/β);拟合失败为 null}
+        ci_lower: {type: number, nullable: true}
+        ci_upper: {type: number, nullable: true}
+        note: {type: string, nullable: true, description: 拟合失败原因等}
+    SubgroupResult:
+      type: object
+      required: [variable, levels]
+      properties:
+        variable: {type: string}
+        levels: {type: array, items: {$ref: '#/components/schemas/SubgroupLevelEffect'}}
+        interaction_p: {type: number, nullable: true, description: 暴露×亚组交互作用 p 值;无法拟合为 null}
+    SubgroupAnalysisResult:
+      type: object
+      required: [task_type, exposure, subgroups]
+      properties:
+        task_type: {type: string}
+        exposure: {type: string}
+        subgroups: {type: array, items: {$ref: '#/components/schemas/SubgroupResult'}}
+
     TaskDetectionResult:
       type: object
       properties:
@@ -983,3 +1079,4 @@ components:
 | 2026-08-27 | 补录 `POST /datasets/{dataset_id}/research-profile` + ResearchHints/ResearchProfile/ResearchQuestion schema；`ResearchProfile` 新增可选 `research_questions`（LLM 研究问题建议） | 非破坏（补录端点 + 新增可选字段） | T6.7 LLM 接线（研究画像增强）：该端点此前未录入契约，本次补录；research_profile 分功能开关打开时返回 LLM 生成的 2-3 个研究问题（模型/图表均来自引擎白名单），关闭或 LLM 不可用时为 null 回退纯规则结果；受影响消费方：前端研究画像展示 |
 | 2026-08-27 | `QualityReport.issues[]` 新增可选 `llm_explanation`（LLM 人话版修复解释，仅 blocker） | 非破坏（新增可选字段） | T6.7 LLM 接线（校验报错解释）：validation_explain 分功能开关打开时，校验 worker 为阻塞级问题生成通俗解释（≤5 条），失败回退缺省；受影响消费方：前端 DatasetDetailPage 问题清单 |
 | 2026-08-27 | 新增 `GET /datasets/{dataset_id}/research-templates` + ResearchTemplatesResponse/ResearchTemplateSuggestion/SampleSizeAdvice schema | 非破坏（新增端点） | T6.9 科研流程模板库：预后模型/危险因素/剂量反应/纵向四类模板，按数据集真实统计（行数/事件数/特征数）给出适用性判定、推荐任务/模型/图表与样本量经验规则核对（EPV≥10、n/p≥20 等，全部真实计算不虚构）；受影响消费方：前端分析向导模板选择卡片 |
+| 2026-08-27 | 新增 `POST /datasets/{dataset_id}/univariate-screen`、`POST /datasets/{dataset_id}/subgroup-analysis` + 对应 Request/Result schema | 非破坏（新增端点） | T6.10 单因素→多因素筛选流程 + 亚组分析：单因素筛选（Mann-Whitney/卡方/单因素Cox/相关/方差分析，p<alpha 入选供多因素建模）与亚组效应估计（OR/HR/β + 95%CI + 交互 p），全部统计量真实计算（红线8）；受影响消费方：前端数据集详情页科研助手卡片 |

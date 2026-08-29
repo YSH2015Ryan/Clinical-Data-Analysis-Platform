@@ -107,6 +107,66 @@ class ResearchTemplatesResponse(BaseModel):
     templates: list[ResearchTemplateSuggestion]
 
 
+class UnivariateScreenRequest(BaseModel):
+    """单因素筛选请求（T6.10，docs/14 §5 变更记录 2026-08-27）。"""
+
+    task_type: Literal["survival", "classification", "regression"]
+    label_col: str | None = None
+    time_col: str | None = None
+    event_col: str | None = None
+    features: list[str] | None = None  # 空 → 自动取除结局外全部列（上限 50）
+    alpha: float = 0.05
+
+
+class UnivariateScreenRow(BaseModel):
+    feature: str
+    test: str
+    statistic: float | None = None
+    effect: float | None = None
+    p_value: float
+    n_used: int
+    selected: bool
+
+
+class UnivariateScreenResult(BaseModel):
+    task_type: str
+    alpha: float
+    rows: list[UnivariateScreenRow]
+    selected_features: list[str]
+
+
+class SubgroupAnalysisRequest(BaseModel):
+    """亚组分析请求（T6.10）。"""
+
+    task_type: Literal["survival", "classification", "regression"]
+    exposure: str
+    subgroup_vars: list[str] = Field(min_length=1)
+    label_col: str | None = None
+    time_col: str | None = None
+    event_col: str | None = None
+
+
+class SubgroupLevelEffect(BaseModel):
+    level: str
+    n: int
+    effect: float | None = None
+    ci_lower: float | None = None
+    ci_upper: float | None = None
+    note: str | None = None
+
+
+class SubgroupResult(BaseModel):
+    variable: str
+    levels: list[SubgroupLevelEffect]
+    interaction_p: float | None = None
+
+
+class SubgroupAnalysisResult(BaseModel):
+    task_type: str
+    exposure: str
+    subgroups: list[SubgroupResult]
+
+
 class QuickFixAction(BaseModel):
     type: Literal[
         "drop_column",

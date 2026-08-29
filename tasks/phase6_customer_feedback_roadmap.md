@@ -137,7 +137,9 @@
 - **T6.9 科研流程模板库**：预后模型/危险因素/剂量反应/纵向 四类研究模板 → 按模板自动配置任务+模型+图表；样本量与统计功效提示。✅
   - **落地**:`engines/research_templates.py`（纯引擎，列检测复用 research_profiler）按数据集真实统计评估四模板适用性（任务类型/模型/图表随数据动态选择）；样本量经验规则核对：EPV≥10(logistic/Cox)、n/p≥20（回归）、纵向 n≥50,数值全部真实计算（红线8);`GET /datasets/{id}/research-templates`(docs/14 §5 变更记录 2026-08-27)；前端分析向导 Step 1 模板卡片，"使用此模板"预填任务类型+推荐模型（后续步骤可改）。
   - **测试**:`test_research_templates.py` 19 例（四模板适用性/EPV/n/p 真实数值/阈值上下界/空表不崩/hints 尊重）+ `test_research_templates_api.py` 4 例（结构/队列适用/404/401);ruff/mypy 改动文件全净，前端 tsc 净。
-- **T6.10 单因素→多因素筛选流程 + 亚组分析**。
+- **T6.10 单因素→多因素筛选流程 + 亚组分析**。✅
+  - **落地**:`engines/screening.py`（纯引擎；scipy/statsmodels/lifelines 真实计算）——单因素筛选：分类=Mann-Whitney/Fisher(2x2)/卡方+Cramér's V，生存=单因素 Cox(多水平走整体 LRT)，回归=Pearson 相关/单因素方差分析+η²,p<alpha 入选（特征上限 50)；亚组分析：分层暴露效应 OR(log 法 CI，零格 0.5 校正）/HR(Cox)/β(OLS) + 暴露×亚组交互 LRT p(Logit/OLS/Cox 全模型 vs 无交互），亚组水平 2-6、每层 n<10 给 note 不虚构。端点 `POST /datasets/{id}/univariate-screen`、`POST /datasets/{id}/subgroup-analysis`(docs/14 §5 变更记录 2026-08-27)；前端数据集详情页「科研助手」卡（ScreeningCard)：筛选结果表（按 p 升序、入选标绿）+ 亚组效应表（效应 95%CI + 交互 p 判读）。
+  - **测试**:`test_screening.py` 14 例（三任务类型/真实 p 与效应方向/α 阈值/特征上限/交互 p 范围/非法输入）+ `test_screening_api.py` 6 例（结构/400/404/401);ruff/mypy 改动文件全净，前端 tsc 净。
 - **T6.11 报告对标期刊结构**:Table 1 → 方法 → 主结果表（效应量+CI+p)→ 诊断/校准 → 局限；STROBE/TRIPOD 清单自查；Word 导出。
 - **T6.12 模型分层套餐**：每任务"标准套餐"3–5 个（基线+强模型+可解释模型），其余折叠为高级选项，取代堆量。
 - **T6.13 对话式迭代**:LLM 回答"如果把 X 当协变量会怎样" → 生成重跑建议。

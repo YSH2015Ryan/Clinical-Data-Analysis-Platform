@@ -502,6 +502,84 @@ export async function getResearchTemplates(
   return apiFetch<ResearchTemplatesResponse>(`/datasets/${datasetId}/research-templates`);
 }
 
+// ---- 单因素筛选 + 亚组分析（T6.10；docs/14 §3） ----
+
+export interface UnivariateScreenRow {
+  feature: string;
+  test: string;
+  statistic: number | null;
+  effect: number | null;
+  p_value: number;
+  n_used: number;
+  selected: boolean;
+}
+
+export interface UnivariateScreenResult {
+  task_type: TaskType;
+  alpha: number;
+  rows: UnivariateScreenRow[];
+  selected_features: string[];
+}
+
+export interface UnivariateScreenRequest {
+  task_type: TaskType;
+  label_col?: string;
+  time_col?: string;
+  event_col?: string;
+  features?: string[];
+  alpha?: number;
+}
+
+export async function univariateScreen(
+  datasetId: string,
+  body: UnivariateScreenRequest,
+): Promise<UnivariateScreenResult> {
+  return apiFetch<UnivariateScreenResult>(`/datasets/${datasetId}/univariate-screen`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export interface SubgroupLevelEffect {
+  level: string;
+  n: number;
+  effect: number | null;
+  ci_lower: number | null;
+  ci_upper: number | null;
+  note: string | null;
+}
+
+export interface SubgroupResult {
+  variable: string;
+  levels: SubgroupLevelEffect[];
+  interaction_p: number | null;
+}
+
+export interface SubgroupAnalysisResult {
+  task_type: TaskType;
+  exposure: string;
+  subgroups: SubgroupResult[];
+}
+
+export interface SubgroupAnalysisRequest {
+  task_type: TaskType;
+  exposure: string;
+  subgroup_vars: string[];
+  label_col?: string;
+  time_col?: string;
+  event_col?: string;
+}
+
+export async function subgroupAnalysis(
+  datasetId: string,
+  body: SubgroupAnalysisRequest,
+): Promise<SubgroupAnalysisResult> {
+  return apiFetch<SubgroupAnalysisResult>(`/datasets/${datasetId}/subgroup-analysis`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 // ---- 分析运行（docs/14 §3 /analysis-runs；docs/08 §3 状态机） ----
 
 export type RunStatus =

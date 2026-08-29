@@ -8,6 +8,7 @@ GET /datasets/{id}/quality-report 最新质量报告。
 import uuid
 from typing import Any
 
+import pandas as pd
 from anyio import to_thread
 from fastapi import APIRouter, Depends, Form, Query, UploadFile
 from fastapi.encoders import jsonable_encoder
@@ -24,6 +25,7 @@ from app.engines.quickfix import QuickFixAction
 from app.engines.recommender import recommend_config_from_profile
 from app.engines.research_profiler import detect_research_direction
 from app.engines.research_templates import evaluate_templates
+from app.engines.screening import subgroup_analysis, univariate_screen
 from app.engines.task_detection import detect_task_from_profile
 from app.schemas.auth import CurrentUser
 from app.schemas.dataset import (
@@ -36,6 +38,10 @@ from app.schemas.dataset import (
     ResearchHints,
     ResearchProfile,
     ResearchTemplatesResponse,
+    SubgroupAnalysisRequest,
+    SubgroupAnalysisResult,
+    UnivariateScreenRequest,
+    UnivariateScreenResult,
 )
 from app.schemas.preparation import (
     PreparationApplyRequest,
@@ -211,6 +217,76 @@ async def get_research_templates(
         ) from exc
     templates = await to_thread.run_sync(evaluate_templates, dataframe)
     return ResearchTemplatesResponse.model_validate({"templates": templates})
+
+
+async def _load_dataframe(
+    dataset_id: uuid.UUID, user: CurrentUser, db: AsyncSession
+) -> pd.DataFrame:
+    """数据集 → DataFrame（T6.10 筛选/亚组端点共用）；404/400 在此抛出。"""
+    dataset = await dataset_service.get_dataset(db, user, dataset_id)
+    if dataset is None:
+        raise not_found("dataset", str(dataset_id))
+    try:
+        raw = storage_from_settings().get(key_from_uri(dataset.storage_uri))
+        return parser.parse(raw, dataset.source_type).df
+    except Exception as exc:
+        raise AppError(
+            code="DATASET_PARSE_FAILED",
+            status=400,
+            message="数据集无法解析，暂时无法执行该分析",
+        ) from exc
+
+
+@dataset_router.post("/{dataset_id}/univariate-screen", response_model=UnivariateScreenResult)
+async def post_univariate_screen(
+    dataset_id: uuid.UUID,
+    body: UnivariateScreenRequest,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UnivariateScreenResult:
+    """T6.10 单因素筛选：逐特征关联检验，p<alpha 入选供多因素建模。"""
+    dataframe = await _load_dataframe(dataset_id, user, db)
+    try:
+        result = await to_thread.run_sync(
+            lambda: univariate_screen(
+                dataframe,
+                task_type=body.task_type,
+                label_col=body.label_col,
+                time_col=body.time_col,
+                event_col=body.event_col,
+                features=body.features,
+                alpha=body.alpha,
+            )
+        )
+    except ValueError as exc:
+        raise AppError(code="SCREENING_INVALID", status=400, message=str(exc)) from exc
+    return UnivariateScreenResult.model_validate(result)
+
+
+@dataset_router.post("/{dataset_id}/subgroup-analysis", response_model=SubgroupAnalysisResult)
+async def post_subgroup_analysis(
+    dataset_id: uuid.UUID,
+    body: SubgroupAnalysisRequest,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SubgroupAnalysisResult:
+    """T6.10 亚组分析：分层暴露效应（OR/HR/β + 95%CI）+ 交互作用 p。"""
+    dataframe = await _load_dataframe(dataset_id, user, db)
+    try:
+        result = await to_thread.run_sync(
+            lambda: subgroup_analysis(
+                dataframe,
+                task_type=body.task_type,
+                exposure=body.exposure,
+                subgroup_vars=body.subgroup_vars,
+                label_col=body.label_col,
+                time_col=body.time_col,
+                event_col=body.event_col,
+            )
+        )
+    except ValueError as exc:
+        raise AppError(code="SUBGROUP_INVALID", status=400, message=str(exc)) from exc
+    return SubgroupAnalysisResult.model_validate(result)
 
 
 @dataset_router.post("/{dataset_id}/quick-fix", response_model=DatasetVersion)
