@@ -142,6 +142,25 @@ def _add_section(doc: Any, section: dict[str, Any]) -> None:
     elif key == "limitations":
         for item in data.get("items") or []:
             doc.add_paragraph(str(item), style="List Bullet")
+    elif key == "checklist":
+        doc.add_paragraph(
+            f"{data.get('standard')} —— 满足 {data.get('met')}/{data.get('total')} 项"
+        )
+        _add_table(
+            doc,
+            ["#", "条目", "状态", "依据"],
+            [
+                [
+                    str(i.get("no")),
+                    str(i.get("item")),
+                    str(i.get("status")),
+                    str(i.get("evidence")),
+                ]
+                for i in data.get("items") or []
+            ],
+        )
+        if data.get("note"):
+            doc.add_paragraph(str(data["note"]))
     elif key == "conclusion":
         doc.add_paragraph(str(data.get("text")))
 

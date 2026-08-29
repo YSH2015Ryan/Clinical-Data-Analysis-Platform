@@ -123,7 +123,9 @@ class TestJournalLayout:
         html = _render()
         assert "表 1 数据质量问题清单" in html
         assert "表 4 模型性能比较" in html
-        assert "表 6 软件版本" in html
+        # T6.11：自查表插入结论前 → 附录表顺延
+        assert "表 5 报告规范自查" in html
+        assert "表 7 软件版本" in html
 
     def test_imrad_part_dividers(self) -> None:
         html = _render()

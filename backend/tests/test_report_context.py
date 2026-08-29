@@ -108,6 +108,19 @@ class TestSections:
         perf = next(s for s in ctx["sections"] if s["key"] == "performance")
         assert [c["kind"] for c in perf["data"]["charts"]] == ["roc"]
 
+    def test_checklist_section_present_with_real_items(self) -> None:
+        """T6.11：TRIPOD 自查章节恒在，条目状态由 payload 真实字段推导。"""
+        ctx = build_report_context(_payload())
+        checklist = next(s for s in ctx["sections"] if s["key"] == "checklist")
+        assert checklist["applicable"] is True
+        data = checklist["data"]
+        assert "TRIPOD" in data["standard"]
+        assert data["total"] == len(data["items"]) > 0
+        # 结论章节在自查之后（期刊结构：局限 → 自查 → 结论）
+        keys = [s["key"] for s in ctx["sections"]]
+        assert keys.index("checklist") > keys.index("limitations")
+        assert keys.index("checklist") < keys.index("conclusion")
+
 
 class TestFigureCaptions:
     """docs/10 §2.1：每图必带全文统一编号 + 说明文案。"""

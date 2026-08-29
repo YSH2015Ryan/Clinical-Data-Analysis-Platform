@@ -8,6 +8,7 @@
 from typing import Any
 
 from app.engines.reporting.captions import caption_for
+from app.engines.reporting.checklist import build_reporting_checklist
 
 DISCLAIMER = "本报告由 CDAP 自动生成，仅供科研参考，不构成临床诊断建议。"
 NOT_APPLICABLE = "本次分析不适用"
@@ -23,7 +24,8 @@ SECTION_TITLES: dict[str, str] = {
     "explainability": "7. 特征重要性与可解释性",
     "clinical_interpretation": "8. 临床意义解读",
     "limitations": "9. 局限性",
-    "conclusion": "10. 结论",
+    "checklist": "10. 报告规范自查（TRIPOD）",
+    "conclusion": "11. 结论",
 }
 
 # 摘要/元信息中的任务类型中文标签（docs/10 §2 卷首）
@@ -252,6 +254,8 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
             },
         ),
         _section("limitations", True, {"items": list(_LIMITATIONS)}),
+        # T6.11：TRIPOD/STROBE 自查（条目状态与依据全部由 payload 真实字段推导）
+        _section("checklist", True, build_reporting_checklist(payload)),
         _section(
             "conclusion",
             conclusion_text is not None,

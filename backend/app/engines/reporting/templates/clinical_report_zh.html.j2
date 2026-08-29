@@ -274,6 +274,17 @@
 {% elif s.key == "limitations" %}
 <ul>{% for item in s.data["items"] %}<li>{{ item }}</li>{% endfor %}</ul>
 
+{% elif s.key == "checklist" %}
+<p class="meta">{{ s.data.standard }} —— 满足 {{ s.data.met }}/{{ s.data.total }} 项</p>
+{% call tbl("报告规范自查") %}
+  <tr><th>#</th><th>条目</th><th>状态</th><th>依据（真实产物核对）</th></tr>
+  {% for i in s.data["items"] %}
+  <tr><td>{{ i.no }}</td><td>{{ i.item }}</td>
+      <td>{{ i.status }}</td><td>{{ i.evidence }}</td></tr>
+  {% endfor %}
+{% endcall %}
+<p class="meta">{{ s.data.note }}</p>
+
 {% elif s.key == "conclusion" %}
 <p>{{ s.data.text }}</p>
 {% endif %}
