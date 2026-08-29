@@ -50,6 +50,55 @@ class TestListAdminPlugins:
         assert resp.status_code == 403
 
 
+class TestModelTiering:
+    """T6.12 模型分层套餐：/models 返回 tier/role，标准套餐在前（docs/14 变更记录 2026-08-27）。"""
+
+    async def test_models_carry_tier_and_role(self, client: AsyncClient, researcher: User) -> None:
+        resp = await client.get(
+            "/api/v1/models", params={"task_type": "classification"}, headers=_auth(researcher)
+        )
+        assert resp.status_code == 200
+        items = resp.json()
+        by_key = {p["key"]: p for p in items}
+        assert by_key["logreg"]["tier"] == "standard"
+        assert by_key["logreg"]["role"]  # 角色标注非空
+        assert by_key["catboost"]["tier"] == "advanced"
+        assert by_key["catboost"]["role"] is None
+
+    async def test_standard_first_ordering(self, client: AsyncClient, researcher: User) -> None:
+        resp = await client.get(
+            "/api/v1/models", params={"task_type": "survival"}, headers=_auth(researcher)
+        )
+        tiers = [p["tier"] for p in resp.json()]
+        assert tiers == sorted(tiers, key=lambda t: t != "standard")
+        assert {p["key"] for p in resp.json() if p["tier"] == "standard"} == {
+            "coxph",
+            "rsf",
+            "gbs",
+        }
+
+    async def test_tier_depends_on_queried_task(
+        self, client: AsyncClient, researcher: User
+    ) -> None:
+        """gam：回归标准套餐 / 分类高级选项（同一插件按任务分层）。"""
+        reg = await client.get(
+            "/api/v1/models", params={"task_type": "regression"}, headers=_auth(researcher)
+        )
+        clf = await client.get(
+            "/api/v1/models", params={"task_type": "classification"}, headers=_auth(researcher)
+        )
+        gam_reg = next(p for p in reg.json() if p["key"] == "gam")
+        gam_clf = next(p for p in clf.json() if p["key"] == "gam")
+        assert gam_reg["tier"] == "standard"
+        assert gam_clf["tier"] == "advanced"
+
+    async def test_admin_view_marks_any_standard(self, client: AsyncClient, admin: User) -> None:
+        resp = await client.get("/api/v1/admin/plugins", headers=_auth(admin))
+        by_key = {p["key"]: p for p in resp.json()}
+        assert by_key["coxph"]["tier"] == "standard"
+        assert by_key["km"]["tier"] == "advanced"
+
+
 class TestUpdatePlugin:
     async def test_disable_then_models_filtered(
         self, client: AsyncClient, admin: User, researcher: User

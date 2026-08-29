@@ -1,6 +1,6 @@
 """插件管理 schemas（docs/14 ModelPlugin；/admin/plugins + /models）。"""
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -12,6 +12,9 @@ class ModelPluginOut(BaseModel):
     task_types: list[str]
     capability: dict[str, Any]
     enabled: bool
+    # T6.12 模型分层：standard=标准套餐（向导默认勾选），advanced=高级选项（折叠）
+    tier: Literal["standard", "advanced"] = "advanced"
+    role: str | None = None  # 标准套餐内角色标注（基线/强模型/可解释）
 
 
 class PluginUpdate(BaseModel):

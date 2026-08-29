@@ -752,6 +752,10 @@ export interface ModelPlugin {
   task_types: string[];
   capability: Record<string, unknown>;
   enabled: boolean;
+  /** T6.12 模型分层：standard=标准套餐（向导默认勾选），advanced=高级选项 */
+  tier: "standard" | "advanced";
+  /** 标准套餐内角色标注（如 基线·可解释 / 强模型），高级选项为 null */
+  role: string | null;
 }
 
 export async function listAdminPlugins(): Promise<ModelPlugin[]> {

@@ -4,7 +4,7 @@
  * 1 数据集 — 支持 ?dataset= 预选（数据集页「开始分析」直达）；
  * 2 预处理 — 进入即自动「推荐配置」填充，可改可校验；
  * 3 任务类型 — 进入即自动识别，推荐项默认选中，可覆盖；确认后按候选列回填 target；
- * 4 模型 — 按任务类型过滤（GET /models），默认全选；
+ * 4 模型 — 按任务类型过滤（GET /models），T6.12 分层：默认勾选标准套餐，其余折叠为高级选项；
  * 5 确认 — 全参数摘要 → 提交（POST /analysis-runs）→ 跳运行监控。
  */
 
@@ -13,6 +13,7 @@ import {
   Button,
   Card,
   Checkbox,
+  Collapse,
   Descriptions,
   Select,
   Space,
@@ -135,7 +136,7 @@ export default function AnalysisWizardPage() {
       });
   }, [step, datasetId, detection, detectFailed]);
 
-  // 进入 Step 4：按任务类型拉取可用模型，默认全选
+  // 进入 Step 4：按任务类型拉取可用模型，默认勾选标准套餐（T6.12 分层）
   useEffect(() => {
     if (step !== 3 || !taskType) return;
     listModels(taskType)
@@ -143,7 +144,9 @@ export default function AnalysisWizardPage() {
         setModels(items);
         setSelectedModels((prev) => {
           const valid = prev.filter((k) => items.some((m) => m.key === k));
-          return valid.length > 0 ? valid : items.map((m) => m.key);
+          if (valid.length > 0) return valid;
+          const standard = items.filter((m) => m.tier === "standard").map((m) => m.key);
+          return standard.length > 0 ? standard : items.map((m) => m.key);
         });
       })
       .catch((e) => message.error((e as ApiError).message || "模型列表加载失败"));
@@ -410,7 +413,7 @@ export default function AnalysisWizardPage() {
         />
       </Space>
     </Card>,
-    // Step 4 模型
+    // Step 4 模型（T6.12 分层：标准套餐默认勾选，其余折叠为高级选项）
     <Card key="s4" title={`可用模型（${taskType ? TASK_LABEL[taskType] : ""}）`}>
       {models === null ? (
         <Spin />
@@ -420,22 +423,65 @@ export default function AnalysisWizardPage() {
           value={selectedModels}
           onChange={(v) => setSelectedModels(v as string[])}
         >
-          <Table<ModelPlugin>
-            rowKey="key"
-            size="small"
-            dataSource={models}
-            pagination={false}
-            columns={[
-              {
-                title: "选择",
-                width: 60,
-                render: (_, m) => <Checkbox value={m.key} />,
-              },
-              { title: "模型", dataIndex: "name" },
-              { title: "标识", dataIndex: "key" },
-              { title: "版本", dataIndex: "version", width: 100 },
-            ]}
-          />
+          {(() => {
+            const standard = models.filter((m) => m.tier === "standard");
+            const advanced = models.filter((m) => m.tier !== "standard");
+            const columns = (withRole: boolean) =>
+              [
+                {
+                  title: "选择",
+                  width: 60,
+                  render: (_: unknown, m: ModelPlugin) => <Checkbox value={m.key} />,
+                },
+                { title: "模型", dataIndex: "name" },
+                ...(withRole
+                  ? [
+                      {
+                        title: "角色",
+                        width: 150,
+                        render: (_: unknown, m: ModelPlugin) =>
+                          m.role ? <Tag color="geekblue">{m.role}</Tag> : "—",
+                      },
+                    ]
+                  : []),
+                { title: "标识", dataIndex: "key" },
+                { title: "版本", dataIndex: "version", width: 100 },
+              ] as const;
+            return (
+              <>
+                <Typography.Text strong>
+                  标准套餐（{standard.length} 个，已默认勾选：基线 + 强模型 + 可解释模型）
+                </Typography.Text>
+                <Table<ModelPlugin>
+                  rowKey="key"
+                  size="small"
+                  style={{ margin: "8px 0 16px" }}
+                  dataSource={standard}
+                  pagination={false}
+                  columns={columns(true) as never}
+                />
+                {advanced.length > 0 && (
+                  <Collapse
+                    items={[
+                      {
+                        key: "advanced",
+                        label: `高级选项（${advanced.length} 个，按需展开勾选）`,
+                        children: (
+                          <Table<ModelPlugin>
+                            rowKey="key"
+                            size="small"
+                            dataSource={advanced}
+                            pagination={false}
+                            columns={columns(false) as never}
+                          />
+                        ),
+                      },
+                    ]}
+                  />
+                )}
+              </>
+            );
+          })()}
         </Checkbox.Group>
       )}
     </Card>,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from app.engines.preprocessing.timeseries_cv import iter_timeseries_cv_splits
+from app.engines.timeseries_cv import iter_timeseries_cv_splits
 
 
 def test_timeseries_cv_basic() -> None:

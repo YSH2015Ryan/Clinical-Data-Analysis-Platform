@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_registry, require_role
 from app.db import get_db
 from app.engines.model_registry import ModelRegistry
+from app.engines.model_tiers import role_of, tier_of
 from app.schemas.auth import CurrentUser
 from app.schemas.plugin import ModelPluginOut, PluginUpdate
 from app.services import audit as audit_service
@@ -23,17 +24,29 @@ router = APIRouter(tags=["admin"])
 TaskTypeQuery = Literal["survival", "classification", "regression", "time_series"]
 
 
-def _out(row: object) -> ModelPluginOut:
+def _out(row: object, task_type: str | None = None) -> ModelPluginOut:
     # capability 为自由对象：附带 default_params 供管理页回显（契约不含独立字段）
     capability = dict(row.capability)  # type: ignore[attr-defined]
     capability["default_params"] = dict(row.default_params)  # type: ignore[attr-defined]
+    row_task_types = list(row.task_types)  # type: ignore[attr-defined]
+    # T6.12 分层：/models 按查询任务判定；admin 全量视图取「任一任务入套餐即 standard」
+    if task_type is not None:
+        tier = tier_of(task_type, row.key)  # type: ignore[attr-defined]
+    else:
+        tier = (
+            "standard"
+            if any(tier_of(t, row.key) == "standard" for t in row_task_types)  # type: ignore[attr-defined]
+            else "advanced"
+        )
     return ModelPluginOut(
         key=row.key,  # type: ignore[attr-defined]
         name=row.name,  # type: ignore[attr-defined]
         version=row.version,  # type: ignore[attr-defined]
-        task_types=list(row.task_types),  # type: ignore[attr-defined]
+        task_types=row_task_types,
         capability=capability,
         enabled=bool(row.enabled),  # type: ignore[attr-defined]
+        tier=tier,
+        role=role_of(row.key) if tier == "standard" else None,  # type: ignore[attr-defined]
     )
 
 
@@ -82,4 +95,8 @@ async def list_available_models(
     # 不能依赖管理员页面先访问：新数据库启动后向导必须立即能拿到插件。
     await plugin_service.sync_plugins_to_db(db, registry)
     await db.commit()
-    return [_out(r) for r in await plugin_service.list_available(db, task_type)]
+    rows = await plugin_service.list_available(db, task_type)
+    out = [_out(r, task_type=task_type) for r in rows]
+    # T6.12：标准套餐在前（向导默认勾选顺序稳定）
+    out.sort(key=lambda m: (m.tier != "standard", m.key))
+    return out

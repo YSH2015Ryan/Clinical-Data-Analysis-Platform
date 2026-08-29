@@ -187,7 +187,7 @@ paths:
   /models:
     get:
       tags: [analysis]
-      summary: 可用模型列表（按任务类型过滤，所有登录用户可读）
+      summary: 可用模型列表（按任务类型过滤，所有登录用户可读；含 T6.12 分层 tier/role，标准套餐在前）
       parameters:
         - {name: task_type, in: query, required: true, schema: {type: string, enum: [survival, classification, regression]}}
       responses:
@@ -976,6 +976,8 @@ components:
         task_types: {type: array, items: {type: string}}
         capability: {type: object}
         enabled: {type: boolean}
+        tier: {type: string, enum: [standard, advanced], description: T6.12 模型分层——standard=标准套餐（向导默认勾选），advanced=高级选项（折叠展示）}
+        role: {type: string, nullable: true, description: 标准套餐内角色标注（如 基线·可解释 / 强模型），高级选项为 null}
     LlmFeatureSwitch:
       type: string
       enum: [off, local, local_first, cloud]
@@ -1080,3 +1082,4 @@ components:
 | 2026-08-27 | `QualityReport.issues[]` 新增可选 `llm_explanation`（LLM 人话版修复解释，仅 blocker） | 非破坏（新增可选字段） | T6.7 LLM 接线（校验报错解释）：validation_explain 分功能开关打开时，校验 worker 为阻塞级问题生成通俗解释（≤5 条），失败回退缺省；受影响消费方：前端 DatasetDetailPage 问题清单 |
 | 2026-08-27 | 新增 `GET /datasets/{dataset_id}/research-templates` + ResearchTemplatesResponse/ResearchTemplateSuggestion/SampleSizeAdvice schema | 非破坏（新增端点） | T6.9 科研流程模板库：预后模型/危险因素/剂量反应/纵向四类模板，按数据集真实统计（行数/事件数/特征数）给出适用性判定、推荐任务/模型/图表与样本量经验规则核对（EPV≥10、n/p≥20 等，全部真实计算不虚构）；受影响消费方：前端分析向导模板选择卡片 |
 | 2026-08-27 | 新增 `POST /datasets/{dataset_id}/univariate-screen`、`POST /datasets/{dataset_id}/subgroup-analysis` + 对应 Request/Result schema | 非破坏（新增端点） | T6.10 单因素→多因素筛选流程 + 亚组分析：单因素筛选（Mann-Whitney/卡方/单因素Cox/相关/方差分析，p<alpha 入选供多因素建模）与亚组效应估计（OR/HR/β + 95%CI + 交互 p），全部统计量真实计算（红线8）；受影响消费方：前端数据集详情页科研助手卡片 |
+| 2026-08-27 | `ModelPlugin` 新增 `tier`（standard/advanced）与 `role`（可空）字段；`GET /models` 响应按标准套餐在前排序 | 非破坏（新增字段） | T6.12 模型分层套餐：每任务标准套餐 3–5 个（基线+强模型+可解释模型），其余折叠为高级选项；分层定义在引擎 `model_tiers.py`（与任务类型相关，非 DB 字段）；受影响消费方：前端分析向导 Step 4 模型选择（默认仅勾选标准套餐，高级选项折叠） |
