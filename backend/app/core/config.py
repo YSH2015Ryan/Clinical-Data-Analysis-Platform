@@ -41,13 +41,14 @@ class Settings(BaseSettings):
     auth_rate_limit: int = 5
     auth_rate_window_seconds: int = 300
 
-    # 任务
-    model_timeout_s: int = 900   # 单个模型任务的硬超时（秒），超时后 worker SIGKILL
-    run_timeout_s: int = 7200    # 整个分析 run 的超时（秒，默认 2 小时）
+    # 任务（hotfix 4b45c3a：972k 行数据集 lasso 需 22 分钟，硬超时需 60 分钟+余量）
+    model_timeout_s: int = 4200  # 单个模型任务的硬超时（秒，70 分钟），超时后 worker SIGKILL
+    run_timeout_s: int = 10800  # 整个分析 run 的超时（秒，默认 3 小时）
     # T6.5：软时间限制按模型分档（软限内抛异常 → 任务自我标记失败并给出分类原因，
     # 不再等 janitor 5 分钟轮询）；0 < default ≤ heavy，超过硬超时的部分在使用处钳制。
-    model_soft_time_limit_default: int = 480  # 轻量模型（logreg/lasso/coxph/km 等）
-    model_soft_time_limit_heavy: int = 840    # 重模型（rsf/gbs/svm/boosting 家族等）
+    # 档值对齐 hotfix 实测（lasso/elasticnet 采样后仍需 ~22 分钟，归入 heavy 档）。
+    model_soft_time_limit_default: int = 1200  # 轻量模型（logreg/coxph/km 等，20 分钟）
+    model_soft_time_limit_heavy: int = 3600  # 重/慢模型（boosting/rsf/正则化路径等，60 分钟）
     max_upload_mb: int = 200
 
     # LLM 部署层（T6.6，docs/12 §2.1；运行层策略/开关/key 在 DB admin_settings，管理员界面调整）

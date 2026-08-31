@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 import numpy as np
 import pandas as pd
 import pytest
+from app.core.config import get_settings
 from app.core.security import create_token, hash_password
 from app.engines.model_registry import ModelRegistry
 from app.models.entities import (
@@ -297,7 +298,8 @@ class TestJanitor:
         self, db_session: AsyncSession, researcher: User, version: DatasetVersion
     ) -> None:
         """kill -9 恢复：超时 RUNNING → FAILED；全模型终态 → 手动触发 compare（R1 降级）。"""
-        old = _now() - timedelta(seconds=2000)
+        # 陈旧阈值跟随部署配置（hotfix 4b45c3a 后 model_timeout_s=4200），不硬编码秒数
+        old = _now() - timedelta(seconds=get_settings().model_timeout_s + 60)
         run = await _new_run(db_session, researcher, version, "MODELING", ["logreg", "dummy"])
         db_session.add(_result_row(run, "logreg", "SUCCESS"))
         db_session.add(_result_row(run, "dummy", "RUNNING", created_at=old))
@@ -327,7 +329,8 @@ class TestJanitor:
     async def test_stale_preprocessing_failed(
         self, db_session: AsyncSession, researcher: User, version: DatasetVersion
     ) -> None:
-        old = _now() - timedelta(seconds=2000)
+        # PREPROCESSING 按单任务超时（model_timeout_s）判定僵死（T5.9 契约）
+        old = _now() - timedelta(seconds=get_settings().model_timeout_s + 60)
         run = await _new_run(
             db_session, researcher, version, "PREPROCESSING", ["dummy"], created_at=old
         )

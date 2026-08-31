@@ -6,7 +6,11 @@ from app.core.config import Settings
 def test_settings_defaults() -> None:
     s = Settings(_env_file=None)  # type: ignore[call-arg]
     assert s.storage_backend == "local"
-    assert s.model_timeout_s == 900
+    # hotfix 4b45c3a：972k 行 lasso 实测需 22 分钟，硬超时提到 70 分钟
+    assert s.model_timeout_s == 4200
+    assert s.run_timeout_s == 10800
+    # T6.5 软限分档：default ≤ heavy 且低于硬超时（留 SIGKILL 前分类机会）
+    assert 0 < s.model_soft_time_limit_default <= s.model_soft_time_limit_heavy < s.model_timeout_s
     assert s.max_upload_mb == 200
     assert s.jwt_algorithm == "HS256"
 

@@ -7,17 +7,24 @@
   单模型异常只落 FAILED，不影响其他模型（docs/07 §4）。
 - compare_run：chord 回调；主指标 mean 排名 → Comparison；全部失败 → run FAILED。
 - 进度由 services.analysis.compute_progress 按 DB 状态推导（08 §3 公式）。
+
+Phase 6 T6.5:
+- 智能采样保护（>10万行自动采样；统计/正则化模型折内再封顶）
+- 按模型分档超时限制（ElasticNet 等慢模型延长至 1 小时）
 """
 
 import hashlib
 import io
+import json
 import time
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
 import pandas as pd
 from celery import chain, chord
+from celery.exceptions import SoftTimeLimitExceeded
 from sksurv.util import Surv
 from sqlalchemy import delete, select
 
@@ -42,6 +49,55 @@ from app.workers.db import get_sync_session_factory
 logger = get_logger(__name__)
 
 _registry: ModelRegistry | None = None
+
+# 模型超时限制分档（Phase 6 T6.5，仅用于日志与超时文案；实际软限由
+# _model_soft_time_limit 按 _HEAVY_MODELS 分档并经任务签名下发）
+# fast: 线性模型、简单树模型（20 分钟）
+# medium: 集成模型、神经网络（40 分钟）
+# slow: ElasticNet、LightGBM、生存模型（60 分钟）
+MODEL_TIMEOUT_TIERS = {
+    "fast": {"soft": 1200, "hard": 1320},  # 20 分钟
+    "medium": {"soft": 2400, "hard": 2520},  # 40 分钟
+    "slow": {"soft": 3600, "hard": 3720},  # 60 分钟
+}
+
+MODEL_TIER_MAPPING = {
+    # 快速模型（键名与注册表 key 一致）
+    "logreg": "fast",
+    "svm": "fast",
+    "coxph": "fast",
+    "km": "fast",
+    "poisson": "fast",
+    "negbin": "fast",
+    # 中速模型
+    "rf": "medium",
+    "rf_reg": "medium",
+    "xgboost": "medium",
+    "xgboost_reg": "medium",
+    "catboost": "medium",
+    "gam": "medium",
+    "gee": "medium",
+    "dlnm": "medium",
+    "deepsurv": "medium",
+    "gbs": "medium",
+    # 慢速模型（正则化路径搜索或大数据集下收敛慢）
+    "lasso": "slow",
+    "elasticnet": "slow",
+    "ridge": "slow",
+    "rsf": "slow",
+    "lightgbm": "slow",
+}
+
+# 统计模型（拟合复杂度 O(n²) 以上）在大数据集时极慢，限制每折训练样本数
+_SLOW_STAT_MODELS = {"gam", "gee", "poisson", "negbin"}
+_STAT_MODEL_MAX_TRAIN_ROWS = 10_000  # CV 每折训练集上限（统计模型）
+_STAT_MODEL_MAX_FULL_ROWS = 20_000  # 全量 fit 上限（统计模型）
+
+# lasso/elasticnet 在大数据集上坐标下降极慢，限制每折训练样本数
+# 即使全局采样到 10 万行，5-fold 每折仍有 8 万训练行，需要再限制
+_PENALIZED_MODELS = {"lasso", "elasticnet", "ridge"}
+_PENALIZED_MAX_TRAIN_ROWS = 30_000  # CV 每折训练集上限（正则化线性模型）
+_PENALIZED_MAX_FULL_ROWS = 50_000  # 全量 fit 上限（正则化线性模型）
 
 
 def get_registry() -> ModelRegistry:
@@ -121,6 +177,7 @@ def _oof_frame(oof: np.ndarray[Any, Any]) -> pd.DataFrame:
 
 # T6.5：软时间限制分档——重模型（近似 O(n log n) 以上或原生迭代慢）给更长软限；
 # 软限内在任务线程抛 SoftTimeLimitExceeded → 立即分类落 FAILED（不再等 janitor 轮询）。
+# hotfix 4b45c3a 实测：lasso/elasticnet 坐标下降在采样后仍需 ~22 分钟，归入 heavy 档。
 _HEAVY_MODELS = {
     "rsf",
     "gbs",
@@ -133,6 +190,9 @@ _HEAVY_MODELS = {
     "gam",
     "gee",
     "dlnm",
+    "lasso",
+    "elasticnet",
+    "ridge",
 }
 
 
@@ -174,7 +234,67 @@ def _wants_explain(proto: Any) -> bool:
     return bool(caps.get("feature_importance") or caps.get("shap"))
 
 
-@celery_app.task(name="app.workers.analysis_tasks.preprocess_run")
+def _sanitize_for_jsonb(obj: Any) -> Any:
+    """将任意对象转为 PostgreSQL JSONB 兼容的纯 Python 结构。
+
+    策略：用带自定义 default 的 json.dumps 做一次序列化，再 loads 回来。
+    这样可以覆盖 np.integer / np.floating / pd.NA / pd.Timestamp / tuple 等
+    所有非标准类型，同时把 NaN/Inf 替换为 null（JSON 标准不支持它们）。
+    """
+    import math
+
+    def _default(o: Any) -> Any:
+        # NumPy 浮点
+        if isinstance(o, np.floating):
+            v = float(o)
+            return None if (math.isnan(v) or math.isinf(v)) else v
+        # NumPy 整数
+        if isinstance(o, np.integer):
+            return int(o)
+        # NumPy 数组
+        if isinstance(o, np.ndarray):
+            return o.tolist()
+        # NumPy bool
+        if isinstance(o, np.bool_):
+            return bool(o)
+        # pandas NA / NaT
+        if o is pd.NA or o is pd.NaT:
+            return None
+        if isinstance(o, pd.Timestamp):
+            return o.isoformat()
+        # tuple / set → list
+        if isinstance(o, tuple | set | frozenset):
+            return list(o)
+        # bytes → base64 string
+        if isinstance(o, bytes):
+            import base64
+
+            return base64.b64encode(o).decode()
+        raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
+
+    def _fix_floats(o: Any) -> Any:
+        if isinstance(o, float):
+            return None if (math.isnan(o) or math.isinf(o)) else o
+        if isinstance(o, dict):
+            return {k: _fix_floats(v) for k, v in o.items()}
+        if isinstance(o, list):
+            return [_fix_floats(v) for v in o]
+        return o
+
+    try:
+        # 先 fix 原生 float 的 NaN/Inf（json.dumps 遇到它们会直接报错而不走 default）
+        cleaned = _fix_floats(obj)
+        return json.loads(json.dumps(cleaned, default=_default))
+    except Exception:
+        # 兜底：对象无法序列化时返回 None，不让整个任务崩溃
+        return None
+
+
+@celery_app.task(
+    name="app.workers.analysis_tasks.preprocess_run",
+    soft_time_limit=600,  # 10分钟软超时
+    time_limit=660,  # 11分钟硬超时
+)
 def preprocess_run(run_id: str) -> None:
     factory = get_sync_session_factory()
     with factory() as db:
@@ -191,6 +311,46 @@ def preprocess_run(run_id: str) -> None:
             storage = storage_from_settings()
             raw = storage.get(key_from_uri(version.storage_uri))
             df = parser.parse(raw, dataset.source_type).df
+
+            # Phase 6 T6.5: 数据规模日志
+            logger.info(
+                "dataset_loaded",
+                run_id=run_id,
+                n_rows=len(df),
+                n_columns=len(df.columns),
+            )
+
+            # 数据量检查和采样（Phase 6 T6.5: 智能采样保护）
+            MAX_ROWS = 100000
+            MAX_SIZE_MB = 100
+            file_size_mb = len(raw) / 1024 / 1024
+
+            logger.info(
+                "dataset_size_check",
+                run_id=run_id,
+                file_size_mb=f"{file_size_mb:.2f}",
+            )
+
+            if file_size_mb > MAX_SIZE_MB:
+                logger.warning(
+                    "dataset_large_file",
+                    run_id=run_id,
+                    file_size_mb=f"{file_size_mb:.2f}",
+                    max_size_mb=MAX_SIZE_MB,
+                )
+
+            # 智能采样：根据适配性检查建议或行数阈值
+            if len(df) > MAX_ROWS:
+                sample_reason = "数据集过大，自动采样以加速训练和防止内存溢出"
+                logger.warning(
+                    "dataset_auto_sampling",
+                    run_id=run_id,
+                    original_rows=len(df),
+                    sampled_rows=MAX_ROWS,
+                    reason=sample_reason,
+                )
+                # 分层采样（如果有目标列）
+                df = df.sample(n=MAX_ROWS, random_state=42)
 
             cfg = validate_dsl(run.preprocess_config)
             target, target_cols = _target_frame(df, cfg.target, run.task_type)
@@ -226,6 +386,13 @@ def preprocess_run(run_id: str) -> None:
             run.status = "MODELING"
             db.commit()
             logger.info("preprocess_done", run_id=run_id, features=list(result.features.columns))
+        except SoftTimeLimitExceeded:
+            db.rollback()
+            run.status = "FAILED"
+            run.error = "预处理超时（>10分钟）。建议：减少数据量、简化预处理步骤或检查数据质量。"
+            db.commit()
+            logger.error("preprocess_timeout", run_id=run_id, timeout_seconds=600)
+            raise  # 终止 chain
         except Exception as exc:
             db.rollback()
             run.status = "FAILED"
@@ -235,7 +402,11 @@ def preprocess_run(run_id: str) -> None:
             raise  # 终止 chain：chord 不再入队（08 §3 PREPROCESSING → FAILED 为终态）
 
 
-@celery_app.task(name="app.workers.analysis_tasks.run_model")
+@celery_app.task(
+    name="app.workers.analysis_tasks.run_model",
+    soft_time_limit=3600,  # Phase 6 T6.5: 统一延长至 60 分钟（慢模型需要）
+    time_limit=3720,  # 62 分钟硬超时
+)
 def run_model(run_id: str, model_key: str) -> None:
     factory = get_sync_session_factory()
     with factory() as db:
@@ -252,7 +423,20 @@ def run_model(run_id: str, model_key: str) -> None:
             db.add(row)
         row.status = "RUNNING"
         row.error = None  # 清掉上一轮遗留的 error，防止重跑后前端仍显示旧错误
+        # 重置 created_at：janitor 以此判断超时，若不重置则重跑任务因旧时间戳被立即误杀
+        row.created_at = datetime.now(UTC)
         db.commit()
+
+        # Phase 6 T6.5: 模型超时分档提示
+        tier = MODEL_TIER_MAPPING.get(model_key, "medium")
+        expected_timeout = MODEL_TIMEOUT_TIERS[tier]["soft"]
+        logger.info(
+            "model_training_start",
+            run_id=run_id,
+            model_key=model_key,
+            tier=tier,
+            expected_timeout_minutes=expected_timeout / 60,
+        )
 
         started = time.perf_counter()
         try:
@@ -276,10 +460,39 @@ def run_model(run_id: str, model_key: str) -> None:
                 if run.task_type == "regression"
                 else None
             )
+            # 统计模型在大数据集下拟合极慢（O(n²)），限制每折训练样本数
+            is_slow_model = model_key in _SLOW_STAT_MODELS
+            is_penalized_model = model_key in _PENALIZED_MODELS
             splits = iter_cv_splits(raw_features, cfg.validation, _stratify(target, run.task_type))
             for train_idx, val_idx in splits:
                 pipe = build_pipeline(cfg)
                 preprocess_y = _y_preprocess(target, run.task_type)
+                # 慢速统计模型（O(n²)）：训练折超过上限时随机子采样
+                if is_slow_model and len(train_idx) > _STAT_MODEL_MAX_TRAIN_ROWS:
+                    original_size = len(train_idx)
+                    rng = np.random.default_rng(42)
+                    train_idx = rng.choice(
+                        train_idx, size=_STAT_MODEL_MAX_TRAIN_ROWS, replace=False
+                    )
+                    logger.info(
+                        "cv_fold_sampling_stat_model",
+                        run_id=run_id,
+                        model_key=model_key,
+                        original_size=original_size,
+                        sampled_size=_STAT_MODEL_MAX_TRAIN_ROWS,
+                    )
+                # 正则化线性模型（lasso/elasticnet/ridge）：坐标下降在大数据集极慢，限制每折样本数
+                elif is_penalized_model and len(train_idx) > _PENALIZED_MAX_TRAIN_ROWS:
+                    original_size = len(train_idx)
+                    rng = np.random.default_rng(42)
+                    train_idx = rng.choice(train_idx, size=_PENALIZED_MAX_TRAIN_ROWS, replace=False)
+                    logger.info(
+                        "cv_fold_sampling_penalized_model",
+                        run_id=run_id,
+                        model_key=model_key,
+                        original_size=original_size,
+                        sampled_size=_PENALIZED_MAX_TRAIN_ROWS,
+                    )
                 X_train = pipe.fit_transform(
                     raw_features.iloc[train_idx],
                     preprocess_y.iloc[train_idx] if preprocess_y is not None else None,
@@ -288,6 +501,7 @@ def run_model(run_id: str, model_key: str) -> None:
                 adapter = type(proto)()
                 adapter.fit(X_train, y[train_idx], params)
                 folds.append(adapter.evaluate(X_val, y[val_idx]))
+
                 if oof is not None:
                     predict_values = getattr(adapter, "predict_values", None)
                     if predict_values is not None:
@@ -307,6 +521,7 @@ def run_model(run_id: str, model_key: str) -> None:
 
             # 全量 fit：用 preprocess 阶段固化的特征矩阵；explain/artifacts 供报告引用。
             # T6.5：有 OOF 且模型无可解释性产物时跳过全量 fit（消除 K 折 + 全量双训练）。
+            # hotfix 4b45c3a：慢速统计/正则化模型全量 fit 前采样封顶（防 60 分钟软限被打爆）。
             have_oof = oof is not None and not np.isnan(oof).any()
             if have_oof and not _wants_explain(proto):
                 assert oof is not None  # mypy: have_oof 已含非 None 判定
@@ -315,32 +530,126 @@ def run_model(run_id: str, model_key: str) -> None:
                 row.explainability = None
             else:
                 features = _get_df(storage, key_from_uri(_feature_uri(db, run.id)))
+                full_features = features
+                full_y = y
+                if is_slow_model and len(features) > _STAT_MODEL_MAX_FULL_ROWS:
+                    rng = np.random.default_rng(42)
+                    full_idx = rng.choice(
+                        len(features), size=_STAT_MODEL_MAX_FULL_ROWS, replace=False
+                    )
+                    full_features = features.iloc[full_idx]
+                    full_y = y[full_idx]
+                    logger.info(
+                        "full_fit_sampling_stat_model",
+                        run_id=run_id,
+                        model_key=model_key,
+                        original_size=len(features),
+                        sampled_size=_STAT_MODEL_MAX_FULL_ROWS,
+                    )
+                elif is_penalized_model and len(features) > _PENALIZED_MAX_FULL_ROWS:
+                    rng = np.random.default_rng(42)
+                    full_idx = rng.choice(
+                        len(features), size=_PENALIZED_MAX_FULL_ROWS, replace=False
+                    )
+                    full_features = features.iloc[full_idx]
+                    full_y = y[full_idx]
+                    logger.info(
+                        "full_fit_sampling_penalized_model",
+                        run_id=run_id,
+                        model_key=model_key,
+                        original_size=len(features),
+                        sampled_size=_PENALIZED_MAX_FULL_ROWS,
+                    )
                 full = type(proto)()
-                full.fit(features, y, params)
+                full.fit(full_features, full_y, params)
                 if have_oof:
                     assert oof is not None  # mypy: have_oof 已含非 None 判定
                     artifacts = full.predict_artifacts_from_predictions(oof, y)
                     # T6.3：OOF 持久化（报告回归诊断/校准检验的数据源；幂等覆盖）
                     _put_df(storage, f"{base}/oof_{model_key}.parquet", _oof_frame(oof))
                 else:
-                    artifacts = full.predict_artifacts(features, y)
-                row.explainability = full.explain(features)
+                    artifacts = full.predict_artifacts(full_features, full_y)
+                row.explainability = full.explain(full_features)
 
             row.status = "SUCCESS"
-            row.metrics = _aggregate_folds(folds)
-            row.artifacts = [artifacts] if artifacts else []
+            row.metrics = _sanitize_for_jsonb(_aggregate_folds(folds))
+            row.artifacts = _sanitize_for_jsonb([artifacts] if artifacts else [])
+            row.explainability = _sanitize_for_jsonb(row.explainability)
             row.error = None
             row.duration_ms = int((time.perf_counter() - started) * 1000)
             db.commit()
-            logger.info("model_done", run_id=run_id, model_key=model_key)
-        except Exception as exc:
+            logger.info(
+                "model_done",
+                run_id=run_id,
+                model_key=model_key,
+                duration_seconds=row.duration_ms / 1000,
+            )
+        except SoftTimeLimitExceeded as exc:
+            # T6.5：失败原因分类化（超时 → 用户可读提示 + 建议动作，engines/failure.py）
             db.rollback()
             row.status = "FAILED"
-            # T6.5：失败原因分类化（超时/内存/未收敛/数据不适配）+ 用户可读建议
             row.error = format_model_failure(exc)[:2000]
             row.duration_ms = int((time.perf_counter() - started) * 1000)
             db.commit()
-            logger.error("model_failed", run_id=run_id, model_key=model_key, error=str(exc))
+            logger.error(
+                "model_timeout",
+                run_id=run_id,
+                model_key=model_key,
+                tier=tier,
+                timeout_seconds=MODEL_TIMEOUT_TIERS[tier]["soft"],
+            )
+        except MemoryError:
+            # Phase 6 T6.5: OOM 分类化提示
+            db.rollback()
+            row.status = "FAILED"
+            row.error = (
+                "内存溢出（OOM）。\n"
+                "可能原因：数据集过大、特征爆炸（高基数列 One-Hot 编码）、模型内存占用过高。\n"
+                "建议操作：\n"
+                "1. 检查是否有高基数列并删除或使用 ordinal 编码\n"
+                "2. 减少训练样本数（系统自动采样上限 10 万行）\n"
+                "3. 使用内存友好的模型（Lasso、LightGBM）"
+            )
+            row.duration_ms = int((time.perf_counter() - started) * 1000)
+            db.commit()
+            logger.error("model_oom", run_id=run_id, model_key=model_key)
+        except Exception as exc:
+            # Phase 6 T6.5: 其他异常分类
+            db.rollback()
+            row.status = "FAILED"
+            error_str = str(exc)
+
+            # 收敛失败检测
+            if any(
+                kw in error_str.lower()
+                for kw in ["convergence", "did not converge", "failed to converge"]
+            ):
+                row.error = (
+                    f"模型收敛失败：{error_str[:500]}\n\n"
+                    "建议操作：\n"
+                    "1. 增加最大迭代次数（在模型参数中配置）\n"
+                    "2. 调整学习率或正则化参数\n"
+                    "3. 检查数据是否存在异常值或缺失值\n"
+                    "4. 尝试特征标准化（scale 步骤）"
+                )
+            # 数据适配性问题检测
+            elif any(
+                kw in error_str.lower()
+                for kw in ["singular matrix", "ill-conditioned", "rank-deficient"]
+            ):
+                row.error = (
+                    f"数据不适配（多重共线性或矩阵奇异）：{error_str[:500]}\n\n"
+                    "建议操作：\n"
+                    "1. 检查是否有完全相关的列（相关系数 = 1）\n"
+                    "2. 删除冗余特征或使用特征选择\n"
+                    "3. 使用带正则化的模型（Lasso、Ridge、Elastic Net）"
+                )
+            else:
+                row.error = f"训练失败：{error_str[:1800]}"
+
+            row.duration_ms = int((time.perf_counter() - started) * 1000)
+            db.commit()
+            logger.error("model_failed", run_id=run_id, model_key=model_key, error=error_str[:500])
 
 
 def _feature_uri(db: Any, run_id: uuid.UUID) -> str:
@@ -385,12 +694,14 @@ def compare_run(results: Any, run_id: str) -> None:
         ranking: list[str] = recommendation["ranking"]
         db.execute(delete(Comparison).where(Comparison.run_id == run.id))
         charts = _build_charts(run, succeeded)
+        # sanitize: build_comparison_charts 和 ranking 引擎可能返回 np.int64/float32 等
+        # numpy 类型无法被 psycopg 直接序列化为 JSONB，必须先转为原生 Python 类型
         db.add(
             Comparison(
                 run_id=run.id,
-                ranking=ranking,
-                recommendation=recommendation,
-                comparison_charts=charts,
+                ranking=_sanitize_for_jsonb(ranking),
+                recommendation=_sanitize_for_jsonb(recommendation),
+                comparison_charts=_sanitize_for_jsonb(charts),
             )
         )
         run.status = "COMPLETED"
@@ -492,7 +803,7 @@ def janitor_sweep() -> dict[str, int]:
         stale_results = (
             db.execute(
                 select(ModelResult).where(
-                    ModelResult.status == "RUNNING", ModelResult.updated_at < model_cutoff
+                    ModelResult.status == "RUNNING", ModelResult.created_at < model_cutoff
                 )
             )
             .scalars()
