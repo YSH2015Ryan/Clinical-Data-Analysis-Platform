@@ -14,6 +14,7 @@ from typing import Any
 import pandas as pd
 
 from app.engines.columns import infer_dtype, recognize_semantic
+from app.engines.validation_messages import get_optimized_suggestion
 
 # ---------- 配置（05 §6：所有阈值集中，项目级可覆盖） ----------
 
@@ -78,11 +79,12 @@ class ValidationReport:
 def parse_error_issue(encoding_hint: str | None = None) -> Issue:
     """RV001：文件无法解析（由解析失败的调用方生成）。"""
     hint = (encoding_hint or "GBK").upper()
+    suggestion = get_optimized_suggestion("RV001", {"encoding_hint": hint})
     return Issue(
         "RV001",
         "blocker",
         "文件无法解析（编码/格式错误）",
-        suggestion=f"检测到编码可能为 {hint}，请转换后重传",
+        suggestion=suggestion,
     )
 
 
@@ -193,7 +195,12 @@ def validate(
     # RV002 空表
     if n_rows == 0:
         issues.append(
-            Issue("RV002", "blocker", "文件不含数据行", suggestion="请检查文件内容后重新上传")
+            Issue(
+                "RV002", 
+                "blocker", 
+                "文件不含数据行", 
+                suggestion=get_optimized_suggestion("RV002")
+            )
         )
 
     # RV003 重复列名（基于原始表头）
@@ -207,7 +214,7 @@ def validate(
                 "RV003",
                 "blocker",
                 f"列 {', '.join(dup_names)} 重复出现，请重命名",
-                suggestion="重命名重复列后重新上传",
+                suggestion=get_optimized_suggestion("RV003", {"duplicates": dup_names}),
             )
         )
 
@@ -258,8 +265,10 @@ def validate(
                 "检测到「一行一条记录」的长表结构",
                 detail=f"列 {df.columns[item_idx]} + {df.columns[value_idx]} "
                 "表明每行是一条检验/检查记录，而非一行一个患者",
-                suggestion="平台分析需要「一行一个患者」的宽表：请先将各检验项目透视为列"
-                "（数据准备向导，见 docs/05 §8），或用 Excel 数据透视表转换后重新上传",
+                suggestion=get_optimized_suggestion("RV801", {
+                    "item_column": df.columns[item_idx], 
+                    "value_column": df.columns[value_idx]
+                }),
             )
         )
 
@@ -275,8 +284,10 @@ def validate(
                     "检测到疑似药敏试验记录",
                     detail=f"列 {df.columns[sus_idx]} 含 敏感/耐药/中介 判定值 {n_sus} 行",
                     affected_rows=n_sus,
-                    suggestion="药敏结果不是检验指标，直接入模会干扰分析；"
-                    "建议剔除这些记录，或单独整理为「耐药史」特征",
+                    suggestion=get_optimized_suggestion("RV802", {
+                        "sus_column": df.columns[sus_idx], 
+                        "sus_count": n_sus
+                    }),
                 )
             )
 
@@ -294,7 +305,9 @@ def validate(
                     "warning",
                     "同一检验项目存在多种单位",
                     detail=f"如：{top}",
-                    suggestion="单位不统一会导致数值无法直接比较；请统一单位，或改用归一化值列",
+                    suggestion=get_optimized_suggestion("RV803", {
+                        "examples": list(multi.head(3).index)
+                    }),
                 )
             )
 
@@ -309,22 +322,24 @@ def validate(
                         "warning",
                         f"列 {p['name']} 存在极端值（绝对值达 {extreme:g}），疑似单位或录入错误",
                         column=p["name"],
-                        suggestion="请核对单位与录入；分析前建议剔除或修正这些值",
+                        suggestion=get_optimized_suggestion("RV804", {
+                            "column": p["name"], 
+                            "extreme": extreme
+                        }),
                     )
                 )
 
-    # RV101 任务必需字段缺失
+    # RV101 任务必需字段缺失（降级为 warning，不再阻塞）
+    # 用户可以在分析向导中手动选择目标列，或进入探索性分析模式
     if n_rows > 0 and not ({"Event", "Label", "FollowUp"} & found):
         issues.append(
             Issue(
                 "RV101",
-                "blocker",
-                "未找到要预测的结果列（结局列）",
+                "warning",  # 从 blocker 降级为 warning
+                "未自动识别到预测目标列",
                 detail=f"已扫描 {n_cols} 列，未识别到结局/事件/随访时间列。"
-                "平台需要知道您想预测什么结果才能开始分析",
-                suggestion="请在数据表中补充一列要预测的结果"
-                "（如 是否复发 0/1，列名：复发/recurrence/death）；"
-                "或在本页下方「列画像」中把对应列的角色改为 Label/Event",
+                "您可以在下一步手动选择目标列，或进行探索性分析（EDA）",
+                suggestion=get_optimized_suggestion("RV701"),
             )
         )
 
@@ -339,7 +354,11 @@ def validate(
                     "RV102",
                     "warning",
                     f"推荐字段缺失：{field_name}",
-                    suggestion=f"建议补充{zh}（{field_name}）列，{advice}",
+                    suggestion=get_optimized_suggestion("RV702", {
+                        "field_name": field_name, 
+                        "field_zh": zh, 
+                        "advice": advice
+                    }),
                 )
             )
 
@@ -361,7 +380,11 @@ def validate(
                         f"列 {name} 缺失 {rate:.1%}，建议删除或插补",
                         column=name,
                         affected_rows=missing,
-                        suggestion="可在预处理中选择插补或删除该列",
+                        suggestion=get_optimized_suggestion("RV201", {
+                            "column": name,
+                            "missing_rate": rate,
+                            "severity": "blocker"
+                        }),
                     )
                 )
             elif rate > cfg.missing_warn:
@@ -372,7 +395,11 @@ def validate(
                         f"列 {name} 缺失 {rate:.1%}",
                         column=name,
                         affected_rows=missing,
-                        suggestion="可在预处理中选择中位数/众数插补或删除该列",
+                        suggestion=get_optimized_suggestion("RV201", {
+                            "column": name,
+                            "missing_rate": rate,
+                            "severity": "warning"
+                        }),
                     )
                 )
 
@@ -388,7 +415,10 @@ def validate(
                         f"列 {name} 发现 {illegal} 个非数值，可在线替换为缺失",
                         column=name,
                         affected_rows=illegal,
-                        suggestion="使用 Quick Fix「非法值→缺失」",
+                        suggestion=get_optimized_suggestion("RV301", {
+                            "column": name,
+                            "invalid_count": illegal
+                        }),
                     )
                 )
 
@@ -402,7 +432,7 @@ def validate(
                         "warning",
                         f"列 {name} 检测到 {len(patterns)} 种日期格式",
                         column=name,
-                        suggestion="将统一解析为 YYYY-MM-DD",
+                        suggestion=get_optimized_suggestion("RV401", {"column": name}),
                     )
                 )
 
@@ -425,7 +455,13 @@ def validate(
                             f"最小值 {_native(out.min())}",
                             column=name,
                             affected_rows=len(out),
-                            suggestion="请核对单位与录入错误",
+                            suggestion=get_optimized_suggestion("RV502", {
+                                "column": name,
+                                "unreasonable_count": len(out),
+                                "min_val": _native(out.min()),
+                                "max_val": _native(out.max()),
+                                "expected_range": f"{low}–{high} {unit}"
+                            }),
                         )
                     )
 
@@ -440,7 +476,10 @@ def validate(
                         f"{name} 存在 {n_out} 个异常值（IQR×{cfg.iqr_k}）",
                         column=name,
                         affected_rows=n_out,
-                        suggestion="可在预处理中选择截尾/缩尾或保留",
+                        suggestion=get_optimized_suggestion("RV501", {
+                            "column": name,
+                            "outlier_count": n_out
+                        }),
                     )
                 )
 
@@ -452,6 +491,10 @@ def validate(
                     "info",
                     f"列 {name} 唯一值 {s.nunique()} 个，建议合并或视为文本",
                     column=name,
+                    suggestion=get_optimized_suggestion("RV601", {
+                        "column": name,
+                        "unique_count": s.nunique()
+                    }),
                 )
             )
 
@@ -467,7 +510,9 @@ def validate(
                             "warning",
                             f"{name} 阳性率 {min_rate:.1%}，建议使用 class_weight 与 PR-AUC",
                             column=name,
-                            suggestion="训练时开启类别权重，评估以 PR-AUC 为准",
+                            suggestion=get_optimized_suggestion("RV703", {
+                                "minority_ratio": min_rate
+                            }),
                         )
                     )
 
@@ -480,7 +525,9 @@ def validate(
                 "warning",
                 f"发现 {full_dup} 行完全重复，可在线去重",
                 affected_rows=full_dup,
-                suggestion="使用 Quick Fix「删除重复行」",
+                suggestion=get_optimized_suggestion("RV704", {
+                    "duplicate_count": full_dup
+                }),
             )
         )
     for i in range(n_cols):
@@ -495,7 +542,10 @@ def validate(
                         f"ID 列 {name} 有 {n_dup} 个重复值，疑似同一患者重复",
                         column=name,
                         affected_rows=n_dup,
-                        suggestion="请确认是否为同一患者的多次记录",
+                        suggestion=get_optimized_suggestion("RV705", {
+                            "suspect_count": n_dup,
+                            "id_column": name
+                        }),
                     )
                 )
 

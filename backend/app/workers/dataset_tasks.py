@@ -56,11 +56,35 @@ def validate_dataset(dataset_id: str) -> None:
             raw = storage_from_settings().get(key_from_uri(dataset.storage_uri))
             result = parser.parse(raw, dataset.source_type)
             report = validation.validate(result.df, raw_columns=result.raw_columns)
+            
+            # Phase 6 T6.6: 智能任务推荐（使用 LLM 分析数据集适合的分析类型）
+            task_recommendation = None
+            try:
+                from app.services.llm import get_llm_service
+                from app.engines.intelligent_task_advisor import IntelligentTaskAdvisor
+                
+                llm_service = get_llm_service()
+                if llm_service.is_available():
+                    advisor = IntelligentTaskAdvisor(llm_service)
+                    task_recommendation = advisor.analyze_dataset(result.df, report.column_profiles)
+                    logger.info(
+                        "intelligent_task_recommendation",
+                        dataset_id=dataset_id,
+                        recommended_tasks=task_recommendation.recommended_tasks,
+                        can_start_modeling=task_recommendation.can_start_modeling
+                    )
+            except Exception as llm_exc:
+                logger.warning(
+                    "task_recommendation_failed",
+                    dataset_id=dataset_id,
+                    error=str(llm_exc)
+                )
+            
             dataset.encoding = result.encoding
             dataset.preview = _redact_preview(parser.preview_json(result.df))
             dataset.column_profile = parser.normalize_json_value(report.column_profiles)
             dataset.status = "FAILED" if report.status == "FAILED" else "VALIDATED"
-            db.add(_quality_report(dataset, version, report))
+            db.add(_quality_report(dataset, version, report, task_recommendation))
             db.commit()
             logger.info(
                 "dataset_validated",
@@ -93,15 +117,42 @@ def validate_dataset(dataset_id: str) -> None:
 
 
 def _quality_report(
-    dataset: Dataset, version: DatasetVersion, report: validation.ValidationReport
+    dataset: Dataset, 
+    version: DatasetVersion, 
+    report: validation.ValidationReport,
+    task_recommendation: Any = None
 ) -> QualityReport:
+    """构建质量报告，包含智能任务推荐（如果可用）"""
+    
+    # 将任务推荐添加到 issues 中（作为 info 级别）
+    issues = [i.to_dict() for i in report.issues]
+    
+    if task_recommendation:
+        # 添加任务推荐信息
+        recommendation_issue = {
+            "rule_id": "AI_RECOMMEND",
+            "severity": "info",
+            "message": "智能任务推荐",
+            "column": None,
+            "suggestion": task_recommendation.overall_assessment,
+            "detail": {
+                "recommended_tasks": task_recommendation.recommended_tasks,
+                "recommended_targets": task_recommendation.recommended_targets,
+                "unsuitable_tasks": task_recommendation.unsuitable_tasks,
+                "eda_suggestions": task_recommendation.eda_suggestions,
+                "can_start_modeling": task_recommendation.can_start_modeling
+            },
+            "affected_rows": None
+        }
+        issues.append(recommendation_issue)
+    
     return QualityReport(
         dataset_id=dataset.id,
         dataset_version_id=version.id,
         status=report.status,
         blockers=report.blockers,
         warnings=report.warnings,
-        issues=[i.to_dict() for i in report.issues],
+        issues=issues,
         column_profiles=parser.normalize_json_value(report.column_profiles),
     )
 
