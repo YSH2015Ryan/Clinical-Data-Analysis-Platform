@@ -41,15 +41,22 @@ class Settings(BaseSettings):
     auth_rate_limit: int = 5
     auth_rate_window_seconds: int = 300
 
-    # 任务
-    model_timeout_s: int = 900   # 单个模型任务的超时（秒），超时后 worker SIGKILL
-    run_timeout_s: int = 7200    # 整个分析 run 的超时（秒，默认 2 小时）
+    # 任务（Phase 6 T6.5: 延长超时以支持慢速模型）
+    model_timeout_s: int = 4200  # 单个模型任务的超时（秒，70分钟，慢模型需要60分钟+余量）
+    run_timeout_s: int = 10800   # 整个分析 run 的超时（秒，默认 3 小时）
     max_upload_mb: int = 200
 
     # 排名权重（docs/09 §4.1）
     ranking_weight_primary: float = 0.6
     ranking_weight_stability: float = 0.2
     ranking_weight_secondary: float = 0.2
+
+    # LLM 配置（Phase 1-4 新增，Phase 6.6 将移至 DB admin_settings）
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen2.5:7b"
+    llm_default_mode: str = "auto"  # auto | local | cloud | disabled
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
 
     @model_validator(mode="after")
     def _prod_secret_guard(self) -> "Settings":

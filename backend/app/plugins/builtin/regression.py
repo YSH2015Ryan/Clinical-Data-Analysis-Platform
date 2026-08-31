@@ -73,7 +73,20 @@ class _BaseRegressor:
         return self._builtin_importance()
 
     def predict_artifacts(self, X_val: Any, y_val: Any) -> dict[str, Any]:
-        return self.predict_artifacts_from_predictions(self._predict(X_val), y_val)
+        pred = self._predict(X_val)
+        artifacts = self.predict_artifacts_from_predictions(pred, y_val)
+        
+        # 添加诊断所需的残差和特征矩阵
+        y_true = np.asarray(y_val, dtype=float)
+        y_pred = np.asarray(pred, dtype=float)
+        residuals = y_true - y_pred
+        
+        artifacts["diagnostic_data"] = {
+            "residuals": residuals.tolist(),
+            "X": np.asarray(X_val, dtype=float).tolist() if hasattr(X_val, "tolist") else None,
+        }
+        
+        return artifacts
 
     def predict_artifacts_from_predictions(self, pred: Any, y_val: Any) -> dict[str, Any]:
         return {
@@ -87,7 +100,14 @@ class _BaseRegressor:
 class LassoAdapter(_BaseRegressor):
     key = "lasso"
     name = "LASSO"
-    default_params: ClassVar[dict[str, Any]] = {"alpha": 0.01, "max_iter": 5000}
+    # selection='random' 在大特征集上比 'cyclic' 快 3-10x；tol=1e-3 放宽收敛以避免满迭代
+    default_params: ClassVar[dict[str, Any]] = {
+        "alpha": 0.01,
+        "max_iter": 2000,
+        "tol": 1e-3,
+        "selection": "random",
+        "random_state": 42,
+    }
 
     def _build(self, params: dict[str, Any]) -> Any:
         return Lasso(**params)
@@ -103,7 +123,15 @@ class LassoAdapter(_BaseRegressor):
 class ElasticnetAdapter(_BaseRegressor):
     key = "elasticnet"
     name = "ElasticNet"
-    default_params: ClassVar[dict[str, Any]] = {"alpha": 0.01, "l1_ratio": 0.5, "max_iter": 5000}
+    # selection='random' 同上；tol 放宽收敛
+    default_params: ClassVar[dict[str, Any]] = {
+        "alpha": 0.01,
+        "l1_ratio": 0.5,
+        "max_iter": 2000,
+        "tol": 1e-3,
+        "selection": "random",
+        "random_state": 42,
+    }
 
     def _build(self, params: dict[str, Any]) -> Any:
         return ElasticNet(**params)
@@ -127,7 +155,7 @@ class RfRegressorAdapter(_BaseRegressor):
     default_params: ClassVar[dict[str, Any]] = {
         "n_estimators": 100,
         "random_state": 42,
-        "n_jobs": -1,  # NFR 4C8G（T8.3 调优）
+        "n_jobs": 2,  # 限制并发线程数，避免多模型并行时内存爆炸（SIGKILL）
     }
 
     def _build(self, params: dict[str, Any]) -> Any:

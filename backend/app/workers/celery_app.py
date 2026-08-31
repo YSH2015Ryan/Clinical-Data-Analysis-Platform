@@ -19,18 +19,28 @@ celery_app = Celery(
         "app.workers.analysis_tasks",
         "app.workers.report_tasks",
         "app.workers.project_tasks",
+        "app.workers.quickfix_tasks",  # Quick Fix 异步任务
     ],  # 任务模块注册
 )
 
 celery_app.conf.update(
     task_acks_late=True,  # 长任务宕机可重投（docs/20 R1）
     worker_prefetch_multiplier=1,  # 公平调度
+    # Phase 6 T6.5: 全局超时设置为 70 分钟（与 config.model_timeout_s 一致）
     task_time_limit=settings.model_timeout_s,
+    task_soft_time_limit=settings.model_timeout_s - 60,  # 软超时比硬超时早 60s
     task_default_queue="default",
     task_routes={
         "app.workers.analysis_tasks.run_model": {"queue": "model"},
         "app.workers.model_tasks.*": {"queue": "model"},
         "app.workers.report_tasks.*": {"queue": "report"},
+    },
+    # Phase 6 T6.5: preprocess 任务保持 10 分钟超时（已足够）
+    task_annotations={
+        "app.workers.analysis_tasks.preprocess_run": {
+            "time_limit": 660,
+            "soft_time_limit": 600,
+        },
     },
     result_expires=86400,
     beat_schedule={
