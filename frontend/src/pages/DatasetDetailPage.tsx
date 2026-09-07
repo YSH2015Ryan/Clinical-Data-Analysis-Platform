@@ -34,6 +34,7 @@ import {
 import PreprocessPanel from "./PreprocessPanel";
 import TaskDetectCard from "./TaskDetectCard";
 import ScreeningCard from "./ScreeningCard";
+import DatasetInsightCard from "./DatasetInsightCard";
 
 const SEVERITY_COLOR: Record<Issue["severity"], string> = {
   blocker: "error",
@@ -318,11 +319,68 @@ function IssueGroup({
         onCancel={() => setGuide(null)}
         width={640}
       >
-        <Typography.Paragraph
-          style={{ whiteSpace: "pre-wrap", maxHeight: "60vh", overflowY: "auto", marginBottom: 0 }}
-        >
-          {guide?.guidance}
-        </Typography.Paragraph>
+        {guide?.fix_guidance ? (
+          // P2-3 结构化闭环：问题 → 影响 → 修法（一键动作直接在此执行）
+          <div>
+            <Typography.Paragraph style={{ marginBottom: 8 }}>
+              <Typography.Text strong>问题：</Typography.Text>
+              {guide.fix_guidance.problem}
+            </Typography.Paragraph>
+            <Typography.Paragraph style={{ marginBottom: 12 }}>
+              <Typography.Text strong>对分析的影响：</Typography.Text>
+              {guide.fix_guidance.impact}
+            </Typography.Paragraph>
+            <Typography.Text strong>修法（按推荐顺序）：</Typography.Text>
+            <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
+              {guide.fix_guidance.methods.map((m, i) => (
+                <Card key={i} size="small">
+                  <Space style={{ width: "100%", justifyContent: "space-between" }}>
+                    <div>
+                      <Typography.Text strong>{i + 1}. {m.label}</Typography.Text>
+                      <div style={{ fontSize: 12, color: "rgba(0,0,0,0.55)", marginTop: 4 }}>
+                        {m.description}
+                      </div>
+                    </div>
+                    {m.action && (
+                      <Popconfirm
+                        title={`确认执行「${m.label}」？`}
+                        description={
+                          <div style={{ maxWidth: 320 }}>
+                            {m.risk && <div>风险：{m.risk}</div>}
+                            <div style={{ marginTop: 4 }}>
+                              修复将生成<strong>新的文件版本</strong>并自动重新校验，
+                              源文件不会被修改。
+                            </div>
+                          </div>
+                        }
+                        okText="确认执行"
+                        cancelText="取消"
+                        onConfirm={async () => {
+                          setGuide(null);
+                          await onFix({
+                            type: m.action!.type,
+                            column: m.action!.column ?? undefined,
+                            params: m.action!.params,
+                          });
+                        }}
+                      >
+                        <Button size="small" type="primary" loading={fixing}>
+                          一键执行
+                        </Button>
+                      </Popconfirm>
+                    )}
+                  </Space>
+                </Card>
+              ))}
+            </Space>
+          </div>
+        ) : (
+          <Typography.Paragraph
+            style={{ whiteSpace: "pre-wrap", maxHeight: "60vh", overflowY: "auto", marginBottom: 0 }}
+          >
+            {guide?.guidance}
+          </Typography.Paragraph>
+        )}
       </Modal>
     </Card>
   );
@@ -595,6 +653,8 @@ export default function DatasetDetailPage() {
       {dataset.status === "VALIDATING" && (
         <Alert type="info" showIcon message="数据校验中，请稍候…" style={{ marginBottom: 16 }} />
       )}
+
+      {dataset.status === "VALIDATED" && id && <DatasetInsightCard datasetId={id} />}
 
       {report && (
         <>

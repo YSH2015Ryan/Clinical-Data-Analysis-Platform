@@ -33,6 +33,8 @@ class Issue(BaseModel):
     guidance: str | None = None
     # T6.7(docs/14 §5 变更记录 2026-08-27):LLM 人话版解释；功能关闭或生成失败时缺省
     llm_explanation: str | None = None
+    # P2-3(docs/14 §5 变更记录 2026-09-07):结构化修复指引（问题→影响→修法，修法含一键动作契约）
+    fix_guidance: dict[str, Any] | None = None
 
 
 class QualityReport(BaseModel):
@@ -195,3 +197,29 @@ class DatasetVersion(BaseModel):
     version_no: int
     transform_log: list[dict[str, Any]]
     created_at: Any  # datetime，由 ORM 序列化
+
+
+class DatasetInsightOut(BaseModel):
+    """数据体检（P2-2，docs/14 §5 变更记录 2026-09-07）：阶段 A 自动产出。
+
+    payload = {eda, task_recommendation, research_profile, auto_fix_log, summary}，
+    全部数值来自引擎真实计算；结构与 docs/08 §3.2 一致。
+    """
+
+    dataset_id: uuid.UUID
+    dataset_version_id: uuid.UUID
+    created_at: Any  # datetime，由 ORM 序列化
+    payload: dict[str, Any]
+
+
+class AnalysisDraft(BaseModel):
+    """分析草稿（P1-3，docs/14 §5 变更记录 2026-09-07）：单页确认所需全部默认值。
+
+    识别失败时 task_type/task_detection 为 None、standard_models 为空，
+    前端回退逐步向导。
+    """
+
+    task_type: Literal["survival", "classification", "regression"] | None
+    task_detection: dict[str, Any] | None  # engines/task_detection.TaskDetection.to_dict()
+    preprocess_config: dict[str, Any]
+    standard_models: list[str]

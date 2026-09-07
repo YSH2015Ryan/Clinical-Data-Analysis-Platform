@@ -47,6 +47,8 @@ class Issue:
     row_indices: list[int] | None = None
     # T6.1:富文案修复指引(原因+多种修法+一键操作;validation_messages)
     guidance: str = ""
+    # P2-3:结构化修复指引(问题→影响→修法列表,修法含一键动作契约;fix_guidance)
+    fix_guidance: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -59,6 +61,7 @@ class Issue:
             "affected_rows": self.affected_rows,
             "row_indices": self.row_indices,
             "guidance": self.guidance,
+            "fix_guidance": self.fix_guidance,
         }
 
 
@@ -319,11 +322,15 @@ def _guidance_for(
 def _enrich_issues(
     issues: list[Issue], df: pd.DataFrame, cfg: ValidationConfig, extra: dict[str, Any]
 ) -> None:
-    """原地为每条 Issue 补 guidance（富文案）与 row_indices（行号采样）。"""
+    """原地为每条 Issue 补 guidance（富文案）、fix_guidance（结构化）与 row_indices。"""
+    from app.engines.fix_guidance import fix_guidance_for
+
     n_rows = len(df)
     for issue in issues:
         if not issue.guidance:
             issue.guidance = _guidance_for(issue, df, n_rows, extra)
+        if issue.fix_guidance is None:
+            issue.fix_guidance = fix_guidance_for(issue)
         if issue.row_indices is None:
             issue.row_indices = _row_indices_for(issue, df, cfg)
 
