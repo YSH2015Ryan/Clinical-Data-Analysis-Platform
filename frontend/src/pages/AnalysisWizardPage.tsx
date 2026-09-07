@@ -111,7 +111,13 @@ export default function AnalysisWizardPage() {
   // Step 3
   const [detection, setDetection] = useState<TaskDetectionResult | null>(null);
   const [detectFailed, setDetectFailed] = useState<string | null>(null);
-  const [taskType, setTaskType] = useState<TaskType | null>(null);
+  // P0-4：数据集页「确认任务类型」经 ?task= 预选，识别结果不再覆盖用户确认值
+  const initialTask = searchParams.get("task") as TaskType | null;
+  const [taskType, setTaskType] = useState<TaskType | null>(
+    initialTask && ["survival", "classification", "regression"].includes(initialTask)
+      ? initialTask
+      : null,
+  );
   // Step 4
   const [models, setModels] = useState<ModelPlugin[] | null>(null);
   const [selectedModels, setSelectedModels] = useState<string[]>(

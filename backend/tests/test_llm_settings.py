@@ -65,10 +65,12 @@ class TestSettingsService:
         assert cfg.ollama_model  # env 默认
         assert cfg.openai_api_key is None
         assert cfg.feature_switches == {
-            "research_profile": "off",
-            "report_interpretation": "off",
-            "validation_explain": "off",
-            "iteration": "off",  # T6.13
+            # P0-3：默认 local_first（本地优先，失败回退规则/模板）
+            "research_profile": "local_first",
+            "report_interpretation": "local_first",
+            "validation_explain": "local_first",
+            "iteration": "local_first",  # T6.13
+            "task_recommend": "local_first",  # T6.6 修复后纳入开关体系
         }
 
     async def test_partial_update_and_key_clear(self, db_session: AsyncSession) -> None:
@@ -90,7 +92,7 @@ class TestSettingsService:
             db_session, feature_switches={"research_profile": "local_first"}
         )
         assert cfg.feature_switches["research_profile"] == "local_first"
-        assert cfg.feature_switches["report_interpretation"] == "off"  # 其余保持默认
+        assert cfg.feature_switches["report_interpretation"] == "local_first"  # 其余保持默认
 
 
 class TestCloudPayloadGuard:

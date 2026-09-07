@@ -60,22 +60,30 @@ def validate_dataset(dataset_id: str) -> None:
             result = parser.parse(raw, dataset.source_type)
             report = validation.validate(result.df, raw_columns=result.raw_columns)
             
-            # Phase 6 T6.6: 智能任务推荐（使用 LLM 分析数据集适合的分析类型）
+            # Phase 6 T6.6（P0-1 修复）：智能任务推荐——规则结论恒产出，
+            # LLM 仅增强表达（分功能开关 task_recommend 门控，失败静默回退规则）
             task_recommendation = None
             try:
-                from app.services.llm import get_llm_service
                 from app.engines.intelligent_task_advisor import IntelligentTaskAdvisor
-                
-                llm_service = get_llm_service()
-                if llm_service.is_available():
-                    advisor = IntelligentTaskAdvisor(llm_service)
-                    task_recommendation = advisor.analyze_dataset(result.df, report.column_profiles)
-                    logger.info(
-                        "intelligent_task_recommendation",
-                        dataset_id=dataset_id,
-                        recommended_tasks=task_recommendation.recommended_tasks,
-                        can_start_modeling=task_recommendation.can_start_modeling
-                    )
+
+                llm_cfg = get_llm_config_sync(db)
+                switch = llm_cfg.feature_switches.get("task_recommend", "off")
+                service = (
+                    init_llm_service_from_runtime(llm_cfg) if switch != "off" else None
+                )
+                advisor = IntelligentTaskAdvisor(service)
+                task_recommendation = advisor.analyze_dataset(
+                    result.df,
+                    report.column_profiles,
+                    switch=switch,
+                    temperature=llm_cfg.temperature,
+                )
+                logger.info(
+                    "intelligent_task_recommendation",
+                    dataset_id=dataset_id,
+                    recommended_tasks=task_recommendation.recommended_tasks,
+                    can_start_modeling=task_recommendation.can_start_modeling,
+                )
             except Exception as llm_exc:
                 logger.warning(
                     "task_recommendation_failed",

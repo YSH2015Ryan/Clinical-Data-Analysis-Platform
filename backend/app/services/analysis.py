@@ -16,6 +16,7 @@ from app.core.errors import AppError, forbidden, not_found
 from app.engines import parser
 from app.engines.model_registry import ModelRegistry
 from app.engines.preprocessing import PreprocessConfig, validate_dsl
+from app.engines.task_detection import detect_task_from_profile
 from app.models.entities import (
     AnalysisRun,
     Comparison,
@@ -217,6 +218,14 @@ async def create_run(
         for key in body.selected_models
     }
 
+    # P0-2：落库任务识别依据（报告「任务识别依据」章节数据源；此前只有读取方）
+    task_detection_payload: dict[str, Any] | None = None
+    if dataset.column_profile:
+        det = detect_task_from_profile(dataset.column_profile)
+        if det.recommended_task and det.recommended_task != body.task_type:
+            det.user_override = body.task_type
+        task_detection_payload = det.to_dict()
+
     run = AnalysisRun(
         project_id=project.id,
         dataset_version_id=version.id,
@@ -226,6 +235,7 @@ async def create_run(
         selected_models=list(body.selected_models),
         # 将管理员默认参数和本次覆盖快照进 run，后续修改插件不会改变历史结果。
         model_params=effective_params,
+        task_detection=task_detection_payload,
         created_by=user.id,
     )
     db.add(run)

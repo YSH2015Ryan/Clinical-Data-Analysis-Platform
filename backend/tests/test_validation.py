@@ -56,18 +56,21 @@ class TestRV003DuplicateColumns:
 
 
 class TestRV101RequiredFieldMissing:
+    """T6.6 起 RV101 降级为 warning：支持无结局列数据进入探索性分析（EDA），
+    建模目标列由分析创建时的硬校验把关（services/analysis.py）。"""
+
     def test_positive(self) -> None:
         df = _clean_df().drop(columns=["os_months", "death"])
         issue = _rules(validate(df), "RV101")[0]
-        assert issue.severity == "blocker"
-        assert "结局" in issue.message
+        assert issue.severity == "warning"
+        assert "预测目标" in issue.message
 
     def test_message_human_readable(self) -> None:
         """P0-3：文案面向非技术用户（docs/05 §3，2026-08-03 修订）。"""
         df = _clean_df().drop(columns=["os_months", "death"])
         issue = _rules(validate(df), "RV101")[0]
-        assert "要预测的结果" in issue.message
-        assert "列画像" in issue.suggestion  # 指引手动指定角色
+        assert "预测目标" in issue.message
+        assert "目标变量" in issue.suggestion  # 指引补充或指定目标列
 
     def test_negative(self) -> None:
         assert _rules(validate(_clean_df()), "RV101") == []
@@ -322,7 +325,10 @@ class TestReportContract:
         assert validate(df).status == "PASSED_WITH_WARNINGS"
 
     def test_blocker_status(self) -> None:
-        df = _clean_df().drop(columns=["death", "os_months"])
+        # 真正的阻塞级问题（重复列名 RV003）→ FAILED；
+        # 缺结局列（RV101）自 T6.6 起降级为 warning，不再单独导致 FAILED
+        df = _clean_df()
+        df.columns = ["age", "age", *df.columns[2:]]
         assert validate(df).status == "FAILED"
 
     def test_json_shape(self) -> None:

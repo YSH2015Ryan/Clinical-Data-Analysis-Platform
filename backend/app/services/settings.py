@@ -28,10 +28,14 @@ ModelChoice = Literal["auto", "local", "cloud"]
 FeatureSwitch = Literal["off", "local", "local_first", "cloud"]
 
 DEFAULT_FEATURE_SWITCHES: dict[str, FeatureSwitch] = {
-    "research_profile": "off",
-    "report_interpretation": "off",
-    "validation_explain": "off",
-    "iteration": "off",  # T6.13 对话式迭代（重跑建议）
+    # P0-3：默认 local_first（本地 Ollama 优先，失败回退规则/模板，不出域）；
+    # 此前默认全 off 导致未进管理页的部署所有 AI 能力等于不存在（客户反馈「不够智能」）。
+    # 每个功能都有规则/模板兜底，Ollama 不可用时行为与 off 等价，仅多一次快速失败探测。
+    "research_profile": "local_first",
+    "report_interpretation": "local_first",
+    "validation_explain": "local_first",
+    "iteration": "local_first",  # T6.13 对话式迭代（重跑建议）
+    "task_recommend": "local_first",  # T6.6 智能任务推荐 LLM 表达增强（规则结论恒产出）
 }
 
 

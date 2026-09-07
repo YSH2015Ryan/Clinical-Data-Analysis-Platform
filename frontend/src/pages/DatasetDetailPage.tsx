@@ -348,7 +348,15 @@ function AIRecommendationCard({ issues }: { issues: Issue[] }) {
   const aiIssue = issues.find((i) => i.rule_id === "AI_RECOMMEND");
   if (!aiIssue || !aiIssue.detail) return null;
 
-  const detail = typeof aiIssue.detail === "string" ? JSON.parse(aiIssue.detail) : aiIssue.detail;
+  const detail = (typeof aiIssue.detail === "string"
+    ? JSON.parse(aiIssue.detail)
+    : aiIssue.detail) as {
+    recommended_tasks?: string[];
+    recommended_targets?: { column: string; reason: string; task_type: string }[];
+    unsuitable_tasks?: Record<string, string>;
+    eda_suggestions?: string[];
+    can_start_modeling?: boolean;
+  };
   const {
     recommended_tasks = [],
     recommended_targets = [],
@@ -725,7 +733,13 @@ export default function DatasetDetailPage() {
           />
           <TaskDetectCard
             datasetId={id}
-            onConfirm={(taskType) => message.success(`已确认任务类型：${taskType}（将随分析运行快照保存）`)}
+            onConfirm={(taskType) =>
+              projectId
+                ? navigate(
+                    `/projects/${projectId}/analysis/new?dataset=${id}&task=${taskType}`,
+                  )
+                : message.warning("请从项目页进入以开始分析")
+            }
           />
           <ScreeningCard
             datasetId={id}

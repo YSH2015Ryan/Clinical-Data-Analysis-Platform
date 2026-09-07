@@ -147,6 +147,74 @@ def _body(
     }
 
 
+class TestTaskDetectionRecorded:
+    """P0-2：创建 run 时必须把任务识别依据写入 AnalysisRun.task_detection，
+    否则报告「任务识别依据」章节恒为空（此前字段只有读取方没有写入方）。"""
+
+    async def _set_profile(self, db_session: AsyncSession, version: DatasetVersion) -> None:
+        dataset = (
+            await db_session.execute(select(Dataset).where(Dataset.id == version.dataset_id))
+        ).scalar_one()
+        dataset.column_profile = [
+            {"name": "age", "inferred_type": "continuous", "semantic": "Age",
+             "semantic_confidence": 0.9, "missing_rate": 0.0, "unique": 55,
+             "min": 30.0, "max": 90.0},
+            {"name": "biomarker", "inferred_type": "continuous", "semantic": None,
+             "semantic_confidence": 0.0, "missing_rate": 0.0, "unique": 60,
+             "min": -2.0, "max": 2.0},
+            {"name": "label", "inferred_type": "continuous", "semantic": "Label",
+             "semantic_confidence": 0.9, "missing_rate": 0.0, "unique": 2,
+             "min": 0.0, "max": 1.0},
+        ]
+        await db_session.commit()
+
+    async def test_task_detection_written_on_create(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        researcher: User,
+        version: DatasetVersion,
+    ) -> None:
+        await self._set_profile(db_session, version)
+        resp = await client.post(
+            "/api/v1/analysis-runs", json=_body(version.id, ["dummy"]), headers=_auth(researcher)
+        )
+        assert resp.status_code == 202, resp.text
+        run = await db_session.get(AnalysisRun, uuid.UUID(resp.json()["id"]))
+        assert run.task_detection is not None
+        assert run.task_detection["recommended_task"] == "classification"
+        assert run.task_detection["reason"]
+        assert run.task_detection["user_override"] is None
+
+    async def test_user_override_recorded_when_diverging(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        researcher: User,
+        version: DatasetVersion,
+    ) -> None:
+        await self._set_profile(db_session, version)
+        body = {
+            "dataset_version_id": str(version.id),
+            "task_type": "regression",
+            "preprocess_config": {
+                "target": {"label_col": "biomarker"},
+                "steps": [{"type": "scale", "params": {}}],
+                "validation": {"strategy": "kfold", "n_splits": 3, "seed": 42},
+            },
+            "selected_models": ["lasso"],
+            "model_params": {},
+        }
+        resp = await client.post(
+            "/api/v1/analysis-runs", json=body, headers=_auth(researcher)
+        )
+        assert resp.status_code == 202, resp.text
+        run = await db_session.get(AnalysisRun, uuid.UUID(resp.json()["id"]))
+        assert run.task_detection is not None
+        assert run.task_detection["recommended_task"] == "classification"
+        assert run.task_detection["user_override"] == "regression"
+
+
 class TestCreateRun:
     async def test_create_202_and_completes(
         self,

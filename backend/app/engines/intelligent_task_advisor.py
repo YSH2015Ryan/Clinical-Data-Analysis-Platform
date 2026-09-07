@@ -1,206 +1,222 @@
-"""智能任务类型顾问（基于 LLM）
+"""智能任务顾问（T6.6 修复版，roadmap P0-1）
 
-功能：
-1. 分析数据集适合做什么类型的分析
-2. 推荐合适的目标列
-3. 解释为什么某些分析不适合
-4. 支持探索性分析（EDA）模式
+纪律（与 services/llm_tasks.py 一致）：
+- 规则引擎（detect_task_from_profile）出结论：推荐任务、目标列、能否建模；
+  LLM 只改写「整体评估」与「EDA 建议」的表达，不做判断（红线 8）；
+- 分功能开关 task_recommend 门控（off/local/local_first/cloud）；
+  off / LLM 不可用 / 输出不合格一律回退规则结果，主流程不阻塞；
+- prompt 只含聚合元数据（行/列数、列名、类型、缺失率、唯一值数），
+  禁止行级样本值（隐私红线：云端路径只出聚合统计）。
 
-Usage:
-    advisor = IntelligentTaskAdvisor(llm_service)
-    recommendation = advisor.analyze_dataset(df, column_profiles)
+修复历史：旧版调用 LLMService 不存在的方法（is_available/chat）并读取
+validation profile 不存在的键（data_type/semantic_type/...），异常被静默
+吞掉，功能从未产出结果。本版以测试锁定真实接口与真实 profile 键。
 """
 
-from dataclasses import dataclass
-from typing import Any
-import pandas as pd
 import json
+import logging
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+import pandas as pd
+
+from app.engines.task_detection import detect_task_from_profile
+from app.services.llm_tasks import _hallucinated_numbers, switch_to_choice
+
+if TYPE_CHECKING:
+    from app.services.llm import LLMService
+    from app.services.settings import FeatureSwitch
+
+logger = logging.getLogger(__name__)
+
+# 任务类型合法值（与 docs/08 状态机任务类型一致；eda 表示不适合建模）
+_VALID_TASKS = {"classification", "regression", "survival", "eda"}
+
+# 可直接建模的最低规则置信度（与 task_detection 语义支撑阈值一致）
+_MIN_MODELING_CONF = 0.6
 
 
 @dataclass
 class TaskRecommendation:
-    """任务类型推荐结果"""
-    
-    # 推荐的分析类型
-    recommended_tasks: list[str]  # ["regression", "classification", "eda"]
-    
-    # 推荐的目标列（如果适合预测建模）
-    recommended_targets: list[dict[str, Any]]  # [{"column": "age", "reason": "...", "task_type": "regression"}]
-    
-    # 不适合的分析类型及原因
-    unsuitable_tasks: dict[str, str]  # {"time_series": "缺少时间戳列"}
-    
-    # 探索性分析建议
-    eda_suggestions: list[str]  # ["相关性分析", "聚类分析"]
-    
-    # 整体评估
+    """任务类型推荐结果（前端 AIRecommendationCard 的 detail 契约）。"""
+
+    recommended_tasks: list[str]
+    recommended_targets: list[dict[str, Any]]  # [{"column", "reason", "task_type"}]
+    unsuitable_tasks: dict[str, str]
+    eda_suggestions: list[str]
     overall_assessment: str
-    
-    # 是否可以直接开始建模
     can_start_modeling: bool
 
 
 class IntelligentTaskAdvisor:
-    """智能任务顾问"""
-    
-    def __init__(self, llm_service: Any):
+    """智能任务顾问：规则结论 + 可选 LLM 表达增强。
+
+    llm_service 可为 None（未初始化/部署无 LLM）：此时 analyze_dataset
+    仍返回规则版推荐，保证 AI_RECOMMEND 卡在所有部署下都有真实内容。
+    """
+
+    def __init__(self, llm_service: "LLMService | None" = None):
         self.llm = llm_service
-    
+
     def analyze_dataset(
-        self, 
-        df: pd.DataFrame, 
-        column_profiles: list[dict[str, Any]]
+        self,
+        df: pd.DataFrame,
+        column_profiles: list[dict[str, Any]],
+        *,
+        switch: "FeatureSwitch" = "off",
+        temperature: float = 0.3,
     ) -> TaskRecommendation:
-        """分析数据集并给出任务推荐"""
-        
-        # 1. 构建数据集摘要
-        summary = self._build_dataset_summary(df, column_profiles)
-        
-        # 2. 调用 LLM 分析
-        prompt = self._build_analysis_prompt(summary)
-        
+        """分析数据集并给出任务推荐（规则为基线，LLM 增强表达）。"""
+        base = self._rule_recommendation(column_profiles)
+        choice = switch_to_choice(switch)
+        if choice is None or self.llm is None:
+            return base
+        facts = self._build_facts(df, column_profiles, base)
         try:
-            response = self.llm.chat(
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
+            raw = self.llm.complete(
+                self._prompt(facts),
+                facts=facts,
+                model_choice=choice,
+                temperature=temperature,
+                max_tokens=700,
             )
-            
-            result = json.loads(response)
-            
+        except Exception as exc:
+            logger.warning(f"task_advisor_llm_failed: {exc}")
+            return base
+        enhanced = self._parse_llm_output(raw, facts, df)
+        if enhanced is None:
+            return base
+        # 结论字段以规则为准，LLM 只接管表达字段
+        base.overall_assessment = enhanced["overall_assessment"] or base.overall_assessment
+        if enhanced["eda_suggestions"]:
+            base.eda_suggestions = enhanced["eda_suggestions"]
+        return base
+
+    # ------------------------------------------------------------------
+    # 规则结论（唯一判断来源）
+    # ------------------------------------------------------------------
+
+    def _rule_recommendation(
+        self, column_profiles: list[dict[str, Any]]
+    ) -> TaskRecommendation:
+        det = detect_task_from_profile(column_profiles)
+        if det.recommended_task is not None:
+            targets = [
+                {
+                    "column": c.column,
+                    "reason": c.reason,
+                    "task_type": det.recommended_task,
+                }
+                for kind in ("time_col", "event_col", "label_col")
+                for c in det.candidates.get(kind, [])[:2]
+            ]
             return TaskRecommendation(
-                recommended_tasks=result.get("recommended_tasks", ["eda"]),
-                recommended_targets=result.get("recommended_targets", []),
-                unsuitable_tasks=result.get("unsuitable_tasks", {}),
-                eda_suggestions=result.get("eda_suggestions", []),
-                overall_assessment=result.get("overall_assessment", ""),
-                can_start_modeling=result.get("can_start_modeling", False)
+                recommended_tasks=[det.recommended_task],
+                recommended_targets=targets,
+                unsuitable_tasks={},
+                eda_suggestions=[],
+                overall_assessment=det.reason,
+                can_start_modeling=det.confidence >= _MIN_MODELING_CONF,
             )
-            
-        except Exception as e:
-            # LLM 失败时的兜底逻辑
-            return self._fallback_analysis(df, column_profiles)
-    
-    def _build_dataset_summary(
-        self, 
-        df: pd.DataFrame, 
-        column_profiles: list[dict[str, Any]]
+        return TaskRecommendation(
+            recommended_tasks=["eda"],
+            recommended_targets=[],
+            unsuitable_tasks={
+                "classification": "未识别到明确的分类结局列",
+                "regression": "未识别到明确的连续结局列",
+                "survival": "未识别到成对的随访时间列与事件列",
+            },
+            eda_suggestions=["描述性统计", "相关性分析", "分布与缺失模式可视化"],
+            overall_assessment=det.reason,
+            can_start_modeling=False,
+        )
+
+    # ------------------------------------------------------------------
+    # LLM 表达增强（仅聚合元数据进 prompt，无行级数据）
+    # ------------------------------------------------------------------
+
+    def _build_facts(
+        self,
+        df: pd.DataFrame,
+        column_profiles: list[dict[str, Any]],
+        base: TaskRecommendation,
     ) -> dict[str, Any]:
-        """构建数据集摘要"""
-        
         return {
             "row_count": len(df),
             "column_count": len(df.columns),
             "columns": [
                 {
-                    "name": col["name"],
-                    "data_type": col.get("data_type", "unknown"),
-                    "semantic_type": col.get("semantic_type", "unknown"),
-                    "missing_rate": col.get("missing_count", 0) / len(df) if len(df) > 0 else 0,
-                    "unique_count": col.get("unique_count", 0),
-                    "sample_values": df[col["name"]].dropna().head(3).tolist() if col["name"] in df.columns else []
+                    "name": p["name"],
+                    "type": p.get("inferred_type", "unknown"),
+                    "semantic": p.get("semantic"),
+                    "missing_rate": p.get("missing_rate", 0.0),
+                    "unique_count": p.get("unique", 0),
                 }
-                for col in column_profiles
+                for p in column_profiles
             ],
-            "has_time_column": any(
-                col.get("semantic_type") in ["Date", "DateTime"] 
-                for col in column_profiles
-            ),
-            "has_event_column": any(
-                col.get("semantic_type") == "Event" 
-                for col in column_profiles
-            ),
-            "has_label_column": any(
-                col.get("semantic_type") == "Label" 
-                for col in column_profiles
-            )
+            "rule_conclusion": {
+                "recommended_tasks": base.recommended_tasks,
+                "recommended_targets": [t["column"] for t in base.recommended_targets],
+                "can_start_modeling": base.can_start_modeling,
+                "reason": base.overall_assessment,
+            },
         }
-    
-    def _build_analysis_prompt(self, summary: dict[str, Any]) -> str:
-        """构建 LLM 分析提示"""
-        
-        columns_desc = "\n".join([
-            f"- {col['name']}: {col['data_type']}, 缺失率 {col['missing_rate']:.1%}, "
-            f"唯一值数 {col['unique_count']}, 示例: {col['sample_values']}"
-            for col in summary["columns"]
-        ])
-        
-        return f"""你是一个临床数据分析专家。请分析以下数据集，给出任务类型推荐。
 
-数据集信息：
-- 行数：{summary['row_count']}
-- 列数：{summary['column_count']}
-- 是否有时间列：{summary['has_time_column']}
-- 是否有事件列：{summary['has_event_column']}
-- 是否有标签列：{summary['has_label_column']}
+    def _prompt(self, facts: dict[str, Any]) -> str:
+        facts_json = json.dumps(facts, ensure_ascii=False, indent=2)
+        return f"""你是临床数据分析顾问。规则引擎已给出以下数据集的任务识别结论，
+请用专业、通俗的中文改写「整体评估」，并补充 2-4 条探索性分析建议。
 
-列详情：
-{columns_desc}
+【输出要求】
+- 只输出 JSON 对象，不要输出任何其他文字（不要解释、不要 Markdown 代码块）
+- 格式：{{"overall_assessment": "整体评估（60-150 字）", "eda_suggestions": ["建议1", "建议2"]}}
+- 不得改变规则引擎的结论；不得编造 Facts 中不存在的数值、列名或分析类型
+- 只引用 Facts 中出现的列名与数值
 
-请分析：
-1. 这个数据集适合做什么类型的分析？（分类/回归/生存分析/时间序列/探索性分析）
-2. 如果适合预测建模，推荐哪些列作为目标列？为什么？
-3. 哪些分析类型不适合？原因是什么？
-4. 如果不适合预测建模，建议做哪些探索性分析？
-5. 整体评估：数据质量如何？是否可以直接开始建模？
+Facts:
+{facts_json}
 
-返回 JSON 格式：
-{{
-    "recommended_tasks": ["regression", "classification", "eda"],
-    "recommended_targets": [
-        {{
-            "column": "列名",
-            "reason": "推荐原因",
-            "task_type": "regression/classification"
-        }}
-    ],
-    "unsuitable_tasks": {{
-        "time_series": "不适合原因",
-        "survival": "不适合原因"
-    }},
-    "eda_suggestions": ["相关性分析", "聚类分析", "描述性统计"],
-    "overall_assessment": "整体评估说明",
-    "can_start_modeling": true/false
-}}
+直接输出 JSON 对象："""
 
-注意：
-- 如果没有明显的目标列，recommended_targets 可以为空，推荐 EDA
-- 如果列名是 Unnamed: 0, Unnamed: 1 这种，说明列名缺失，需要提示用户补充
-- 临床数据常见目标：疾病评分、是否复发、生存时间、治疗效果等
-"""
-    
-    def _fallback_analysis(
-        self, 
-        df: pd.DataFrame, 
-        column_profiles: list[dict[str, Any]]
-    ) -> TaskRecommendation:
-        """LLM 失败时的兜底逻辑"""
-        
-        # 简单规则判断
-        has_label = any(col.get("semantic_type") == "Label" for col in column_profiles)
-        has_event = any(col.get("semantic_type") == "Event" for col in column_profiles)
-        
-        if has_label or has_event:
-            return TaskRecommendation(
-                recommended_tasks=["classification", "regression"],
-                recommended_targets=[],
-                unsuitable_tasks={},
-                eda_suggestions=[],
-                overall_assessment="检测到可能的目标列，可以尝试预测建模",
-                can_start_modeling=True
-            )
-        else:
-            return TaskRecommendation(
-                recommended_tasks=["eda"],
-                recommended_targets=[],
-                unsuitable_tasks={
-                    "classification": "未找到明确的分类目标列",
-                    "regression": "未找到明确的回归目标列"
-                },
-                eda_suggestions=[
-                    "描述性统计分析",
-                    "相关性分析",
-                    "数据分布可视化"
-                ],
-                overall_assessment="未找到明确的预测目标，建议先进行探索性分析",
-                can_start_modeling=False
-            )
+    def _parse_llm_output(
+        self, raw: str, facts: dict[str, Any], df: pd.DataFrame
+    ) -> dict[str, Any] | None:
+        """解析 LLM 输出；结构/列名白名单/幻觉数值任一不合格 → None（回退规则）。"""
+        start, end = raw.find("{"), raw.rfind("}")
+        if start == -1 or end <= start:
+            return None
+        try:
+            data = json.loads(raw[start : end + 1])
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        assessment = str(data.get("overall_assessment") or "").strip()
+        suggestions_raw = data.get("eda_suggestions") or []
+        suggestions = (
+            [str(s).strip() for s in suggestions_raw if str(s).strip()]
+            if isinstance(suggestions_raw, list)
+            else []
+        )
+        real_columns = {str(c) for c in df.columns}
+        text_all = " ".join([assessment, *suggestions])
+        # 列名白名单：文本中出现「」或 "列" 语境的新列名视为编造——
+        # 简化为：含「」括注且括注内容不是真实列名 → 拒绝
+        for quoted in _quoted_spans(text_all):
+            if quoted not in real_columns and quoted not in _VALID_TASKS:
+                logger.warning(f"task_advisor_invented_column: {quoted}")
+                return None
+        # 幻觉数值拦截：表达文本中的数值必须来自 facts
+        if _hallucinated_numbers(text_all, facts):
+            logger.warning("task_advisor_hallucination")
+            return None
+        return {"overall_assessment": assessment, "eda_suggestions": suggestions}
+
+
+def _quoted_spans(text: str) -> list[str]:
+    """提取「」/「"..."」括注内容（LLM 编造列名常以括注形式出现）。"""
+    import re
+
+    spans = re.findall(r"「([^」]+)」", text)
+    spans += re.findall(r'"([^"]{1,30})"', text)
+    return spans
