@@ -34,6 +34,11 @@ export default function RunMonitorPage() {
         if (timer.current) window.clearInterval(timer.current);
         timer.current = null;
         setRun(await getRun(id));
+        // P1-4：运行完成自动进入比较结果页（报告已由后端自动生成）
+        if (p.status === "COMPLETED") {
+          message.success("分析完成，报告已自动生成");
+          navigate(`/runs/${id}/comparison`, { replace: true });
+        }
       }
     } catch (e) {
       if (timer.current) window.clearInterval(timer.current);

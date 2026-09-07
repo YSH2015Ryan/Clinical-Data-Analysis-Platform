@@ -709,6 +709,34 @@ def compare_run(results: Any, run_id: str) -> None:
         db.commit()
         logger.info("run_completed", run_id=run_id, ranking=ranking)
 
+        # P1-4：run 完成自动生成默认 HTML 报告（docs/08 §3：报告不再需手动触发）。
+        # 自动报告失败不影响 run 结果；手动「生成报告」按钮降级为换格式/重新生成。
+        try:
+            _auto_generate_html_report(db, run)
+        except Exception as exc:
+            logger.error("auto_report_failed", run_id=run_id, error=str(exc))
+
+
+def _auto_generate_html_report(db: Any, run: AnalysisRun) -> None:
+    """自动入队 HTML 报告；幂等：已有 PENDING/READY 的 HTML 报告则跳过。"""
+    from app.models.entities import Report
+    from app.workers.report_tasks import generate_report
+
+    existing = db.execute(
+        select(Report).where(
+            Report.run_id == run.id,
+            Report.format == "html",
+            Report.status.in_(["PENDING", "READY"]),
+        )
+    ).scalars().first()
+    if existing is not None:
+        return
+    report = Report(run_id=run.id, format="html", created_by=run.created_by)
+    db.add(report)
+    db.commit()  # 先落库再入队：worker 任务在独立会话读取 Report
+    generate_report.apply_async(args=[str(report.id)])
+    logger.info("auto_report_enqueued", run_id=str(run.id), report_id=str(report.id))
+
 
 def _build_charts(run: AnalysisRun, succeeded: list[ModelResult]) -> list[dict[str, Any]]:
     """对比图表装配（docs/09 §3 单数据源）；图表失败不阻断 compare（降级为空图表列表）。"""

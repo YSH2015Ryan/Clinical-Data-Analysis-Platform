@@ -15,6 +15,7 @@ celery_app = Celery(
     backend=settings.redis_url,
     include=[
         "app.workers.dataset_tasks",
+        "app.workers.insight_tasks",
         "app.workers.preparation_tasks",
         "app.workers.analysis_tasks",
         "app.workers.report_tasks",

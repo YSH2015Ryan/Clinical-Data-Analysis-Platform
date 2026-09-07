@@ -166,6 +166,20 @@ export interface Issue {
   row_indices?: number[] | null;
   /** T6.1:富文案修复指引(原因+多种修法+一键操作),多行纯文本 */
   guidance?: string | null;
+  /** P2-3:结构化修复指引（问题→影响→修法，修法含一键动作；docs/14 §5 变更记录 2026-09-07） */
+  fix_guidance?: FixGuidance | null;
+}
+
+/** P2-3 结构化修复指引（与 engines/fix_guidance.py 契约一致） */
+export interface FixGuidance {
+  problem: string;
+  impact: string;
+  methods: {
+    label: string;
+    description: string;
+    action: { type: QuickFixAction["type"]; column: string | null; params: Record<string, unknown> } | null;
+    risk: string | null;
+  }[];
 }
 
 export interface QualityReport {
@@ -279,6 +293,93 @@ export async function getDataset(id: string): Promise<DatasetDetail> {
 
 export async function getQualityReport(id: string): Promise<QualityReport> {
   return apiFetch<QualityReport>(`/datasets/${id}/quality-report`);
+}
+
+// ---- 数据体检（P2-2，docs/14 §5 变更记录 2026-09-07 GET /datasets/{id}/insight） ----
+
+export interface EdaContinuousStats {
+  mean: number | null;
+  std: number | null;
+  min: number | null;
+  q1: number | null;
+  median: number | null;
+  q3: number | null;
+  max: number | null;
+  skew: number | null;
+}
+
+export interface EdaDistribution {
+  name: string;
+  inferred_type: string;
+  semantic: string | null;
+  missing: number;
+  kind?: "continuous" | "categorical";
+  histogram?: { counts: number[]; bin_edges: (number | null)[] };
+  stats?: EdaContinuousStats;
+  top_counts?: { value: string; count: number }[];
+}
+
+export interface EdaResult {
+  row_count: number;
+  column_count: number;
+  distributions: EdaDistribution[];
+  missing: {
+    columns: { name: string; missing: number; missing_rate: number }[];
+    rows_with_any_missing: number;
+    complete_case_ratio: number;
+  };
+  correlations: {
+    continuous: {
+      columns: string[];
+      matrix: (number | null)[][];
+      top_pairs: { a: string; b: string; r: number }[];
+    };
+    categorical: {
+      columns: string[];
+      top_pairs: { a: string; b: string; cramers_v: number }[];
+    };
+  };
+  sample_size: {
+    n_rows: number;
+    n_features: number;
+    event_column: string | null;
+    n_events: number | null;
+    epv: number | null;
+    epv_adequate: boolean | null;
+  };
+}
+
+export interface DatasetInsightPayload {
+  eda: EdaResult;
+  task_recommendation: {
+    recommended_tasks: string[];
+    recommended_targets: { column: string; reason: string; task_type: string }[];
+    unsuitable_tasks: Record<string, string>;
+    eda_suggestions: string[];
+    overall_assessment: string;
+    can_start_modeling: boolean;
+  };
+  research_profile: {
+    research_type: string;
+    recommended_models: string[];
+    recommended_journals: string[];
+    confidence: number;
+    reasoning: string;
+  };
+  auto_fix_log: { action: string; column: string | null; affected_rows: number }[];
+  summary: string[];
+}
+
+export interface DatasetInsight {
+  dataset_id: string;
+  dataset_version_id: string;
+  created_at: string;
+  payload: DatasetInsightPayload;
+}
+
+/** 404 = 体检尚未生成（轮询至可用） */
+export async function getDatasetInsight(id: string): Promise<DatasetInsight> {
+  return apiFetch<DatasetInsight>(`/datasets/${id}/insight`);
 }
 
 // ---- Quick Fix（docs/14 §3 POST /datasets/{id}/quick-fix） ----
@@ -468,6 +569,19 @@ export async function detectTask(datasetId: string): Promise<TaskDetectionResult
   return apiFetch<TaskDetectionResult>(`/datasets/${datasetId}/detect-task`, {
     method: "POST",
   });
+}
+
+// ---- 分析草稿（P1-3，docs/14 §5 变更记录 2026-09-07） ----
+
+export interface AnalysisDraft {
+  task_type: TaskType | null;
+  task_detection: TaskDetectionResult | null;
+  preprocess_config: PreprocessConfig;
+  standard_models: string[];
+}
+
+export async function getAnalysisDraft(datasetId: string): Promise<AnalysisDraft> {
+  return apiFetch<AnalysisDraft>(`/datasets/${datasetId}/analysis-draft`);
 }
 
 // ---- 科研流程模板库（T6.9；docs/14 §3 /datasets/{id}/research-templates） ----

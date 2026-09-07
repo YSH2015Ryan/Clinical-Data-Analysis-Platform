@@ -91,6 +91,35 @@ stateDiagram-v2
 - 进度计算：preprocess 20% + 每模型 (70%/N) + comparison 10%，写入 Redis 供轮询/SSE。
 - 取消：`celery.control.revoke(terminate=True)` + 状态置 CANCELED。
 - 重试：同快照重新入队；单模型可在结果页单独重跑。
+- **报告自动生成（2026-09-07，P1-4）**：`compare_run` 置 COMPLETED 后自动落库并入队
+  默认 HTML 报告（幂等：已有 PENDING/READY HTML 报告则跳过）；手动「生成报告」
+  降级为换格式/重新生成。自动报告失败不影响 run 结果。
+
+### 3.2 阶段 A：上传后自动流水线（2026-09-07，P1-1/P2-1/P2-2）
+
+客户反馈「流程不够智能」后的核心改造：**上传即分析的准备段全自动**，用户只在
+不可逆/医学上无法默认的节点被询问。
+
+```
+validate_dataset（校验，已有）
+  → auto_dataset_insight（新增 Celery 任务，校验成功即自动续跑）
+      1. 安全项自动修复：impute_missing / winsorize_outliers / to_missing
+         （quickfix 全部生成新 DatasetVersion，源文件不可变 ⇒ 可自动执行）；
+         不可逆类（drop_column / drop_rows_* / pivot / rename / remap /
+         normalize_units / drop_duplicates）只建议不自动执行；
+         每次修复后同步重校验；不再有可自动修复项或仍有 blocker 即停止。
+      2. EDA 引擎（engines/eda.py，纯计算）：单变量分布、缺失模式、
+         相关性（Pearson/Spearman/Cramér's V）、样本量与 EPV 估算。
+      3. 数据体检落库 DatasetInsight（eda JSON + 体检结论），
+         前端数据集页直接渲染；GET /datasets/{id}/insight 读取。
+```
+
+设计约束：
+- 阶段 A 不跑模型、不消耗重算力；阶段 B（POST /analysis-runs）仍需用户一次确认
+  （算力消耗点 + 目标列确认）。
+- RV101（无结局列）自 T6.6 起为 warning：无结局数据照常完成阶段 A，
+  体检报告给出 EDA 建议；建模目标列由分析创建硬校验把关。
+- 所有数值来自引擎真实计算；LLM 仅做表达（分功能开关门控，幻觉拦截后回退模板）。
 
 ### 3.1 训练性能与失败治理（2026-08-28，T6.5）
 

@@ -30,12 +30,14 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import {
   createRun,
   detectTask,
+  getAnalysisDraft,
   getDataset,
   getResearchTemplates,
   listDatasetVersions,
   listDatasets,
   listModels,
   recommendPreprocess,
+  type AnalysisDraft,
   type ApiError,
   type ColumnProfile,
   type DatasetDetail,
@@ -125,6 +127,52 @@ export default function AnalysisWizardPage() {
   );
   // Step 5
   const [submitting, setSubmitting] = useState(false);
+
+  // P1-3 单页确认模式：带 ?dataset= 进入（数据集页「开始分析」/体检卡直达）时，
+  // 草稿端点一次给齐默认值（任务+预处理+标准套餐模型），一页确认即提交；
+  // 「逐步调整」可随时切回完整向导。
+  const [fullWizard, setFullWizard] = useState(false);
+  const singlePage = !!searchParams.get("dataset") && !iterateSuggestion && !fullWizard;
+  const [draft, setDraft] = useState<AnalysisDraft | null>(null);
+  const [draftFailed, setDraftFailed] = useState(false);
+
+  useEffect(() => {
+    if (!singlePage || !datasetId || draft || draftFailed) return;
+    getAnalysisDraft(datasetId)
+      .then((d) => {
+        setDraft(d);
+        setRecommended(d.preprocess_config);
+        setConfig(d.preprocess_config);
+        if (d.task_detection) setDetection(d.task_detection);
+        if (d.task_type) setTaskType((prev) => prev ?? d.task_type);
+        if (d.standard_models.length > 0) {
+          setSelectedModels((prev) => (prev.length > 0 ? prev : d.standard_models));
+        }
+      })
+      .catch(() => setDraftFailed(true)); // 识别/草稿失败 → 回退逐步向导
+    getDataset(datasetId)
+      .then((ds) => {
+        setColumns(ds.preview?.columns ?? []);
+        setProfile(ds.column_profile);
+      })
+      .catch(() => undefined);
+  }, [singlePage, datasetId, draft, draftFailed]);
+
+  // 单页模式：按任务类型拉模型清单（切换任务后默认勾选该任务标准套餐）
+  useEffect(() => {
+    if (!singlePage || !taskType || models) return;
+    listModels(taskType)
+      .then((items) => {
+        setModels(items);
+        setSelectedModels((prev) => {
+          const valid = prev.filter((k) => items.some((m) => m.key === k));
+          if (valid.length > 0) return valid;
+          const standard = items.filter((m) => m.tier === "standard").map((m) => m.key);
+          return standard.length > 0 ? standard : items.map((m) => m.key);
+        });
+      })
+      .catch(() => setDraftFailed(true));
+  }, [singlePage, taskType, models]);
 
   // Step 1：项目内数据集（仅 VALIDATED 可选）
   useEffect(() => {
@@ -297,6 +345,156 @@ export default function AnalysisWizardPage() {
   };
 
   const datasetName = datasets?.find((d) => d.id === datasetId)?.name ?? datasetId ?? "—";
+
+  /** 单页模式任务切换：按识别候选重填结局列 + 重拉模型清单。 */
+  const onSinglePageTaskChange = (v: TaskType) => {
+    setTaskType(v);
+    if (config && detection) {
+      const top = (kind: "time_col" | "event_col" | "label_col") =>
+        detection.candidates[kind]?.[0]?.column ?? null;
+      const target = { ...config.target };
+      if (v === "survival") {
+        target.time_col = top("time_col");
+        target.event_col = top("event_col");
+        target.label_col = null;
+      } else {
+        target.label_col = top("label_col");
+        target.time_col = null;
+        target.event_col = null;
+      }
+      let nextCfg = { ...config, target };
+      if (v === "regression" && nextCfg.validation.strategy === "stratified_kfold") {
+        nextCfg = { ...nextCfg, validation: { ...nextCfg.validation, strategy: "kfold" } };
+      }
+      setConfig(nextCfg);
+    }
+    setModels(null);
+    setSelectedModels([]);
+  };
+
+  // P1-3 单页确认：草稿就绪后一页展示全部默认值，一次点击提交
+  if (singlePage && !draftFailed && !(draft && !draft.task_type)) {
+    return (
+      <div style={{ maxWidth: 1080, margin: "24px auto", padding: "0 16px" }}>
+        <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}>
+          <Typography.Title level={3} style={{ margin: 0 }}>
+            新建分析 — 智能确认
+          </Typography.Title>
+          <Button onClick={() => navigate(projectId ? `/projects/${projectId}` : "/projects")}>
+            取消
+          </Button>
+        </Space>
+        {!draft || models === null ? (
+          <Card>
+            <Spin tip="正在按数据自动生成分析方案…" />
+          </Card>
+        ) : (
+          <Card title="分析方案已按数据自动填好，确认后即可提交">
+            {detection && (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message={`自动识别：${detection.reason}（置信度 ${Math.round(detection.confidence * 100)}%）`}
+              />
+            )}
+            {survivalBlocked && (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="当前数据没有随访时间 / 结局事件列，无法进行生存分析"
+              />
+            )}
+            {submitBlock && (
+              <Alert
+                type="error"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="当前配置无法完成分析"
+                description={submitBlock}
+              />
+            )}
+            <Descriptions bordered size="small" column={1}>
+              <Descriptions.Item label="数据集">{datasetName}</Descriptions.Item>
+              <Descriptions.Item label="任务类型">
+                <Select<TaskType>
+                  style={{ width: 220 }}
+                  value={taskType ?? undefined}
+                  options={(Object.keys(TASK_LABEL) as TaskType[]).map((t) => ({
+                    value: t,
+                    label: TASK_LABEL[t],
+                  }))}
+                  onChange={onSinglePageTaskChange}
+                />
+              </Descriptions.Item>
+              <Descriptions.Item label="结局定义">
+                <Typography.Text code>{JSON.stringify(config?.target ?? {})}</Typography.Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="预处理步骤（推荐配置）">
+                {config?.steps.map((s, i) => <Tag key={i}>{s.type}</Tag>)}
+              </Descriptions.Item>
+              <Descriptions.Item label="交叉验证">
+                {config
+                  ? `${config.validation.strategy} × ${config.validation.n_splits}（seed=${config.validation.seed}）`
+                  : "—"}
+              </Descriptions.Item>
+              <Descriptions.Item label={`模型（标准套餐已勾选，可增减）`}>
+                <Checkbox.Group
+                  value={selectedModels}
+                  onChange={(v) => setSelectedModels(v as string[])}
+                >
+                  <Space wrap>
+                    {models.map((m) => (
+                      <Checkbox key={m.key} value={m.key}>
+                        {m.name}
+                        {m.tier === "standard" && m.role ? (
+                          <Tag color="geekblue" style={{ marginLeft: 4 }}>
+                            {m.role}
+                          </Tag>
+                        ) : null}
+                      </Checkbox>
+                    ))}
+                  </Space>
+                </Checkbox.Group>
+              </Descriptions.Item>
+            </Descriptions>
+            <Space style={{ marginTop: 24 }}>
+              <Button
+                type="primary"
+                size="large"
+                loading={submitting}
+                disabled={!!submitBlock || selectedModels.length === 0 || survivalBlocked}
+                onClick={() => void submit()}
+              >
+                确认并开始分析
+              </Button>
+              <Button onClick={() => setFullWizard(true)}>逐步调整（高级）</Button>
+            </Space>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
+  // 草稿可用但识别失败：提示后走逐步向导
+  if (singlePage && !draftFailed && draft && !draft.task_type) {
+    return (
+      <div style={{ maxWidth: 1080, margin: "24px auto", padding: "0 16px" }}>
+        <Alert
+          type="warning"
+          showIcon
+          message="未能自动识别任务类型"
+          description="数据中未找到明确的结局/事件列，请使用逐步向导手动指定分析目标。"
+          action={
+            <Button type="primary" onClick={() => setFullWizard(true)}>
+              进入逐步向导
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
 
   const stepContent = [
     // Step 1 数据集

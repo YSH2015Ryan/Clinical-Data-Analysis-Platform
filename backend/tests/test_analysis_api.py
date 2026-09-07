@@ -238,6 +238,30 @@ class TestCreateRun:
         assert run.status == "COMPLETED"
         assert run.celery_chain_id
 
+    async def test_auto_html_report_generated_on_complete(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        researcher: User,
+        version: DatasetVersion,
+    ) -> None:
+        """P1-4：run COMPLETED 后自动生成 HTML 报告，无需用户手动 POST /reports。"""
+        from app.models.entities import Report
+
+        resp = await client.post(
+            "/api/v1/analysis-runs", json=_body(version.id, ["dummy"]), headers=_auth(researcher)
+        )
+        assert resp.status_code == 202
+        db_session.expunge_all()
+        reports = (
+            await db_session.execute(
+                select(Report).where(Report.run_id == uuid.UUID(resp.json()["id"]))
+            )
+        ).scalars().all()
+        html_reports = [r for r in reports if r.format == "html"]
+        assert len(html_reports) == 1
+        assert html_reports[0].status == "READY"  # eager 模式同步渲染完成
+
     async def test_run_already_active_409(
         self,
         client: AsyncClient,

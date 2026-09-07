@@ -12,9 +12,16 @@ from app.models.entities import (
     User,
 )
 from app.services.storage import storage_from_settings
+from app.workers.insight_tasks import auto_dataset_insight
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+@pytest.fixture(autouse=True)
+def _no_insight_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """阶段 A 体检任务单独在 test_dataset_insight 覆盖；此处避免 eager 执行触库。"""
+    monkeypatch.setattr(auto_dataset_insight, "delay", lambda *_a, **_k: None)
 
 # 含 RV301（alt=未知）+ RV401（1 行完全重复）
 CSV = (

@@ -15,22 +15,24 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user, get_registry, require_role
 from app.core.config import get_settings
 from app.core.errors import AppError, not_found
 from app.db import get_db
 from app.engines import parser
+from app.engines.model_tiers import tier_of
 from app.engines.preprocessing import validate_dsl
 from app.engines.quickfix import QuickFixAction
-from app.engines.recommender import recommend_config_from_profile
 from app.engines.research_profiler import detect_research_direction
 from app.engines.research_templates import evaluate_templates
 from app.engines.screening import subgroup_analysis, univariate_screen
 from app.engines.task_detection import detect_task_from_profile
 from app.schemas.auth import CurrentUser
 from app.schemas.dataset import (
+    AnalysisDraft,
     DatasetAccepted,
     DatasetDetail,
+    DatasetInsightOut,
     DatasetPage,
     DatasetVersion,
     QualityReport,
@@ -52,6 +54,7 @@ from app.schemas.preparation import (
 from app.services import audit as audit_service
 from app.services import datasets as dataset_service
 from app.services import llm_tasks
+from app.services import plugins as plugin_service
 from app.services import preparation as preparation_service
 from app.services import projects as project_service
 from app.services import quickfix as quickfix_service
@@ -59,6 +62,7 @@ from app.services import settings as settings_service
 from app.services.llm import init_llm_service_from_runtime
 from app.services.storage import key_from_uri, storage_from_settings
 from app.workers.dataset_tasks import validate_dataset
+from app.workers.insight_tasks import auto_dataset_insight
 from app.workers.preparation_tasks import run_preparation
 
 router = APIRouter(prefix="/projects/{project_id}/datasets", tags=["datasets"])
@@ -152,6 +156,62 @@ async def get_quality_report(
     if report is None:
         raise not_found("report", str(dataset_id))
     return QualityReport.model_validate(report, from_attributes=True)
+
+
+@dataset_router.get("/{dataset_id}/insight", response_model=DatasetInsightOut)
+async def get_dataset_insight(
+    dataset_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> DatasetInsightOut:
+    """数据体检（P2-2，docs/14 §5 变更记录 2026-09-07）：阶段 A 自动产出，404 = 尚未生成。"""
+    dataset = await dataset_service.get_dataset(db, user, dataset_id)
+    if dataset is None:
+        raise not_found("dataset", str(dataset_id))
+    insight = await dataset_service.get_latest_insight(db, dataset_id)
+    if insight is None:
+        raise not_found("insight", str(dataset_id))
+    return DatasetInsightOut.model_validate(insight, from_attributes=True)
+
+
+@dataset_router.get("/{dataset_id}/analysis-draft", response_model=AnalysisDraft)
+async def get_analysis_draft(
+    dataset_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    registry: Any = Depends(get_registry),
+) -> AnalysisDraft:
+    """分析草稿（P1-3）：单页确认所需默认值 —— 推荐任务 + 预处理配置 + 标准套餐模型。
+
+    识别失败不报错：task_type/standard_models 置空，前端回退逐步向导（人工兜底）。
+    """
+    dataset = await dataset_service.get_dataset(db, user, dataset_id)
+    if dataset is None:
+        raise not_found("dataset", str(dataset_id))
+    if not dataset.column_profile:
+        raise AppError(
+            code="DRAFT_UNAVAILABLE",
+            status=400,
+            message="数据集尚未完成校验，无法生成分析草稿",
+        )
+    det = detect_task_from_profile(dataset.column_profile)
+    task_type = det.recommended_task
+    config = await dataset_service.recommended_preprocess_dsl(
+        db, dataset, storage_from_settings()
+    )
+    standard_models: list[str] = []
+    if task_type is not None:
+        await plugin_service.sync_plugins_to_db(db, registry)
+        rows = await plugin_service.list_available(db, task_type)
+        standard_models = sorted(
+            row.key for row in rows if tier_of(task_type, row.key) == "standard"
+        )
+    return AnalysisDraft(
+        task_type=task_type if task_type in ("survival", "classification", "regression") else None,
+        task_detection=det.to_dict() if task_type is not None else None,
+        preprocess_config=config,
+        standard_models=standard_models,
+    )
 
 
 @dataset_router.post("/{dataset_id}/research-profile", response_model=ResearchProfile)
@@ -316,6 +376,9 @@ async def quick_fix(
         detail={"version_no": version.version_no, "actions": [a.type for a in body.actions]},
     )
     await db.commit()
+    # 阶段 A：修复后重算数据体检（docs/08 §3.2）
+    if dataset.status == "VALIDATED":
+        auto_dataset_insight.delay(str(dataset.id))
     return DatasetVersion.model_validate(version, from_attributes=True)
 
 
@@ -361,17 +424,18 @@ async def recommend_preprocess_dsl(
     user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """推荐默认预处理配置（docs/14 §3，docs/06 §2；T3.5 生成器，T3.6「推荐配置」按钮）。"""
+    """推荐默认预处理配置（docs/14 §3，docs/06 §2；T3.5 生成器，T3.6「推荐配置」按钮）。
+
+    P1-2：长表（RV801）自动回退 DataFrame 版推荐以产出 reshape 步骤。
+    """
     dataset = await dataset_service.get_dataset(db, user, dataset_id)
     if dataset is None:
         raise not_found("dataset", str(dataset_id))
-    if not dataset.column_profile:
-        raise AppError(
-            code="VALIDATION_ERROR",
-            status=400,
-            message="数据集尚未完成验证，请等待验证完成后再生成推荐配置",
+    return {
+        "config": await dataset_service.recommended_preprocess_dsl(
+            db, dataset, storage_from_settings()
         )
-    return {"config": recommend_config_from_profile(dataset.column_profile)}
+    }
 
 
 @dataset_router.post("/{dataset_id}/preparation/preview", response_model=PreparationPreview)

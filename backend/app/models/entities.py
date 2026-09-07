@@ -421,3 +421,29 @@ class AdminSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
+
+
+class DatasetInsight(Base):
+    """数据体检（P2-2，docs/08 §3.2 阶段 A）：上传/修复后自动产出的 EDA + 研究建议。
+
+    payload = {eda, task_recommendation, research_profile, auto_fix_log, summary}
+    全部数值来自引擎真实计算；LLM 仅表达（开关门控，幻觉拦截）。
+    """
+
+    __tablename__ = "dataset_insights"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    dataset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False
+    )
+    dataset_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="CASCADE"), nullable=False
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (Index("ix_dataset_insights_dataset", "dataset_id"),)

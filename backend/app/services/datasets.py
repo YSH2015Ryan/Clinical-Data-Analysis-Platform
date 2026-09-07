@@ -7,14 +7,14 @@
 import hashlib
 import io
 import uuid
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 from sqlalchemy import select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.errors import AppError
-from app.models.entities import Dataset, DatasetVersion, Project, QualityReport
+from app.models.entities import Dataset, DatasetInsight, DatasetVersion, Project, QualityReport
 from app.schemas.auth import CurrentUser
 from app.services.projects import _decode_cursor, _encode_cursor
 from app.services.storage import StorageBackend
@@ -186,3 +186,44 @@ async def get_latest_report(db: AsyncSession, dataset_id: uuid.UUID) -> QualityR
         .limit(1)
     )
     return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def get_latest_insight(db: AsyncSession, dataset_id: uuid.UUID) -> DatasetInsight | None:
+    """最新数据体检（P2-2，docs/08 §3.2 阶段 A 产出）。"""
+    stmt = (
+        select(DatasetInsight)
+        .where(DatasetInsight.dataset_id == dataset_id)
+        .order_by(DatasetInsight.created_at.desc())
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def recommended_preprocess_dsl(
+    db: AsyncSession, dataset: Dataset, storage: "StorageBackend"
+) -> dict[str, Any]:
+    """推荐预处理 DSL（docs/06 §2；P1-2 修复双实现分叉）。
+
+    宽表走毫秒级 profile 版；校验判定为长表（最新质量报告含 RV801）时
+    加载 DataFrame 走完整版，以产出 reshape 步骤——profile 不含行级关系，
+    无法做长表检测。
+    """
+    from app.engines import parser
+    from app.engines.recommender import recommend_config, recommend_config_from_profile
+    from app.services.storage import key_from_uri
+
+    if not dataset.column_profile:
+        raise AppError(
+            code="VALIDATION_ERROR",
+            status=400,
+            message="数据集尚未完成验证，请等待验证完成后再生成推荐配置",
+        )
+    report = await get_latest_report(db, dataset.id)
+    is_long = report is not None and any(
+        i.get("rule_id") == "RV801" for i in (report.issues or [])
+    )
+    if not is_long:
+        return recommend_config_from_profile(dataset.column_profile)
+    raw = storage.get(key_from_uri(dataset.storage_uri))
+    parsed = parser.parse(raw, dataset.source_type)
+    return recommend_config(parsed.df)

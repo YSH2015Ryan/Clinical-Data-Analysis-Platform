@@ -109,6 +109,12 @@ def validate_dataset(dataset_id: str) -> None:
                 blockers=report.blockers,
                 warnings=report.warnings,
             )
+            # 阶段 A（docs/08 §3.2，P1-1/P2-2）：校验成功即自动续跑数据体检
+            # （安全项自动修复 → EDA → 任务推荐 → 研究画像 → DatasetInsight 落库）
+            if dataset.status == "VALIDATED":
+                from app.workers.insight_tasks import auto_dataset_insight
+
+                auto_dataset_insight.delay(dataset_id)
         except Exception as exc:
             # RV001 文件无法解析：阻塞级 + 修正建议（docs/05 §3）
             db.rollback()
