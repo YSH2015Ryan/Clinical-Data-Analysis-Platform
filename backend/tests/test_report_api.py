@@ -140,12 +140,18 @@ class TestListAndDownload:
         resp = await client.get(f"{API}/analysis-runs/{run_id}/reports", headers=_auth(researcher))
         assert resp.status_code == 200
         items = resp.json()
-        assert len(items) == 2
+        # P1-4：run 完成时自动生成 1 份 HTML 报告 + 本测试手动创建 2 份
+        assert len(items) == 3
         assert {i["format"] for i in items} == {"html", "pdf"}
+        assert sum(1 for i in items if i["format"] == "html") == 2
         assert items[0]["created_at"] >= items[1]["created_at"]  # 倒序
 
     async def test_download_302(
-        self, client: AsyncClient, researcher: User, version: DatasetVersion
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        researcher: User,
+        version: DatasetVersion,
     ) -> None:
         run_id = await _completed_run_id(client, researcher, version)
         created = await client.post(
@@ -154,6 +160,9 @@ class TestListAndDownload:
             headers=_auth(researcher),
         )
         report_id = created.json()["id"]
+        # 测试会话跨请求共享（conftest client fixture），须清身份映射以读取
+        # worker 独立会话提交的 READY 状态（与 test_create_202_and_ready 同模式）
+        db_session.expunge_all()
         resp = await client.get(
             f"{API}/reports/{report_id}/download",
             headers=_auth(researcher),

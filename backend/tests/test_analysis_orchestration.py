@@ -178,8 +178,16 @@ class TestOrchestration:
         assert isinstance(rec["not_recommended"], list)
 
         # 对比图表齐备（docs/09 §3，T6.2）：DCA 需 prevalence（从 target.parquet 读取）
+        # P3：新增 pr_curve（由 ROC 产物 + 阳性率精确推导）
         kinds = {c["kind"] for c in comparison.comparison_charts}
-        assert kinds == {"roc", "calibration", "dca", "confusion_matrix", "feature_importance"}
+        assert kinds == {
+            "roc",
+            "pr_curve",
+            "calibration",
+            "dca",
+            "confusion_matrix",
+            "feature_importance",
+        }
         for c in comparison.comparison_charts:
             assert c["title"] and c["image_uri"] is None
 

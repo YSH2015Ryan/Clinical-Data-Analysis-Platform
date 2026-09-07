@@ -11,6 +11,7 @@ import numpy as np
 
 # docs/14 ChartAsset.kind 枚举对齐
 _ROC, _CALIBRATION, _DCA = "roc", "calibration", "dca"
+_PR_CURVE = "pr_curve"
 _CONFUSION, _KM, _CINDEX_FOREST = "confusion_matrix", "km", "cindex_forest"
 _HR_FOREST, _FEATURE_IMPORTANCE = "hr_forest", "feature_importance"
 _SCATTER = "prediction_scatter"
@@ -86,6 +87,51 @@ def _roc_chart(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     if not series:
         return None
     return {"kind": _ROC, "title": "ROC 曲线对比", "data": {"series": series}, "image_uri": None}
+
+
+def _pr_curve_chart(rows: list[dict[str, Any]], prevalence: float) -> dict[str, Any] | None:
+    """PR 曲线（P3）：由 roc_curve 产物精确推导，precision = tpr·π / (tpr·π + fpr·(1−π))。
+
+    与 DCA 同一数据源（roc 折线 + 全量阳性率 π），不新增训练产物；
+    类别不均衡时 PR 曲线比 ROC 更能反映真实区分能力（docs/09 §3）。
+    """
+    series = []
+    for row in rows:
+        roc = row["artifacts"].get("roc_curve")
+        if not roc:
+            continue
+        fpr = np.asarray(roc["fpr"], dtype=float)
+        tpr = np.asarray(roc["tpr"], dtype=float)
+        denom = tpr * prevalence + fpr * (1 - prevalence)
+        valid = denom > 0
+        if valid.sum() < 2:
+            continue
+        recall = tpr[valid]
+        precision = tpr[valid] * prevalence / denom[valid]
+        # 锚点：recall=0 处 precision 按惯例取 1（sklearn precision_recall_curve 同约定），
+        # 否则 tpr=fpr=0 的原始点分母为 0 被丢弃，AUPRC 会低估
+        recall = np.concatenate([[0.0], recall])
+        precision = np.concatenate([[1.0], precision])
+        order = np.argsort(recall)
+        recall, precision = recall[order], precision[order]
+        auprc = float(np.trapz(precision, recall))
+        recall_list, pr_list = _thin(recall.tolist(), [precision.tolist()])
+        series.append(
+            {
+                "model_key": row["model_key"],
+                "recall": recall_list,
+                "precision": pr_list[0],
+                "auprc": round(auprc, 6),
+            }
+        )
+    if not series:
+        return None
+    return {
+        "kind": _PR_CURVE,
+        "title": "精确率-召回率（PR）曲线",
+        "data": {"series": series, "prevalence": prevalence},
+        "image_uri": None,
+    }
 
 
 def _calibration_chart(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -281,6 +327,7 @@ def build_comparison_charts(
     if task_type == "classification":
         charts = [
             _roc_chart(rows),
+            _pr_curve_chart(rows, prevalence) if prevalence is not None else None,
             _calibration_chart(rows),
             _dca_chart(rows, prevalence) if prevalence is not None else None,
             _confusion_chart(rows),

@@ -35,10 +35,13 @@ from app.engines.reporting.effect_size import compute_optimal_threshold, hosmer_
 from app.engines.reporting.markdown_export import html_to_markdown
 from app.engines.reporting.pdf import html_to_pdf
 from app.engines.reporting.render import TEMPLATE_KEY, TEMPLATE_VERSION, render_html
+from app.engines.reporting.survival_extra import at_risk_table, median_risk_logrank
+from app.engines.screening import univariate_screen
 from app.models.entities import (
     AnalysisRun,
     Comparison,
     Dataset,
+    DatasetInsight,
     DatasetVersion,
     ModelResult,
     PreprocessSnapshot,
@@ -243,6 +246,101 @@ def _classification_calibration(
     }
 
 
+_SCREENING_MAX_ROWS = 20  # 报告内单因素筛选表行数上限（按 p 值升序截取）
+
+
+def _eda_summary(db: Any, version: DatasetVersion | None) -> list[str] | None:
+    """P3：数据体检摘要行（阶段 A DatasetInsight.payload.summary；无体检 → None）。"""
+    if version is None:
+        return None
+    insight = (
+        db.execute(
+            select(DatasetInsight)
+            .where(DatasetInsight.dataset_version_id == version.id)
+            .order_by(DatasetInsight.created_at.desc())
+        )
+        .scalars()
+        .first()
+    )
+    if insight is None:
+        return None
+    summary = (insight.payload or {}).get("summary")
+    return [str(line) for line in summary] if isinstance(summary, list) and summary else None
+
+
+def _run_with_target(storage: Any, run: AnalysisRun) -> pd.DataFrame | None:
+    """raw_features + 结局列（原名）合并表；缺产物 → None。"""
+    raw = _read_parquet(storage, f"runs/{run.id}/raw_features.parquet")
+    target = _read_parquet(storage, f"runs/{run.id}/target.parquet")
+    if raw is None or target is None:
+        return None
+    df = raw.copy()
+    target_cfg = (run.preprocess_config or {}).get("target") or {}
+    if run.task_type == "survival":
+        time_col = str(target_cfg.get("time_col") or "time")
+        event_col = str(target_cfg.get("event_col") or "event")
+        df[time_col] = target["time"].to_numpy()
+        df[event_col] = target["event"].to_numpy()
+    else:
+        label_col = str(target_cfg.get("label_col") or "label")
+        df[label_col] = target["label"].to_numpy()
+    return df
+
+
+def _screening_payload(storage: Any, run: AnalysisRun) -> dict[str, Any] | None:
+    """P3：单因素筛选表进报告（真实检验；与 T6.10 API 同一引擎）。"""
+    df = _run_with_target(storage, run)
+    if df is None:
+        return None
+    target_cfg = (run.preprocess_config or {}).get("target") or {}
+    try:
+        result = univariate_screen(
+            df,
+            task_type=run.task_type,
+            label_col=(
+                str(target_cfg.get("label_col") or "label")
+                if run.task_type != "survival"
+                else None
+            ),
+            time_col=(
+                str(target_cfg.get("time_col") or "time") if run.task_type == "survival" else None
+            ),
+            event_col=(
+                str(target_cfg.get("event_col") or "event") if run.task_type == "survival" else None
+            ),
+        )
+    except Exception as exc:
+        logger.error("screening_failed", run_id=str(run.id), error=str(exc))
+        return None
+    if not result["rows"]:
+        return None
+    result["n_total_tested"] = len(result["rows"])
+    result["rows"] = result["rows"][:_SCREENING_MAX_ROWS]
+    return result
+
+
+def _survival_analysis_payload(
+    storage: Any, run_id: uuid.UUID, ranking: list[str]
+) -> dict[str, Any] | None:
+    """P3：风险集人数表（全样本）+ 推荐模型 OOF 风险中位分层 log-rank。"""
+    target = _read_parquet(storage, f"runs/{run_id}/target.parquet")
+    if target is None:
+        return None
+    times = target["time"].to_numpy(dtype=float)
+    events = target["event"].to_numpy(dtype=int)
+    at_risk = at_risk_table(times, events)
+    logrank = None
+    if ranking:
+        oof = _read_parquet(storage, f"runs/{run_id}/oof_{ranking[0]}.parquet")
+        if oof is not None and "oof" in oof.columns and len(oof) == len(target):
+            logrank = median_risk_logrank(times, events, oof["oof"].to_numpy(dtype=float))
+            if logrank is not None:
+                logrank["model_key"] = ranking[0]
+    if at_risk is None and logrank is None:
+        return None
+    return {"at_risk": at_risk, "logrank": logrank}
+
+
 def _trim_diagnostics(diag: dict[str, Any] | None) -> dict[str, Any] | None:
     """LLM facts 用诊断子集：系数表/VIF 截断（控制 payload 体积，值仍为真实计算结果）。"""
     if not diag:
@@ -383,6 +481,14 @@ def assemble_report_payload(db: Any, run: AnalysisRun) -> dict[str, Any]:
         "table": _enhanced_table(results, comparison, run.task_type),
         # T6.3：基线特征表 / 回归诊断 / 分类校准（真实计算；缺产物 → None → 不适用）
         "baseline_table": _baseline_table_payload(storage, run),
+        # P3：数据体检摘要 / 单因素筛选 / 生存补充统计（真实计算；缺产物 → None）
+        "eda_summary": _eda_summary(db, version),
+        "screening": _screening_payload(storage, run),
+        "survival_analysis": (
+            _survival_analysis_payload(storage, run.id, ranking)
+            if run.task_type == "survival"
+            else None
+        ),
         "diagnostics": (
             _regression_diagnostics(storage, run.id, ranking)
             if run.task_type == "regression"

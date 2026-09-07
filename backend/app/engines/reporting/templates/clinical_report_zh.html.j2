@@ -136,6 +136,23 @@
 {% endcall %}
 {% if bt.note %}<p class="meta">{{ bt.note }}</p>{% endif %}
 {% endif %}
+{% if s.data.eda_summary %}
+<p><strong>数据体检摘要（上传后自动产出）：</strong></p>
+<ul>{% for line in s.data.eda_summary %}<li>{{ line }}</li>{% endfor %}</ul>
+{% endif %}
+{% if s.data.screening %}
+{% set sc = s.data.screening %}
+{% call tbl("单因素筛选（按 p 值升序" ~ ("，前 " ~ (sc.rows | length) ~ "/" ~ sc.n_total_tested ~ " 项" if sc.n_total_tested and sc.n_total_tested > (sc.rows | length) else "") ~ "）") %}
+  <tr><th>变量</th><th>检验</th><th>效应量</th><th>p 值</th><th>入选</th></tr>
+  {% for r in sc.rows %}
+  <tr><td>{{ r.feature }}</td><td>{{ r.test }}</td>
+      <td>{{ '%.4g' | format(r.effect) if r.effect is not none else "—" }}</td>
+      <td>{{ '%.3g' | format(r.p_value) }}</td>
+      <td>{{ "是" if r.selected else "否" }}</td></tr>
+  {% endfor %}
+{% endcall %}
+<p class="meta">单因素筛选阈值 α={{ sc.alpha }}：p&lt;α 的变量入选（{{ sc.selected_features | length }} 个），供多因素建模参考；单因素显著性不构成因果结论。</p>
+{% endif %}
 
 {% elif s.key == "quality" %}
 <p>校验结论：{{ s.data.status }}（阻塞 {{ s.data.blockers }} 项，警告 {{ s.data.warnings }} 项）。</p>
@@ -240,6 +257,21 @@
   {% endfor %}
 {% endcall %}
 {% if d.vif.conclusion %}<p class="meta">{{ d.vif.conclusion }}</p>{% endif %}
+{% endif %}
+{% endif %}
+{% if s.data.survival_analysis %}
+{% set sa = s.data.survival_analysis %}
+{% if sa.at_risk %}
+{% call tbl("风险集人数（Number at risk）") %}
+  <tr><th>时间点</th>{% for t in sa.at_risk.times %}<th>{{ '%g' | format(t) }}</th>{% endfor %}</tr>
+  <tr><td>风险集人数</td>{% for n in sa.at_risk.at_risk %}<td>{{ n }}</td>{% endfor %}</tr>
+  <tr><td>累计事件数</td>{% for n in sa.at_risk.events_cum %}<td>{{ n }}</td>{% endfor %}</tr>
+{% endcall %}
+{% endif %}
+{% if sa.logrank %}
+<p>按推荐模型 {{ sa.logrank.model_key }} 的交叉验证风险中位数（{{ '%.4f' | format(sa.logrank.median_risk) }}）
+   分层：高风险组 {{ sa.logrank.n_high }} 例、低风险组 {{ sa.logrank.n_low }} 例，
+   log-rank 检验 χ²={{ '%.4f' | format(sa.logrank.statistic) }}，p={{ '%.3g' | format(sa.logrank.p_value) }}。</p>
 {% endif %}
 {% endif %}
 {% for c in s.data.charts %}

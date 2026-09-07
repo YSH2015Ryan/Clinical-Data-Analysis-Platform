@@ -25,6 +25,7 @@ matplotlib.rcParams["axes.unicode_minus"] = False  # 负号走 ASCII，避免缺
 
 _KIND_TITLES = {
     "roc": "ROC Curves",
+    "pr_curve": "Precision-Recall Curves",
     "calibration": "Calibration Curve",
     "dca": "Decision Curve Analysis",
     "confusion_matrix": "Confusion Matrix (threshold 0.5)",
@@ -53,6 +54,13 @@ def _line_charts(kind: str, data: dict[str, Any]) -> bytes | None:
         if kind == "roc":
             label = f"{s['model_key']} (AUC={s.get('auc'):.3f})" if s.get("auc") else s["model_key"]
             ax.plot(s["fpr"], s["tpr"], label=label)
+        elif kind == "pr_curve":
+            label = (
+                f"{s['model_key']} (AUPRC={s.get('auprc'):.3f})"
+                if s.get("auprc") is not None
+                else s["model_key"]
+            )
+            ax.plot(s["recall"], s["precision"], label=label)
         elif kind == "calibration":
             ax.plot(s["prob_pred"], s["prob_true"], marker="o", label=str(s["model_key"]))
         elif kind == "dca":
@@ -63,6 +71,15 @@ def _line_charts(kind: str, data: dict[str, Any]) -> bytes | None:
         ax.plot([0, 1], [0, 1], "--", color="gray", label="chance")
         ax.set_xlabel("FPR")
         ax.set_ylabel("TPR")
+    elif kind == "pr_curve":
+        prevalence = data.get("prevalence")
+        if prevalence is not None:
+            ax.axhline(
+                float(prevalence), color="gray", linestyle="--", label=f"chance ({prevalence:.2f})"
+            )
+        ax.set_xlabel("Recall")
+        ax.set_ylabel("Precision")
+        ax.set_ylim(0, 1.02)
     elif kind == "calibration":
         ax.plot([0, 1], [0, 1], "--", color="gray", label="ideal")
         ax.set_xlabel("Predicted probability")
@@ -223,7 +240,7 @@ def chart_to_png(chart: dict[str, Any]) -> bytes | None:
     kind = chart.get("kind")
     data = chart.get("data") or {}
     try:
-        if kind in ("roc", "calibration", "dca", "km"):
+        if kind in ("roc", "pr_curve", "calibration", "dca", "km"):
             if not _series(data):
                 return None
             return _line_charts(kind, data)

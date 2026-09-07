@@ -9,6 +9,7 @@ from typing import Any
 
 from app.engines.reporting.captions import caption_for
 from app.engines.reporting.checklist import build_reporting_checklist
+from app.engines.reporting.limitations import build_limitations
 
 DISCLAIMER = "本报告由 CDAP 自动生成，仅供科研参考，不构成临床诊断建议。"
 NOT_APPLICABLE = "本次分析不适用"
@@ -37,13 +38,6 @@ TASK_LABELS: dict[str, str] = {
 
 # 可解释性图表（归第 6 章），其余对比图表归第 5 章（docs/10 §2）
 _EXPLAIN_KINDS = {"feature_importance", "hr_forest"}
-
-_LIMITATIONS = [
-    "本分析基于回顾性数据，可能存在选择偏倚与信息偏倚。",
-    "数据来自单中心，结论外推到其他人群需谨慎。",
-    "模型未进行外部验证，泛化性能未知。",
-    "样本量有限时，交叉验证估计的方差可能较大。",
-]
 
 
 def _na() -> dict[str, Any]:
@@ -137,6 +131,10 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
     baseline_table = payload.get("baseline_table")
     diagnostics = payload.get("diagnostics")
     calibration = payload.get("calibration")
+    # P3：数据体检摘要 / 单因素筛选 / 生存补充统计（worker 装配；缺省 → 模板不渲染）
+    eda_summary = payload.get("eda_summary")
+    screening = payload.get("screening")
+    survival_analysis = payload.get("survival_analysis")
 
     # 图题（docs/10 §2.1）：全文统一编号（第 5 章先于第 6 章渲染），并注入说明文案
     for i, chart in enumerate([*perf_charts, *explain_charts], start=1):
@@ -186,6 +184,9 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 "columns": (quality or {}).get("column_profiles") or [],
                 # T6.3：基线特征表（分层 + 组间差异检验）
                 "baseline_table": baseline_table,
+                # P3：数据体检摘要（阶段 A 自动产出）与单因素筛选表
+                "eda_summary": eda_summary,
+                "screening": screening,
             },
         ),
         _section(
@@ -222,6 +223,8 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 # T6.3：回归诊断 / 分类校准（不适用任务类型 → None → 模板不渲染）
                 "diagnostics": diagnostics,
                 "calibration": calibration,
+                # P3：生存专属补充（风险集人数表 + 中位风险分层 log-rank）
+                "survival_analysis": survival_analysis,
                 # T6.7：LLM 解读段落（None → 模板不渲染）
                 "llm_paragraph": llm_interp.get("performance"),
             },
@@ -253,7 +256,8 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 "llm_paragraph": llm_interp.get("clinical_interpretation"),
             },
         ),
-        _section("limitations", True, {"items": list(_LIMITATIONS)}),
+        # P3：动态局限性（payload 真实统计触发）+ 静态基础条目
+        _section("limitations", True, {"items": build_limitations(payload)}),
         # T6.11：TRIPOD/STROBE 自查（条目状态与依据全部由 payload 真实字段推导）
         _section("checklist", True, build_reporting_checklist(payload)),
         _section(

@@ -963,7 +963,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [roc, calibration, dca, confusion_matrix, km, cindex_forest, hr_forest, shap_summary, feature_importance]
+          enum: [roc, pr_curve, calibration, dca, confusion_matrix, km, cindex_forest, hr_forest, shap_summary, feature_importance, prediction_scatter]
         title: {type: string}
         data: {type: object, description: 前端 ECharts 渲染数据}
         image_uri: {type: string, nullable: true, description: 报告用 PNG 的存储 uri}
@@ -1122,3 +1122,6 @@ components:
 | 2026-08-27 | 新增 `POST /datasets/{dataset_id}/univariate-screen`、`POST /datasets/{dataset_id}/subgroup-analysis` + 对应 Request/Result schema | 非破坏（新增端点） | T6.10 单因素→多因素筛选流程 + 亚组分析：单因素筛选（Mann-Whitney/卡方/单因素Cox/相关/方差分析，p<alpha 入选供多因素建模）与亚组效应估计（OR/HR/β + 95%CI + 交互 p），全部统计量真实计算（红线8）；受影响消费方：前端数据集详情页科研助手卡片 |
 | 2026-08-27 | `ModelPlugin` 新增 `tier`（standard/advanced）与 `role`（可空）字段；`GET /models` 响应按标准套餐在前排序 | 非破坏（新增字段） | T6.12 模型分层套餐：每任务标准套餐 3–5 个（基线+强模型+可解释模型），其余折叠为高级选项；分层定义在引擎 `model_tiers.py`（与任务类型相关，非 DB 字段）；受影响消费方：前端分析向导 Step 4 模型选择（默认仅勾选标准套餐，高级选项折叠） |
 | 2026-08-27 | 新增 `POST /analysis-runs/{run_id}/iterate` + IterateRequest/IterateResponse/RerunSuggestion schema；LlmSettingsOut/Update 的 feature_switches 新增 `iteration` 开关 | 非破坏（新增端点 + 新增开关键） | T6.13 对话式迭代：针对已完成运行提问（如「把 X 当协变量会怎样」），规则引擎恒可用（列/模型白名单 + 真实指标引用），iteration 开关打开时 LLM 增强回答（幻觉数值拦截，不合格回退规则版）；响应含 dataset_id 供前端「按建议重跑」跳转向导；受影响消费方：前端结果比较页迭代问答卡、分析向导预填 |
+| 2026-09-07 | 新增 `GET /datasets/{dataset_id}/insight` + DatasetInsight schema（EDA 分布/缺失模式/相关性/EPV + 体检结论）；新增 `GET /datasets/{dataset_id}/analysis-draft` + AnalysisDraft schema（task_detection + 推荐预处理 + 标准套餐模型，供单页确认提交）；feature_switches 新增 `task_recommend` 开关 | 非破坏（新增端点 + 新增开关键） | 智能化流程改造（docs/08 §3.2 阶段 A）：上传后自动产出数据体检与研究建议，分析启动压缩为单页一次确认；受影响消费方：前端 DatasetDetailPage（体检卡）、分析向导（单页确认）、worker（新任务 auto_dataset_insight）、DB（新表 dataset_insights） |
+| 2026-09-07 | `Issue` 新增可选 `fix_guidance`（结构化修复指引：problem/impact/methods[]，methods 项含 label/description/action/risk，action 与 quickfix 动作契约一致） | 非破坏（新增可选字段） | P2-3 缺陷修复指导结构化闭环：校验问题从「一段文本建议」升级为「问题→影响→修法（可一键执行）」结构，前端修法按钮直接绑定 quickfix 动作，修复后自动重校验形成闭环；受影响消费方：前端 DatasetDetailPage 问题清单修复指引弹窗 |
+| 2026-09-07 | `ChartAsset.kind` 枚举新增 `pr_curve`；补录漏登的 `prediction_scatter`（回归任务散点图，引擎自 T5 起已产出） | 非破坏（扩展枚举 + 补录） | P3 报告科研图表补齐：PR 曲线由 ROC 产物 + 全量阳性率精确推导（不均衡结局评估必需）；prediction_scatter 补录纠正契约与实现漂移；受影响消费方：前端结果比较页 chartOptions、报告 PNG 渲染 |

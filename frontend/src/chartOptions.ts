@@ -61,6 +61,32 @@ function rocOption(data: Record<string, unknown>): EChartsOption {
   };
 }
 
+function prCurveOption(data: Record<string, unknown>): EChartsOption {
+  const series = seriesOf(data).map((s) =>
+    lineSeries(
+      `${s.model_key} (AUPRC=${s.auprc != null ? num(s.auprc).toFixed(3) : "—"})`,
+      numArr(s.recall),
+      numArr(s.precision),
+    ),
+  );
+  const prevalence = typeof data.prevalence === "number" ? data.prevalence : null;
+  if (prevalence != null) {
+    series.push(
+      lineSeries(`随机猜测 (π=${prevalence.toFixed(2)})`, [0, 1], [prevalence, prevalence], {
+        lineStyle: { type: "dashed" },
+      }),
+    );
+  }
+  return {
+    tooltip: { trigger: "axis" },
+    legend: {},
+    toolbox: TOOLBOX,
+    xAxis: { type: "value", name: "召回率", min: 0, max: 1 },
+    yAxis: { type: "value", name: "精确率", min: 0, max: 1 },
+    series,
+  };
+}
+
 function calibrationOption(data: Record<string, unknown>): EChartsOption {
   const series = seriesOf(data).map((s) =>
     lineSeries(
@@ -304,6 +330,8 @@ export function buildPanels(chart: ChartAsset): Panel[] {
   switch (chart.kind) {
     case "roc":
       return [{ title: chart.title, option: rocOption(d) }];
+    case "pr_curve":
+      return [{ title: chart.title, option: prCurveOption(d) }];
     case "calibration":
       return [{ title: chart.title, option: calibrationOption(d) }];
     case "dca":

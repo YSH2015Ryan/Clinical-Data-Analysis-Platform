@@ -58,6 +58,7 @@ class TestClassificationCharts:
         charts = build_comparison_charts("classification", _clf_rows(), prevalence=PREVALENCE)
         assert {c["kind"] for c in charts} == {
             "roc",
+            "pr_curve",
             "calibration",
             "dca",
             "confusion_matrix",
@@ -66,6 +67,26 @@ class TestClassificationCharts:
         for c in charts:  # ChartAsset 契约字段（docs/14）
             assert c["title"]
             assert c["image_uri"] is None
+
+    def test_pr_curve_precision_formula(self) -> None:
+        """precision = tpr·π / (tpr·π + fpr·(1−π))（P3，PR 曲线由 ROC 产物精确推导）。"""
+        charts = build_comparison_charts("classification", _clf_rows(), prevalence=PREVALENCE)
+        pr = next(c for c in charts if c["kind"] == "pr_curve")
+        series = next(s for s in pr["data"]["series"] if s["model_key"] == "logreg")
+        # logreg: fpr=[0, 0.1, 1], tpr=[0, 0.9, 1], π=0.5
+        # tpr=0.9, fpr=0.1 → 0.45 / 0.5 = 0.9
+        idx = series["recall"].index(0.9)
+        assert math.isclose(series["precision"][idx], 0.9, rel_tol=1e-9)
+        # tpr=1.0, fpr=1.0 → precision = π = 0.5
+        idx = series["recall"].index(1.0)
+        assert math.isclose(series["precision"][idx], PREVALENCE, rel_tol=1e-9)
+        # AUPRC 在 [π, 1] 之间（优于随机的模型）
+        assert PREVALENCE <= series["auprc"] <= 1.0
+        assert pr["data"]["prevalence"] == PREVALENCE
+
+    def test_pr_curve_skipped_without_prevalence(self) -> None:
+        charts = build_comparison_charts("classification", _clf_rows())
+        assert "pr_curve" not in {c["kind"] for c in charts}
 
     def test_roc_overlay_auc_from_metrics(self) -> None:
         charts = build_comparison_charts("classification", _clf_rows(), prevalence=PREVALENCE)
