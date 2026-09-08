@@ -55,15 +55,22 @@ def paired_t_test(
     # 配对差异
     diff = m1 - m2
     mean_diff = float(np.mean(diff))
-    
-    # t 检验
-    statistic, p_value = stats.ttest_rel(m1, m2, alternative=alternative)
-    
-    # 95% 置信区间
-    se = stats.sem(diff)
-    ci = stats.t.interval(0.95, len(diff) - 1, loc=mean_diff, scale=se)
-    
-    significant = p_value < 0.05
+
+    # t 检验（零方差差异 → t 统计量退化：按确定性结论处理，避免 nan 流入报告）
+    if float(np.std(diff, ddof=1)) == 0.0:
+        if mean_diff == 0.0:
+            statistic, p_value = 0.0, 1.0
+        else:
+            statistic = float("inf") if mean_diff > 0 else float("-inf")
+            p_value = 0.0
+        ci = (mean_diff, mean_diff)
+    else:
+        statistic, p_value = stats.ttest_rel(m1, m2, alternative=alternative)
+        # 95% 置信区间
+        se = stats.sem(diff)
+        ci = stats.t.interval(0.95, len(diff) - 1, loc=mean_diff, scale=se)
+
+    significant = bool(p_value < 0.05)
     
     if alternative == "two-sided":
         if significant:
@@ -184,7 +191,7 @@ def delong_test(
     # p 值（双侧）
     p_value = 2 * (1 - stats.norm.cdf(abs(z_statistic)))
     
-    significant = p_value < 0.05
+    significant = bool(p_value < 0.05)
     
     if significant:
         if auc_diff > 0:
@@ -252,7 +259,7 @@ def friedman_test(*metrics: np.ndarray) -> dict[str, Any]:
     # Friedman 检验
     statistic, p_value = stats.friedmanchisquare(*data.T)
     
-    significant = p_value < 0.05
+    significant = bool(p_value < 0.05)
     
     if significant:
         conclusion = f"模型间存在显著差异（χ²={statistic:.3f}, p={p_value:.3f}），需进一步事后检验"
@@ -313,7 +320,7 @@ def wilcoxon_signed_rank_test(
             "conclusion": f"无法进行检验：{str(e)}"
         }
     
-    significant = p_value < 0.05
+    significant = bool(p_value < 0.05)
     
     median_diff = float(np.median(m1 - m2))
     
@@ -386,7 +393,7 @@ def mcnemar_test(
     # p 值（卡方分布，df=1）
     p_value = 1 - stats.chi2.cdf(statistic, 1)
     
-    significant = p_value < 0.05
+    significant = bool(p_value < 0.05)
     
     if significant:
         if n10 > n01:

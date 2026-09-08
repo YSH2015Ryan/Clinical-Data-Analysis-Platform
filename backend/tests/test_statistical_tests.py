@@ -22,7 +22,7 @@ class TestPairedTTest:
         np.random.seed(42)
         # 增加差异，避免精度损失
         metric1 = np.array([0.85, 0.87, 0.86, 0.88, 0.84, 0.89, 0.85, 0.87])
-        metric2 = np.array([0.70, 0.72, 0.71, 0.73, 0.69, 0.74, 0.70, 0.72])
+        metric2 = np.array([0.70, 0.71, 0.72, 0.73, 0.68, 0.75, 0.69, 0.73])  # 差异带方差，避免 t 检验退化
         
         result = paired_t_test(metric1, metric2)
         
@@ -49,7 +49,7 @@ class TestPairedTTest:
         np.random.seed(42)
         # 使用明显差异的数据
         metric1 = np.array([0.85, 0.87, 0.86, 0.88, 0.84, 0.89, 0.85, 0.87])
-        metric2 = np.array([0.70, 0.72, 0.71, 0.73, 0.69, 0.74, 0.70, 0.72])
+        metric2 = np.array([0.70, 0.71, 0.72, 0.73, 0.68, 0.75, 0.69, 0.73])  # 差异带方差，避免 t 检验退化
         
         result = paired_t_test(metric1, metric2)
         
@@ -61,11 +61,35 @@ class TestPairedTTest:
         """测试样本量不足"""
         metric1 = np.array([0.85])
         metric2 = np.array([0.75])
-        
+
         result = paired_t_test(metric1, metric2)
-        
+
         assert result["p_value"] is None
         assert "样本量不足" in result["conclusion"]
+
+    def test_zero_variance_significant_diff(self):
+        """零方差恒定正差异：t 检验退化，须给出确定性显著结论而非 nan"""
+        metric1 = np.full(6, 0.85)
+        metric2 = np.full(6, 0.70)
+
+        result = paired_t_test(metric1, metric2)
+
+        assert result["p_value"] == 0.0
+        assert result["significant"] is True
+        assert isinstance(result["significant"], bool)  # Python bool，非 np.bool_
+        assert result["ci_lower"] == result["mean_diff"] == result["ci_upper"]
+        assert "显著" in result["conclusion"]
+
+    def test_zero_variance_zero_diff(self):
+        """两模型逐折完全一致：p=1.0、不显著、CI 退化为点"""
+        m = np.array([0.80, 0.82, 0.81, 0.83])
+
+        result = paired_t_test(m, m.copy())
+
+        assert result["p_value"] == 1.0
+        assert result["significant"] is False
+        assert result["mean_diff"] == 0.0
+        assert "无显著差异" in result["conclusion"]
 
 
 class TestDeLongTest:
@@ -284,9 +308,9 @@ class TestIntegration:
         # 真实标签
         y_true = np.random.randint(0, 2, n)
         
-        # 两个模型的预测概率
+        # 两个模型的预测概率（模型2须带足噪声，否则两模型均完美 → McNemar 无 discordant 对）
         y_score1 = y_true * 0.7 + np.random.rand(n) * 0.3
-        y_score2 = y_true * 0.5 + np.random.rand(n) * 0.5
+        y_score2 = y_true * 0.4 + np.random.rand(n) * 0.6
         
         # DeLong AUC 比较
         delong_result = delong_test(y_true, y_score1, y_score2)

@@ -44,11 +44,11 @@ class TestE2EDataUploadAndValidation:
     
     def test_data_validation_rules(self):
         """测试数据校验规则"""
-        # 创建有问题的数据
+        # 创建有问题的数据（n≥11 才可能触发 3σ 规则：max|z|=(n-1)/√n）
         data = pd.DataFrame({
-            'col1': [1, 2, 2, 3, 4],  # 有重复
-            'col2': [10, 20, None, 40, 50],  # 有缺失
-            'col3': [1, 2, 3, 4, 1000],  # 有异常值
+            'col1': [1, 2, 2] + list(range(10, 27)),  # 有重复
+            'col2': [10, 20, None] + list(range(100, 117)),  # 有缺失
+            'col3': [1.0] * 19 + [1000.0],  # 有异常值（z≈4.2 > 3）
         })
         
         # 检测重复行
