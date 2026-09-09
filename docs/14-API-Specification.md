@@ -22,6 +22,7 @@
 | 400 | DATASET_NOT_READY | 数据集校验中或校验失败，不可用于创建 run（前端：引导等待/重新上传） |
 | 400 | PLUGIN_UNAVAILABLE | 所选模型已禁用或与 task_type 不匹配（前端：刷新模型列表） |
 | 400 | REPORT_NOT_READY | 报告仍在生成中，不可下载（前端：继续轮询） |
+| 503 | REPORT_UNAVAILABLE | 报告文件暂时不可用（服务端读取失败，不返回存储内部信息） |
 | 400 | INVALID_RUN_STATE | 当前状态不允许该操作（如 COMPLETED 的 run 不可取消） |
 | 401 | AUTH_FAILED / TOKEN_EXPIRED | 认证失败 |
 | 403 | FORBIDDEN | 无权访问该资源 |
@@ -501,11 +502,27 @@ paths:
   /reports/{report_id}/download:
     get:
       tags: [reports]
-      summary: 下载报告（302 → 预签名 URL）
+      summary: 下载/预览报告文件
+      description: |
+        认证和报告归属校验与报告详情端点一致。报告状态为 READY 且产物存在时，
+        API 直接返回文件内容，不向客户端暴露 S3 凭据、内部地址或预签名 URL。
+        前端预览和 Blob 下载使用同一端点。
       responses:
-        '302': {description: 重定向到 S3 预签名地址}
+        '200':
+          description: 报告文件内容
+          headers:
+            Content-Disposition:
+              description: 安全文件名；inline 以支持浏览器预览及 Blob 下载
+              schema: {type: string, example: 'inline; filename="report.html"'}
+          content:
+            text/html: {schema: {type: string}}
+            application/pdf: {schema: {type: string, format: binary}}
+            text/markdown: {schema: {type: string}}
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              {schema: {type: string, format: binary}}
         '400': {description: REPORT_NOT_READY——报告仍在生成中}
         '404': {$ref: '#/components/responses/Error'}
+        '503': {description: REPORT_UNAVAILABLE——报告文件读取失败}
 
   /admin/plugins:
     get:

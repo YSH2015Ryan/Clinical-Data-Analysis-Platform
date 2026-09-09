@@ -57,6 +57,26 @@ const TASK_LABEL: Record<TaskType, string> = {
 };
 
 const STEP_TITLES = ["选择数据集", "预处理配置", "任务类型确认", "选择模型", "确认并提交"];
+const SURVIVAL_GUIDANCE =
+  "请进入“逐步调整”选择随访时间列和结局事件列，或切换到“分类 / 风险预测”。";
+
+function mergeDetectionTarget(
+  config: PreprocessConfig,
+  detection: TaskDetectionResult | null,
+  taskType: TaskType | null,
+): PreprocessConfig {
+  if (!detection || !taskType) return config;
+  const top = (kind: "time_col" | "event_col" | "label_col") =>
+    detection.candidates[kind]?.[0]?.column ?? null;
+  const target = { ...config.target };
+  if (taskType === "survival") {
+    target.time_col = target.time_col || top("time_col");
+    target.event_col = target.event_col || top("event_col");
+  } else {
+    target.label_col = target.label_col || top("label_col");
+  }
+  return { ...config, target };
+}
 
 /**
  * T6.13：把迭代建议落到推荐预处理配置上（drop_columns 步骤是剔除变量的具体机制）。
@@ -140,11 +160,13 @@ export default function AnalysisWizardPage() {
     if (!singlePage || !datasetId || draft || draftFailed) return;
     getAnalysisDraft(datasetId)
       .then((d) => {
+        const draftTask = d.task_type ?? d.task_detection?.recommended_task ?? null;
+        const mergedConfig = mergeDetectionTarget(d.preprocess_config, d.task_detection, draftTask);
         setDraft(d);
-        setRecommended(d.preprocess_config);
-        setConfig(d.preprocess_config);
+        setRecommended(mergedConfig);
+        setConfig(mergedConfig);
         if (d.task_detection) setDetection(d.task_detection);
-        if (d.task_type) setTaskType((prev) => prev ?? d.task_type);
+        if (draftTask) setTaskType((prev) => prev ?? draftTask);
         if (d.standard_models.length > 0) {
           setSelectedModels((prev) => (prev.length > 0 ? prev : d.standard_models));
         }
@@ -264,14 +286,17 @@ export default function AnalysisWizardPage() {
 
   /** 生存分析硬约束：识别不到随访时间/结局事件列时阻断下一步（否则提交必然后端 400）。 */
   const survivalBlocked = useMemo(
-    () =>
-      taskType === "survival" &&
-      detection != null &&
-      !(
-        (detection.candidates.time_col?.length ?? 0) > 0 &&
-        (detection.candidates.event_col?.length ?? 0) > 0
-      ),
-    [taskType, detection],
+    () => {
+      if (taskType !== "survival") return false;
+      const target = config?.target;
+      const hasColumns = columns.length > 0;
+      const hasTarget = !!target?.time_col && !!target?.event_col;
+      const targetColumnsExist =
+        hasTarget && columns.includes(target.time_col!) && columns.includes(target.event_col!);
+      // 检测结果/列名仍在加载时保持阻断，避免单页确认误发无效 survival 请求。
+      return detection == null || !hasColumns || !targetColumnsExist;
+    },
+    [taskType, config, columns, detection],
   );
 
   /**
@@ -283,6 +308,9 @@ export default function AnalysisWizardPage() {
   const submitBlock = useMemo(() => {
     if (!config || !taskType) return null;
     const target = config.target;
+    if (taskType === "survival" && survivalBlocked) {
+      return `生存分析需要有效的随访时间列和结局事件列。${SURVIVAL_GUIDANCE}`;
+    }
     const need =
       taskType === "survival" ? [target.time_col, target.event_col] : [target.label_col];
     const missing = need.filter((c): c is string => !!c && !columns.includes(c));
@@ -299,7 +327,7 @@ export default function AnalysisWizardPage() {
       return `结局列「${target.label_col}」只有一个有效取值，分类任务需要至少两个类别，请核对结局定义。`;
     }
     return null;
-  }, [config, taskType, columns, profile]);
+  }, [config, taskType, columns, profile, survivalBlocked]);
 
   const canNext = useMemo(() => {
     switch (step) {
@@ -322,7 +350,15 @@ export default function AnalysisWizardPage() {
   };
 
   const submit = async () => {
-    if (!datasetId || !config || !taskType || selectedModels.length === 0 || submitBlock) return;
+    if (
+      !datasetId ||
+      !config ||
+      !taskType ||
+      selectedModels.length === 0 ||
+      submitBlock ||
+      (taskType === "survival" && survivalBlocked)
+    )
+      return;
     setSubmitting(true);
     try {
       const versions = await listDatasetVersions(datasetId);
@@ -404,6 +440,7 @@ export default function AnalysisWizardPage() {
                 showIcon
                 style={{ marginBottom: 16 }}
                 message="当前数据没有随访时间 / 结局事件列，无法进行生存分析"
+                description={SURVIVAL_GUIDANCE}
               />
             )}
             {submitBlock && (
@@ -632,7 +669,7 @@ export default function AnalysisWizardPage() {
           showIcon
           style={{ marginBottom: 12 }}
           message="当前数据没有随访时间 / 结局事件列，无法进行生存分析"
-          description="生存分析需要每位患者的随访时长（如 os_months）与事件标记（如 death）。数据准备 v1 产出的宽表只含二分类 label，请改用「分类 / 风险预测」。"
+          description={SURVIVAL_GUIDANCE}
         />
       )}
       <Space>

@@ -199,6 +199,22 @@ async def get_analysis_draft(
     config = await dataset_service.recommended_preprocess_dsl(
         db, dataset, storage_from_settings()
     )
+    # 旧画像/推荐路径可能返回缺少 target 的 DSL；只用检测候选补齐空字段，
+    # 不覆盖已有用户/推荐配置，也不把无成对随访+事件列的数据硬判为 survival。
+    if task_type is not None:
+        target = dict(config.get("target") or {})
+        candidates = det.candidates
+
+        def _top(kind: str) -> str | None:
+            items = candidates.get(kind, [])
+            return items[0].column if items else None
+
+        if task_type == "survival":
+            target["time_col"] = target.get("time_col") or _top("time_col")
+            target["event_col"] = target.get("event_col") or _top("event_col")
+        else:
+            target["label_col"] = target.get("label_col") or _top("label_col")
+        config = {**config, "target": target}
     standard_models: list[str] = []
     if task_type is not None:
         await plugin_service.sync_plugins_to_db(db, registry)

@@ -1,7 +1,7 @@
 """T7.5 报告 API 测试（docs/14 /reports 冻结契约；docs/10 §4）。
 
 POST /reports → 202 落库 + eager 生成 READY；历史列表按时间倒序；
-download：READY → 302 预签名（本地模式为文件路径）；PENDING → 400
+download：READY → 200 直接返回文件内容；PENDING → 400
 REPORT_NOT_READY；未知 → 404；跨属主 → 403；非 COMPLETED 运行 → 400。
 """
 
@@ -146,7 +146,7 @@ class TestListAndDownload:
         assert sum(1 for i in items if i["format"] == "html") == 2
         assert items[0]["created_at"] >= items[1]["created_at"]  # 倒序
 
-    async def test_download_302(
+    async def test_download_200_content_and_headers(
         self,
         client: AsyncClient,
         db_session: AsyncSession,
@@ -166,10 +166,11 @@ class TestListAndDownload:
         resp = await client.get(
             f"{API}/reports/{report_id}/download",
             headers=_auth(researcher),
-            follow_redirects=False,
         )
-        assert resp.status_code == 302
-        assert resp.headers["location"]
+        assert resp.status_code == 200
+        assert resp.content
+        assert resp.headers["content-type"].startswith("text/html")
+        assert resp.headers["content-disposition"] == 'inline; filename="report.html"'
 
     async def test_download_not_ready_400(
         self,

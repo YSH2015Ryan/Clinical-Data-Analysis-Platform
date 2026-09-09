@@ -3,7 +3,7 @@
 POST /reports → 202（落库 PENDING + dispatch generate_report）；
 GET /analysis-runs/{run_id}/reports → 该运行的报告历史列表；
 GET /reports/{report_id} → 报告详情（前端轮询状态用）；
-GET /reports/{report_id}/download → 302 重定向预签名 URL。
+GET /reports/{report_id}/download → 直接返回报告内容。
 """
 
 import uuid
@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Protocol
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import RedirectResponse
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_role
@@ -96,6 +96,10 @@ async def download_report(
     report_id: uuid.UUID,
     user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> RedirectResponse:
-    url = await report_service.get_download_url(db, user, report_id)
-    return RedirectResponse(url=url, status_code=302)
+) -> Response:
+    content, content_type, filename = await report_service.get_report_content(db, user, report_id)
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )

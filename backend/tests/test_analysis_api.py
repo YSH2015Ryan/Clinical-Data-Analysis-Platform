@@ -71,6 +71,18 @@ def _imbalanced_csv() -> bytes:
     return pd.DataFrame({"age": rng.normal(60, 10, n), "label": label}).to_csv(index=False).encode()
 
 
+def _survival_csv() -> bytes:
+    rng = np.random.default_rng(21)
+    n = 60
+    return pd.DataFrame(
+        {
+            "age": rng.normal(60, 10, n),
+            "os_months": np.arange(1, n + 1, dtype=float),
+            "death": np.tile([0, 1], n // 2),
+        }
+    ).to_csv(index=False).encode()
+
+
 def _cfg(target: dict[str, str], strategy: str = "stratified_kfold") -> dict[str, object]:
     return {
         "target": target,
@@ -368,6 +380,19 @@ class TestCreateRun:
         assert resp.status_code == 400
         msg = resp.json()["message"]
         assert "随访时间" in msg and "分类" in msg
+
+    async def test_survival_complete_target_can_submit(
+        self, client: AsyncClient, db_session: AsyncSession, researcher: User
+    ) -> None:
+        """完整随访时间/事件 target 可通过创建校验并提交生存分析。"""
+        version = await _make_version(db_session, researcher, _survival_csv(), "api_survival")
+        body = _body(version.id, ["km"])
+        body["task_type"] = "survival"
+        body["preprocess_config"] = _cfg(
+            {"time_col": "os_months", "event_col": "death"}, strategy="kfold"
+        )
+        resp = await client.post("/api/v1/analysis-runs", json=body, headers=_auth(researcher))
+        assert resp.status_code == 202, resp.text
 
     async def test_regression_stratified_kfold_coerced(
         self,

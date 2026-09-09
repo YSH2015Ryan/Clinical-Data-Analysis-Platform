@@ -1,3 +1,9 @@
+:80 {
+    encode gzip
+    reverse_proxy frontend:80
+}
+
+# HTTPS is enabled only when PUBLIC_DOMAIN is an externally managed domain.
 {$PUBLIC_DOMAIN} {
     encode gzip
     reverse_proxy frontend:80

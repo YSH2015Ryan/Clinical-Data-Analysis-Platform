@@ -143,6 +143,7 @@ services:
       S3_SECURE: "false"
       JWT_SECRET: ${JWT_SECRET}
       COOKIE_SECURE: "true"
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY}
     depends_on:
       migrate:
         condition: service_completed_successfully
