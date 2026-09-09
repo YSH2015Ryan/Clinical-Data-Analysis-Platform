@@ -48,6 +48,8 @@
   details.fold[open] > summary::before { content: "－ "; color: #888; }
   details.fold > table { margin: 6px 0 4px; }
   .na { color: #999; font-style: italic; }
+  .red-flag { border: 2px solid #b3001b; background: #fdf3f4; color: #7a0012;
+              padding: 10px 14px; font-weight: bold; line-height: 1.8; text-align: justify; }
   .notice { background: #fafafa; border-left: 3px solid #999; padding: 8px 12px; font-size: 12px; }
   .llm-paragraph { background: #f5f7fa; border-left: 3px solid #7a9cc6; padding: 8px 12px;
                    text-align: justify; line-height: 1.8; }
@@ -318,6 +320,7 @@
 <p class="meta">{{ s.data.note }}</p>
 
 {% elif s.key == "conclusion" %}
+{% if s.data.red_flag %}<p class="red-flag"><strong>【结果可信度警示】</strong>{{ s.data.red_flag }}</p>{% endif %}
 <p>{{ s.data.text }}</p>
 {% endif %}
 {% endfor %}

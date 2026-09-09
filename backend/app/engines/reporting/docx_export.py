@@ -165,6 +165,8 @@ def _add_section(doc: Any, section: dict[str, Any]) -> None:
         if data.get("note"):
             doc.add_paragraph(str(data["note"]))
     elif key == "conclusion":
+        if data.get("red_flag"):  # T6.15②：完美指标红旗警示随导出保留
+            doc.add_paragraph(f"【结果可信度警示】{data['red_flag']}")
         doc.add_paragraph(str(data.get("text")))
 
 

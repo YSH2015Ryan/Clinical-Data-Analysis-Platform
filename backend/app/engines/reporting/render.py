@@ -12,7 +12,7 @@ import jinja2
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 TEMPLATE_KEY = "clinical_report_zh"
-TEMPLATE_VERSION = "1.1.1"
+TEMPLATE_VERSION = "1.2.0"
 
 
 def _fmt_num(value: Any, spec: str = ".3g") -> str:
