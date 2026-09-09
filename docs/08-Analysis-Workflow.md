@@ -95,7 +95,7 @@ stateDiagram-v2
   默认 HTML 报告（幂等：已有 PENDING/READY HTML 报告则跳过）；手动「生成报告」
   降级为换格式/重新生成。自动报告失败不影响 run 结果。
 
-### 3.2 阶段 A：上传后自动流水线（2026-09-07，P1-1/P2-1/P2-2）
+### 3.2 阶段 A：上传后自动流水线（2026-09-07，P1-1/P2-1/P2-2；2026-09-09 增补 T6.14 缺口建议步骤）
 
 客户反馈「流程不够智能」后的核心改造：**上传即分析的准备段全自动**，用户只在
 不可逆/医学上无法默认的节点被询问。
@@ -112,6 +112,11 @@ validate_dataset（校验，已有）
          相关性（Pearson/Spearman/Cramér's V）、样本量与 EPV 估算。
       3. 数据体检落库 DatasetInsight（eda JSON + 体检结论），
          前端数据集页直接渲染；GET /datasets/{id}/insight 读取。
+      4. 数据缺口建议（engines/supplement_advisor.py，T6.14，纯规则计算）：
+         EPV 缺口折算需补样本量、类别不均衡、生存事件不足、变量角色缺失、
+         组间把握度（statsmodels 真实 power）；落 payload.supplement_plan，
+         并作为报告动态局限性清单的数据源；LLM 润色为后续子项（facts-only
+         + 幻觉校验 + 模板兜底），首版仅规则 + 模板文案。
 ```
 
 设计约束：

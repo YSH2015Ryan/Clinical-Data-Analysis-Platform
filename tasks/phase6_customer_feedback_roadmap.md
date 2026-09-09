@@ -149,6 +149,11 @@
 - **T6.13 对话式迭代**:LLM 回答"如果把 X 当协变量会怎样" → 生成重跑建议。✅
   - **落地**:`engines/iteration.py` 规则版兜底恒可用（列名长名优先匹配、剔除词识别、未知列名回声提示、结局列自动排除、回答只引用 comparison 真实指标均值）;LLM 增强走 `llm_tasks.generate_iteration_advice`(JSON-only 输出 → 列名/模型白名单校验 + 幻觉数值校验，任一不合格回退规则版，红线8)，新增 `iteration` 分功能开关（默认 off,AI 设置页可配）;POST /analysis-runs/{id}/iterate(docs/14 §5 变更记录 2026-08-27)，响应含 suggestion(add/drop_features/selected_models)+ dataset_id/project_id，审计 analysis.iterate；前端比较页性能表 Tab 内嵌「迭代问答」卡（AI 增强/规则回答标记、建议标签化）,「按建议重跑」跳分析向导经 location.state 预填模型集并把 add/drop 落到 drop_columns 步骤。
   - **测试**:`test_iteration.py` 8 例 + `test_iterate_api.py` 6 例（规则兜底/LLM 失败回退/401/404/400)+ llm_settings/llm_wiring 联动共 57 例全绿；全量回归仅剩 T6.12 已核实的 5 例存量失败；ruff/mypy 改动文件全净，前端 tsc 通过。
+- **T6.14 数据缺口建议（"还需补充哪类数据"）**：规则引擎计算缺口，LLM 只做表达润色。📋 已立项（docs-first，2026-09-09），实现待续。
+  - **决策依据**（对话落档）：用户询问"是否交给 LLM 识别和分析"——否。判断/计算必须确定性（红线 8：禁止编造数值与医学断言；LLM 红线：facts-only、本地 Ollama 优先）。"建议再收 N 例"这类结论若由 LLM 生成即为无依据编造，正是客户抱怨"不专业"的根源。
+  - **落地计划**：`engines/supplement_advisor.py`（纯引擎，无新依赖，power 用技术栈已有 statsmodels）——五类缺口：① EPV 不足：缺口事件 = ⌈10×特征数 − 阳性数⌉，按当前阳性率折算**需补样本量** ⌈缺口事件/阳性率⌉；② 类别不均衡：阳性率 <10% 时给出最低建模所需阳性例数；③ 生存事件不足：事件数 <100 的缺口与随访建议；④ 变量角色缺失：按研究类型规则（队列缺随访时间/事件列、缺年龄/性别等常规基线变量）；⑤ 组间比较把握度：检测到分组列时真实 power 计算。每条输出 `{deficit_type, current, target, gap, suggestion, basis}`，数值全部真实计算、依据可展开。接入 `auto_dataset_insight`（阶段 A 第 4 步）落 `DatasetInsight.payload.supplement_plan`；前端体检卡展示；同时接入报告动态局限性清单数据源。LLM 润色为**后续子项**（复用 T6.7 接线：facts-only + 幻觉校验 + 模板兜底），首版仅规则 + 模板文案。
+  - **DoD**：引擎测试先行（docs/19 单元测试类）；五类缺口各有真实数值用例 + 边界（空数据/健康数据不出误报）；insight API 断言 supplement_plan 结构；engines 覆盖率 ≥85%；docs/14 §5 变更记录已登记；全量回归绿；ruff/mypy/前端 tsc 净。
+  - **测试计划**：`test_supplement_advisor.py`（EPV 折算公式与边界/不均衡阈值/生存事件阈值/变量角色规则/power 真实值/空表不崩）+ insight API 套件增补结构断言。
 - **明确不做**：自动选题、自动写论文（违背红线8 结果真实）。
 
 ---
