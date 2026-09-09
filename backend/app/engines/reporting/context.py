@@ -5,6 +5,7 @@
 不报错；免责声明与可复现附录强制存在（CLAUDE.md §8）。
 """
 
+import json
 from typing import Any
 
 from app.engines.reporting.captions import caption_for
@@ -42,6 +43,22 @@ _EXPLAIN_KINDS = {"feature_importance", "hr_forest"}
 
 def _na() -> dict[str, Any]:
     return {"note": NOT_APPLICABLE}
+
+
+def _humanize_params(params: Any) -> str:
+    """§3 预处理参数人性化（T6.15①）：dict → '键=值' 分号连接；空/非 dict → '—'。
+
+    中文不转义（ensure_ascii=False）；嵌套结构紧凑 JSON 化。附录仍保留原始
+    preprocess_steps 供可复现核对。
+    """
+    if not isinstance(params, dict) or not params:
+        return "—"
+    parts = []
+    for key, value in params.items():
+        if isinstance(value, (dict, list)):
+            value = json.dumps(value, ensure_ascii=False)
+        parts.append(f"{key}={value}")
+    return "；".join(parts)
 
 
 def _section(key: str, applicable: bool, data: dict[str, Any]) -> dict[str, Any]:
@@ -200,7 +217,15 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 "transform_log": payload.get("transform_log") or [],
             },
         ),
-        _section("preprocessing", steps is not None, {"steps": steps or []}),
+        _section(
+            "preprocessing",
+            steps is not None,
+            {
+                "steps": [
+                    {**s, "params_text": _humanize_params(s.get("params"))} for s in (steps or [])
+                ]
+            },
+        ),
         _section(
             "methods",
             bool(run),

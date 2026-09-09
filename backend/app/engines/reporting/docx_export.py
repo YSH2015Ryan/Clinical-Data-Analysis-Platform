@@ -103,7 +103,10 @@ def _add_section(doc: Any, section: dict[str, Any]) -> None:
         _add_table(
             doc,
             ["步骤", "参数"],
-            [[str(s.get("type")), str(s.get("params"))] for s in data.get("steps") or []],
+            [
+                [str(s.get("type")), str(s.get("params_text") or "—")]
+                for s in data.get("steps") or []
+            ],
         )
     elif key == "methods":
         doc.add_paragraph(f"任务类型：{data.get('task_type')}")

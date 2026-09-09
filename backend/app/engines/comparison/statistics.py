@@ -8,11 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from app.engines.reporting.statistical_tests import (
-    paired_t_test,
-    wilcoxon_signed_rank_test,
-    delong_test,
-)
+from app.engines.reporting.statistical_tests import paired_t_test
 
 
 def add_pvalues_to_performance_table(
@@ -199,8 +195,9 @@ def _compute_pvalue(
         result = paired_t_test(best_folds, current_folds)
     
     p_value = result.get("p_value")
-    
-    if p_value is None:
+
+    # T6.15① 引擎层守卫：检验退化返回 nan 时按「—」处理，不得流入报告
+    if p_value is None or (isinstance(p_value, float) and np.isnan(p_value)):
         return None, "—"
     
     # 格式化 p 值文本
