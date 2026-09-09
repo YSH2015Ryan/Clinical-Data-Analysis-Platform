@@ -11,6 +11,12 @@ from typing import Any
 from app.engines.reporting.captions import caption_for
 from app.engines.reporting.checklist import build_reporting_checklist
 from app.engines.reporting.limitations import build_limitations
+from app.engines.reporting.narratives import (
+    build_clinical_guides,
+    build_comparison_guide,
+    build_explainability_guides,
+    build_performance_guides,
+)
 from app.engines.reporting.redflags import detect_perfect_metric_redflag
 
 DISCLAIMER = "本报告由 CDAP 自动生成，仅供科研参考，不构成临床诊断建议。"
@@ -256,6 +262,12 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 "survival_analysis": survival_analysis,
                 # T6.7：LLM 解读段落（None → 模板不渲染）
                 "llm_paragraph": llm_interp.get("performance"),
+                # T6.15③：指标三段式（含义/判读规则/本数据真实值），LLM 缺失时保可读底线
+                "guides": build_performance_guides(
+                    table,
+                    ((comparison or {}).get("ranking") or [None])[0],
+                    recommendation.get("primary_metric"),
+                ),
             },
         ),
         _section(
@@ -268,12 +280,13 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 "primary_metric": recommendation.get("primary_metric"),
                 "formula": recommendation.get("formula"),
                 "llm_paragraph": llm_interp.get("model_comparison"),
+                "guide": build_comparison_guide(comparison, table),
             },
         ),
         _section(
             "explainability",
             bool(explain_charts),
-            {"charts": explain_charts},
+            {"charts": explain_charts, "guides": build_explainability_guides(explain_charts)},
         ),
         _section(
             "clinical_interpretation",
@@ -283,6 +296,7 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 "notice": INTERPRETATION_NOTICE,
                 "statements": statements,
                 "llm_paragraph": llm_interp.get("clinical_interpretation"),
+                "guides": build_clinical_guides(diagnostics, calibration, survival_analysis),
             },
         ),
         # P3：动态局限性（payload 真实统计触发）+ 静态基础条目

@@ -53,6 +53,9 @@
   .notice { background: #fafafa; border-left: 3px solid #999; padding: 8px 12px; font-size: 12px; }
   .llm-paragraph { background: #f5f7fa; border-left: 3px solid #7a9cc6; padding: 8px 12px;
                    text-align: justify; line-height: 1.8; }
+  .guide { background: #fbfbf8; border: 1px solid #ddd; padding: 8px 12px; margin: 10px 0;
+           line-height: 1.8; text-align: justify; }
+  .guide p { margin: 4px 0; }
   .disclaimer { border-top: 1.5px solid #333; border-bottom: 1.5px solid #333; padding: 10px 4px;
                 font-weight: bold; margin-top: 20px; text-align: center; }
   img.chart { max-width: 100%; display: block; margin: 12px auto 0; }
@@ -213,6 +216,12 @@
   {% endfor %}
 {% endcall %}
 {% if s.data.significance_note %}<p class="meta">{{ s.data.significance_note | replace("**", "") }}</p>{% endif %}
+{% for g in s.data.guides %}
+<div class="guide"><p><strong>{{ g.title }}</strong></p>
+<p><strong>含义：</strong>{{ g.meaning }}</p>
+<p><strong>判读规则：</strong>{{ g.rule }}</p>
+{% if g.reading %}<p><strong>本数据：</strong>{{ g.reading }}</p>{% endif %}</div>
+{% endfor %}
 {% if s.data.llm_paragraph %}<p class="llm-paragraph">{{ s.data.llm_paragraph }}</p>{% endif %}
 {% if s.data.calibration %}
 {% set cal = s.data.calibration %}
@@ -292,6 +301,12 @@
 <p>不推荐 {{ n.model_key }}：{{ n.reason }}</p>
 {% endfor %}
 {% if s.data.formula %}<p class="meta">排名公式披露：{{ s.data.formula }}</p>{% endif %}
+{% if s.data.guide %}
+<div class="guide"><p><strong>{{ s.data.guide.title }}</strong></p>
+<p><strong>含义：</strong>{{ s.data.guide.meaning }}</p>
+<p><strong>判读规则：</strong>{{ s.data.guide.rule }}</p>
+{% if s.data.guide.reading %}<p><strong>本数据：</strong>{{ s.data.guide.reading }}</p>{% endif %}</div>
+{% endif %}
 
 {% elif s.key == "explainability" %}
 {% for c in s.data.charts %}
@@ -299,11 +314,23 @@
   {% else %}<p class="na">[图表] {{ c.title }}</p>{% endif %}
   <p class="fig-caption"><span class="fig-label">图 {{ c.fig_no }}　{{ c.title }}。</span>{{ c.caption }}</p>
 {% endfor %}
+{% for g in s.data.guides %}
+<div class="guide"><p><strong>{{ g.title }}</strong></p>
+<p><strong>含义：</strong>{{ g.meaning }}</p>
+<p><strong>判读规则：</strong>{{ g.rule }}</p>
+{% if g.reading %}<p><strong>本数据：</strong>{{ g.reading }}</p>{% endif %}</div>
+{% endfor %}
 
 {% elif s.key == "clinical_interpretation" %}
 <p class="notice">{{ s.data.notice }}</p>
 {% if s.data.llm_paragraph %}<p class="llm-paragraph">{{ s.data.llm_paragraph }}</p>{% endif %}
 <ul>{% for st in s.data.statements %}<li>{{ st }}</li>{% endfor %}</ul>
+{% for g in s.data.guides %}
+<div class="guide"><p><strong>{{ g.title }}</strong></p>
+<p><strong>含义：</strong>{{ g.meaning }}</p>
+<p><strong>判读规则：</strong>{{ g.rule }}</p>
+{% if g.reading %}<p><strong>本数据：</strong>{{ g.reading }}</p>{% endif %}</div>
+{% endfor %}
 
 {% elif s.key == "limitations" %}
 <ul>{% for item in s.data["items"] %}<li>{{ item }}</li>{% endfor %}</ul>
