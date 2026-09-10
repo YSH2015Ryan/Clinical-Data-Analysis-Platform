@@ -14,13 +14,16 @@ research_profile);输出五类缺口建议,每条附 basis 依据串(真实数�
    依据串明示);缺口=100−事件数,建议引用真实中位随访时间。
 ④ 变量角色缺失:按研究类型核对必备角色(队列=随访时间+事件(结局)+年龄+性别;
    病例对照=分组+年龄+性别;横断面=年龄+性别;时序不适用),只提示角色不猜数值。
-⑤ 待后续子项落地(组间把握度)。
+⑤ 组间比较把握度(B 方案):检出二分类分组列时,用真实组样本量计算两独立样本
+   t 检验在 d=0.2/0.5/0.8 三档的 power(α=0.05 双侧,statsmodels 真实计算),
+   并反解小效应达 80% power 所需每组样本量;假设全部写进依据串。
 """
 
 import math
 from typing import Any
 
 import pandas as pd
+from statsmodels.stats.power import TTestIndPower
 
 # 复用 research_profiler 的探测器与词表(同一约定,不重复实现)
 from app.engines.research_profiler import (
@@ -64,6 +67,9 @@ def advise_supplements(
     roles_item = _rule_variable_roles(df, eda, column_profiles, research_profile)
     if roles_item is not None:
         items.append(roles_item)
+    power_item = _rule_group_power(df, eda, column_profiles, research_profile)
+    if power_item is not None:
+        items.append(power_item)
     overall = (
         "当前数据规模满足基本要求,未发现确定性规则可判定的数据缺口。"
         if not items
@@ -355,6 +361,99 @@ def _rule_variable_roles(
         "current": {"research_type": research_type, "detected": detected},
         "target": {"required_roles": list(detected)},
         "gap": {"missing_roles": missing},
+        "suggestion": suggestion,
+        "basis": basis,
+    }
+
+
+_EFFECT_SIZE_TIERS = (0.2, 0.5, 0.8)  # Cohen's d 小/中/大三档(教科书约定)
+_POWER_ALPHA = 0.05
+_POWER_MIN = 0.8
+
+
+def _rule_group_power(
+    df: Any,
+    eda: dict[str, Any] | None,
+    column_profiles: list[dict[str, Any]] | None,
+    research_profile: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """⑤ 组间比较把握度(B 方案):真实组样本量 × 三档效应量的 t 检验 power。
+
+    n(真实)+α(固定 0.05 双侧)+d(主观三档并列)→ power 真实计算;
+    反解小效应 d=0.2 达 80% power 所需每组样本量(等组假设)。
+    全部假设写进依据串;三分类及以上分组不出数字(t 检验不适用,不编造);
+    中效应 power≥0.8 视为充足不报。
+    """
+    if not isinstance(df, pd.DataFrame):
+        return None
+    group_col: str | None = None
+    for candidate in _group_columns(df, {}):
+        if df[candidate].dropna().nunique() == 2:
+            group_col = candidate
+            break
+    if group_col is None:
+        return None
+
+    counts = df[group_col].value_counts()
+    labels = counts.index.tolist()
+    n1, n2 = int(counts.iloc[0]), int(counts.iloc[1])
+    analysis = TTestIndPower()
+    tiers = {
+        str(d): round(
+            float(
+                analysis.power(
+                    effect_size=d,
+                    nobs1=n1,
+                    alpha=_POWER_ALPHA,
+                    ratio=n2 / n1,
+                    alternative="two-sided",
+                )
+            ),
+            4,
+        )
+        for d in _EFFECT_SIZE_TIERS
+    }
+    if tiers["0.5"] >= _POWER_MIN:
+        return None
+
+    n_raw = float(
+        analysis.solve_power(
+            effect_size=_EFFECT_SIZE_TIERS[0],
+            alpha=_POWER_ALPHA,
+            power=_POWER_MIN,
+            ratio=1.0,
+            alternative="two-sided",
+        )
+    )
+    n_needed = math.ceil(n_raw)
+    suggestion = (
+        f"按分组列 {group_col}({labels[0]} n={n1} / {labels[1]} n={n2})做两组比较,"
+        f"若真实效应为小效应(d=0.2),当前把握度仅 {tiers['0.2']},大概率检不出;"
+        f"中效应(d=0.5)把握度 {tiers['0.5']},大效应(d=0.8)把握度 {tiers['0.8']}。"
+        f"若研究目标包含检出小效应,约需每组 {n_needed} 例(等组假设);"
+        f"若只关心中大效应,可继续但需在报告中声明把握度局限。"
+    )
+    basis = (
+        f"分组列={group_col},n1={n1},n2={n2};两独立样本 t 检验,α=0.05 双侧;"
+        f"power(d=0.2)={tiers['0.2']},power(d=0.5)={tiers['0.5']},"
+        f"power(d=0.8)={tiers['0.8']}(statsmodels TTestIndPower 真实计算);"
+        f"反解:d=0.2 达 80% power 需每组 n={n_raw:.1f} → 取整 {n_needed} 例;"
+        f"假设:连续结局、等方差、效应量三档为 Cohen's d 教科书约定,"
+        f"反解按等组(ratio=1)——实际所需随真实效应与组比变化"
+    )
+    return {
+        "deficit_type": "power",
+        "current": {
+            "group_column": group_col,
+            "labels": [str(v) for v in labels],
+            "n1": n1,
+            "n2": n2,
+        },
+        "target": {"power_min": _POWER_MIN},
+        "gap": {
+            "power_at_d": tiers,
+            "n_per_group_for_small_effect": n_needed,
+        },
         "suggestion": suggestion,
         "basis": basis,
     }

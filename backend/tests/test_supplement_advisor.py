@@ -221,3 +221,50 @@ class TestVariableRoles:
         # 既无 df 又无 profiles → 无法判定,不误报
         plan = advise_supplements(None, _eda(100, 2, None), [], _research())
         assert not any(i["deficit_type"] == "variable_roles" for i in plan["items"])
+
+
+class TestGroupPower:
+    """⑤ 组间比较把握度(B 方案):检出二分类分组列时,用真实组样本量计算
+    两独立样本 t 检验在 d=0.2/0.5/0.8 三档效应量下的 power(α=0.05 双侧),
+    并反解小效应(d=0.2)达 80% power 所需每组样本量;假设在依据串全部明示。
+    中效应 power≥0.8 视为充足不报;无分组列/非二分类/无 df 不报。
+
+    参考值(statsmodels TTestIndPower):n1=n2=30 → power=0.1187/0.4779/0.8614,
+    反解 n≈393.4 → ⌈⌉=394 例/组。
+    """
+
+    def test_power_real_numbers_three_tiers(self) -> None:
+        df = pd.DataFrame({"group": ["A"] * 30 + ["B"] * 30, "value": range(60)})
+        plan = advise_supplements(df, _eda(60, 2, None), [], _research("case_control"))
+        item = next(i for i in plan["items"] if i["deficit_type"] == "power")
+        assert item["current"]["group_column"] == "group"
+        assert item["current"]["n1"] == 30 and item["current"]["n2"] == 30
+        tiers = item["gap"]["power_at_d"]
+        assert tiers["0.2"] == 0.1187 and tiers["0.5"] == 0.4779
+        assert tiers["0.8"] == 0.8614
+        assert item["gap"]["n_per_group_for_small_effect"] == 394
+        assert "394" in item["basis"] and "d=0.2" in item["basis"]
+        assert "假设" in item["basis"]  # 假设明示
+
+    def test_adequate_power_not_triggered(self) -> None:
+        # 500/500:中效应 power=1.0 ≥0.8 → 充足不报
+        df = pd.DataFrame({"group": ["A"] * 500 + ["B"] * 500, "value": range(1000)})
+        plan = advise_supplements(df, _eda(1000, 2, None), [], _research("case_control"))
+        assert not any(i["deficit_type"] == "power" for i in plan["items"])
+
+    def test_no_group_column_not_triggered(self) -> None:
+        df = pd.DataFrame({"age": [50, 60], "bmi": [22.0, 25.0]})
+        plan = advise_supplements(df, _eda(2, 2, None), [], _research())
+        assert not any(i["deficit_type"] == "power" for i in plan["items"])
+
+    def test_three_level_group_not_triggered(self) -> None:
+        # 三分类分组列:t 检验把握度不适用,不出数字(不编造)
+        df = pd.DataFrame(
+            {"group": ["A"] * 20 + ["B"] * 20 + ["C"] * 20, "value": range(60)}
+        )
+        plan = advise_supplements(df, _eda(60, 2, None), [], _research("case_control"))
+        assert not any(i["deficit_type"] == "power" for i in plan["items"])
+
+    def test_no_df_not_triggered(self) -> None:
+        plan = advise_supplements(None, _eda(60, 2, None), [], _research("case_control"))
+        assert not any(i["deficit_type"] == "power" for i in plan["items"])
