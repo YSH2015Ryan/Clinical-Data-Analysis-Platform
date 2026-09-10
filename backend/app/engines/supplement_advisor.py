@@ -7,7 +7,10 @@ research_profile);输出五类缺口建议,每条附 basis 依据串(真实数�
 五类缺口(逐项落地,骨架按规则函数注册表扩展):
 ① EPV 不足(Peduzzi 1996:每变量事件数 ≥10):缺口事件=⌈10×特征数−阳性数⌉,
    需补样本量=⌈缺口事件/阳性率⌉;阳性率=0 时折算无意义,不出数字,改提示确认结局定义。
-②–⑤ 待后续子项落地(类别不均衡/生存事件不足/变量角色缺失/组间把握度)。
+② 类别不均衡:少数类占比 <10%(对称判定,阳性率 >90% 同样触发);
+   需补少数类=⌈多数类/9⌉−少数类(假设明示:多数类不变、目标占比 10% 为本规则阈值);
+   ① 已触发时去重不报(① 的补样数字已覆盖同一缺口)。
+③–⑤ 待后续子项落地(生存事件不足/变量角色缺失/组间把握度)。
 """
 
 import math
@@ -15,6 +18,8 @@ from typing import Any
 
 # Peduzzi 1996:logistic 模型每变量事件数(events per variable)≥10
 EPV_MIN = 10.0
+# 类别不均衡阈值:少数类占比 <10%
+IMBALANCE_MINORITY_RATE_MAX = 0.10
 
 
 def advise_supplements(
@@ -23,12 +28,17 @@ def advise_supplements(
     column_profiles: list[dict[str, Any]] | None,
     research_profile: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """计算数据缺口建议。df 保留给后续需要列级数据的规则(④⑤),① 仅用 eda 聚合值。"""
+    """计算数据缺口建议。df 保留给后续需要列级数据的规则(④⑤),①② 仅用 eda 聚合值。"""
     items: list[dict[str, Any]] = []
-    for rule in (_rule_epv_deficit,):
-        item = rule(df, eda, column_profiles, research_profile)
-        if item is not None:
-            items.append(item)
+    epv_item = _rule_epv_deficit(df, eda, column_profiles, research_profile)
+    if epv_item is not None:
+        items.append(epv_item)
+    # ② 与① 去重:① 已触发时其补样数字已覆盖同一缺口,② 不再报
+    imbalance_item = _rule_class_imbalance(
+        df, eda, column_profiles, research_profile, skip=epv_item is not None
+    )
+    if imbalance_item is not None:
+        items.append(imbalance_item)
     overall = (
         "当前数据规模满足基本要求,未发现确定性规则可判定的数据缺口。"
         if not items
@@ -95,6 +105,70 @@ def _rule_epv_deficit(
         },
         "target": {"epv_min": int(EPV_MIN), "target_events": int(EPV_MIN * n_features)},
         "gap": {"missing_events": missing_events, "additional_rows": additional_rows},
+        "suggestion": suggestion,
+        "basis": basis,
+    }
+
+
+def _rule_class_imbalance(
+    df: Any,
+    eda: dict[str, Any] | None,
+    column_profiles: list[dict[str, Any]] | None,
+    research_profile: dict[str, Any] | None,
+    *,
+    skip: bool = False,
+) -> dict[str, Any] | None:
+    """② 类别不均衡:少数类占比 <10%(对称判定)。
+
+    需补少数类=⌈多数类/9⌉−少数类——假设:多数类样本不变,目标占比 10% 为本规则
+    阈值本身(依据串明示,非外部金标准)。① 已触发时 skip=True 去重不报。
+    不适用即不报:无二值结局列或空表。
+    """
+    if skip:
+        return None
+    sample_size = (eda or {}).get("sample_size") or {}
+    n_events = sample_size.get("n_events")
+    n_rows = sample_size.get("n_rows") or 0
+    if n_events is None or n_rows == 0:
+        return None
+
+    n_nonevents = n_rows - n_events
+    minority = min(n_events, n_nonevents)
+    majority = max(n_events, n_nonevents)
+    minority_label = "阳性" if n_events <= n_nonevents else "阴性"
+    minority_rate = minority / n_rows
+    if minority_rate >= IMBALANCE_MINORITY_RATE_MAX:
+        return None
+
+    # 目标:m/(m+多数类)=0.10 → m=多数类/9
+    additional = max(0, math.ceil(majority / 9) - minority)
+    prevalence = round(n_events / n_rows, 4)
+    suggestion = (
+        f"少数类({minority_label})占比仅 {round(minority_rate, 4)}"
+        f"({minority}/{n_rows}),建模时类别权重、分层抽样与阈值校准必不可少,"
+        f"评估应以 PR-AUC/灵敏度/特异度为主而非 accuracy;"
+        f"若希望不新增多数类而将少数类占比提升至 10%,约需再补充 {additional} 例"
+        f"{minority_label}样本。"
+    )
+    basis = (
+        f"少数类({minority_label})={minority},多数类={majority};"
+        f"少数类占比={n_events}/{n_rows}={prevalence}(阳性口径)不对称时取 min,"
+        f"实际少数类占比={minority}/{n_rows}={round(minority_rate, 4)}<0.10;"
+        f"需补少数类=⌈{majority}/9⌉−{minority}={additional}"
+        f"(假设:多数类不变,目标占比 10% 为本规则阈值)"
+    )
+    return {
+        "deficit_type": "imbalance",
+        "current": {
+            "n_rows": n_rows,
+            "n_events": n_events,
+            "n_nonevents": n_nonevents,
+            "prevalence": prevalence,
+            "minority_rate": round(minority_rate, 4),
+            "minority_label": minority_label,
+        },
+        "target": {"minority_rate_min": IMBALANCE_MINORITY_RATE_MAX},
+        "gap": {"additional_minority_rows": additional},
         "suggestion": suggestion,
         "basis": basis,
     }

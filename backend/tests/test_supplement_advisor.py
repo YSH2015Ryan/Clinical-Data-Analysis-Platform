@@ -73,3 +73,47 @@ class TestEpvDeficit:
         plan = advise_supplements(None, _eda(10000, 20, 5000), [], _research())
         assert plan["items"] == []
         assert plan["overall"]
+
+
+class TestClassImbalance:
+    """② 类别不均衡:少数类占比 <10%(教科书阈值;① 已触发时去重不报)。
+
+    需补少数类样本=⌈多数类/9⌉−少数类(假设:多数类不变,目标占比 10% 为本规则阈值,
+    依据串明示该假设)。EPV 充足(①未触发)才可能报,避免与① 重复同一组缺口数字。
+    """
+
+    def test_imbalance_low_prevalence_real_numbers(self) -> None:
+        # 20000 例、20 特征、1000 阳性:EPV=50 充足,但阳性率 5%<10%
+        plan = advise_supplements(None, _eda(20000, 20, 1000), [], _research())
+        item = next(i for i in plan["items"] if i["deficit_type"] == "imbalance")
+        assert item["current"]["minority_rate"] == 0.05
+        assert item["current"]["minority_label"] == "阳性"
+        # ⌈19000/9⌉−1000 = 2112−1000 = 1112
+        assert item["gap"]["additional_minority_rows"] == 1112
+        assert "1112" in item["basis"] and "19000/9" in item["basis"]
+        assert "1000/20000" in item["basis"]  # 依据串含真实占比来源
+
+    def test_imbalance_high_prevalence_symmetric(self) -> None:
+        # 阳性率 95%:少数类是阴性 500 例,同样触发(对称判定)
+        plan = advise_supplements(None, _eda(10000, 10, 9500), [], _research())
+        item = next(i for i in plan["items"] if i["deficit_type"] == "imbalance")
+        assert item["current"]["minority_label"] == "阴性"
+        assert item["current"]["n_nonevents"] == 500
+        # ⌈9500/9⌉−500 = 1056−500 = 556
+        assert item["gap"]["additional_minority_rows"] == 556
+
+    def test_boundary_10pct_not_triggered(self) -> None:
+        # 阳性率恰 10% 不触发(阈值严格小于)
+        plan = advise_supplements(None, _eda(1000, 5, 100), [], _research())
+        assert not any(i["deficit_type"] == "imbalance" for i in plan["items"])
+
+    def test_dedup_when_epv_rule_fired(self) -> None:
+        # 5000 例、40 特征、100 阳性:EPV=2.5 不足(①触发)且阳性率 2%<10%
+        # → ① 已给出同一组补样数字,② 去重不再报
+        plan = advise_supplements(None, _eda(5000, 40, 100), [], _research())
+        assert any(i["deficit_type"] == "epv" for i in plan["items"])
+        assert not any(i["deficit_type"] == "imbalance" for i in plan["items"])
+
+    def test_balanced_not_triggered(self) -> None:
+        plan = advise_supplements(None, _eda(10000, 20, 5000), [], _research())
+        assert not any(i["deficit_type"] == "imbalance" for i in plan["items"])
