@@ -7,6 +7,7 @@
 
 from typing import Any
 
+import pandas as pd
 from app.engines.supplement_advisor import advise_supplements
 
 
@@ -117,3 +118,52 @@ class TestClassImbalance:
     def test_balanced_not_triggered(self) -> None:
         plan = advise_supplements(None, _eda(10000, 20, 5000), [], _research())
         assert not any(i["deficit_type"] == "imbalance" for i in plan["items"])
+
+
+def _cohort_df(n_rows: int, n_events: int) -> pd.DataFrame:
+    """合成队列数据:followup_days(1..n)数值随访列 + death 0/1 事件列。"""
+    events = [1] * n_events + [0] * (n_rows - n_events)
+    return pd.DataFrame(
+        {"followup_days": list(range(1, n_rows + 1)), "death": events}
+    )
+
+
+class TestSurvivalEvents:
+    """③ 生存事件不足:队列研究(有随访时间列+0/1 事件列)且事件数<100。
+
+    阈值 100 为本规则经验下限(依据串明示,非外部金标准);缺口=100−事件数;
+    建议引用真实中位随访时间。无随访/事件列或非队列研究不误报。
+    """
+
+    def test_survival_deficit_real_numbers(self) -> None:
+        # 120 例、35 事件 → 缺口 65;中位随访=(60+61)/2=60.5
+        df = _cohort_df(120, 35)
+        plan = advise_supplements(df, _eda(120, 8, 35), [], _research("cohort"))
+        item = next(i for i in plan["items"] if i["deficit_type"] == "survival_events")
+        assert item["current"]["n_events"] == 35
+        assert item["current"]["event_column"] == "death"
+        assert item["current"]["follow_up_median"] == 60.5
+        assert item["gap"]["missing_events"] == 65
+        assert "35" in item["basis"] and "65" in item["basis"]
+        assert "60.5" in item["suggestion"] and "随访" in item["suggestion"]
+
+    def test_boundary_100_events_not_triggered(self) -> None:
+        df = _cohort_df(300, 100)
+        plan = advise_supplements(df, _eda(300, 8, 100), [], _research("cohort"))
+        assert not any(i["deficit_type"] == "survival_events" for i in plan["items"])
+
+    def test_non_cohort_not_triggered(self) -> None:
+        # 结构相同但研究画像为横断面 → 以画像为准,不报生存缺口
+        df = _cohort_df(120, 35)
+        plan = advise_supplements(df, _eda(120, 8, 35), [], _research("cross_sectional"))
+        assert not any(i["deficit_type"] == "survival_events" for i in plan["items"])
+
+    def test_cohort_without_survival_columns_not_triggered(self) -> None:
+        # 队列画像但无随访时间/事件列 → 无法判定,不误报
+        df = pd.DataFrame({"age": [50, 60], "bmi": [22.0, 25.0]})
+        plan = advise_supplements(df, _eda(2, 2, None), [], _research("cohort"))
+        assert not any(i["deficit_type"] == "survival_events" for i in plan["items"])
+
+    def test_no_df_not_triggered(self) -> None:
+        plan = advise_supplements(None, _eda(120, 8, 35), [], _research("cohort"))
+        assert not any(i["deficit_type"] == "survival_events" for i in plan["items"])

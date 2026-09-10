@@ -10,16 +10,24 @@ research_profile);输出五类缺口建议,每条附 basis 依据串(真实数�
 ② 类别不均衡:少数类占比 <10%(对称判定,阳性率 >90% 同样触发);
    需补少数类=⌈多数类/9⌉−少数类(假设明示:多数类不变、目标占比 10% 为本规则阈值);
    ① 已触发时去重不报(① 的补样数字已覆盖同一缺口)。
-③–⑤ 待后续子项落地(生存事件不足/变量角色缺失/组间把握度)。
+③ 生存事件不足:队列研究(随访时间列+0/1 事件列)且事件数<100(本规则经验下限,
+   依据串明示);缺口=100−事件数,建议引用真实中位随访时间。
+④⑤ 待后续子项落地(变量角色缺失/组间把握度)。
 """
 
 import math
 from typing import Any
 
+import pandas as pd
+
+from app.engines.research_profiler import _event_columns, _follow_up_columns
+
 # Peduzzi 1996:logistic 模型每变量事件数(events per variable)≥10
 EPV_MIN = 10.0
 # 类别不均衡阈值:少数类占比 <10%
 IMBALANCE_MINORITY_RATE_MAX = 0.10
+# 生存分析事件数经验下限(本规则阈值,非外部金标准)
+SURVIVAL_EVENTS_MIN = 100
 
 
 def advise_supplements(
@@ -39,6 +47,9 @@ def advise_supplements(
     )
     if imbalance_item is not None:
         items.append(imbalance_item)
+    survival_item = _rule_survival_events(df, eda, column_profiles, research_profile)
+    if survival_item is not None:
+        items.append(survival_item)
     overall = (
         "当前数据规模满足基本要求,未发现确定性规则可判定的数据缺口。"
         if not items
@@ -169,6 +180,68 @@ def _rule_class_imbalance(
         },
         "target": {"minority_rate_min": IMBALANCE_MINORITY_RATE_MAX},
         "gap": {"additional_minority_rows": additional},
+        "suggestion": suggestion,
+        "basis": basis,
+    }
+
+
+def _rule_survival_events(
+    df: Any,
+    eda: dict[str, Any] | None,
+    column_profiles: list[dict[str, Any]] | None,
+    research_profile: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """③ 生存事件不足:队列研究且事件数<100(本规则经验下限,依据串明示)。
+
+    结构判定复用 research_profiler 的随访/事件列探测器(同一约定,不重复实现);
+    研究类型以研究画像为准(画像为横断面时即使结构相似也不报);事件数/中位随访
+    全部从 df 真实计算。无 df/无随访列/无事件列 → 无法判定,不误报。
+    """
+    if not isinstance(df, pd.DataFrame):
+        return None
+    if (research_profile or {}).get("research_type") != "cohort":
+        return None
+    follow_cols = _follow_up_columns(df, {})
+    event_cols = _event_columns(df, {})
+    if not follow_cols or not event_cols:
+        return None
+
+    event_col = event_cols[0]
+    follow_col = follow_cols[0]
+    n_events = int((pd.to_numeric(df[event_col], errors="coerce") == 1).sum())
+    if n_events >= SURVIVAL_EVENTS_MIN:
+        return None
+
+    follow_median_raw = pd.to_numeric(df[follow_col], errors="coerce").median()
+    follow_median = (
+        None if pd.isna(follow_median_raw) else round(float(follow_median_raw), 2)
+    )
+    missing = SURVIVAL_EVENTS_MIN - n_events
+    median_text = (
+        f"当前中位随访 {follow_median}({follow_col})," if follow_median is not None else ""
+    )
+    suggestion = (
+        f"生存分析事件数仅 {n_events} 例(列 {event_col}),低于经验下限 "
+        f"{SURVIVAL_EVENTS_MIN};{median_text}建议延长随访以累积事件或补充入组,"
+        f"约需再积累 {missing} 例事件,否则 Cox/生存模型的回归系数不稳定。"
+    )
+    basis = (
+        f"事件列={event_col},随访列={follow_col};"
+        f"事件数={n_events}<{SURVIVAL_EVENTS_MIN}(本规则经验阈值,非外部金标准);"
+        f"缺口={SURVIVAL_EVENTS_MIN}−{n_events}={missing};"
+        f"中位随访={follow_median if follow_median is not None else '无法计算'}"
+    )
+    return {
+        "deficit_type": "survival_events",
+        "current": {
+            "n_rows": len(df),
+            "n_events": n_events,
+            "event_column": event_col,
+            "follow_up_column": follow_col,
+            "follow_up_median": follow_median,
+        },
+        "target": {"events_min": SURVIVAL_EVENTS_MIN},
+        "gap": {"missing_events": missing},
         "suggestion": suggestion,
         "basis": basis,
     }
