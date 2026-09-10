@@ -249,8 +249,8 @@ def _classification_calibration(
 _SCREENING_MAX_ROWS = 20  # 报告内单因素筛选表行数上限（按 p 值升序截取）
 
 
-def _eda_summary(db: Any, version: DatasetVersion | None) -> list[str] | None:
-    """P3：数据体检摘要行（阶段 A DatasetInsight.payload.summary；无体检 → None）。"""
+def _insight_payload(db: Any, version: DatasetVersion | None) -> dict[str, Any] | None:
+    """阶段 A DatasetInsight.payload（无体检 → None）。summary/supplement_plan 共用此源。"""
     if version is None:
         return None
     insight = (
@@ -262,10 +262,9 @@ def _eda_summary(db: Any, version: DatasetVersion | None) -> list[str] | None:
         .scalars()
         .first()
     )
-    if insight is None:
+    if insight is None or not insight.payload:
         return None
-    summary = (insight.payload or {}).get("summary")
-    return [str(line) for line in summary] if isinstance(summary, list) and summary else None
+    return dict(insight.payload)
 
 
 def _run_with_target(storage: Any, run: AnalysisRun) -> pd.DataFrame | None:
@@ -452,6 +451,8 @@ def assemble_report_payload(db: Any, run: AnalysisRun) -> dict[str, Any]:
 
     storage = storage_from_settings()
     ranking = list(comparison.ranking) if comparison and comparison.ranking else []
+    insight = _insight_payload(db, version)
+    eda_summary = (insight or {}).get("summary")
     payload: dict[str, Any] = {
         "run": {
             "task_type": run.task_type,
@@ -482,7 +483,13 @@ def assemble_report_payload(db: Any, run: AnalysisRun) -> dict[str, Any]:
         # T6.3：基线特征表 / 回归诊断 / 分类校准（真实计算；缺产物 → None → 不适用）
         "baseline_table": _baseline_table_payload(storage, run),
         # P3：数据体检摘要 / 单因素筛选 / 生存补充统计（真实计算；缺产物 → None）
-        "eda_summary": _eda_summary(db, version),
+        "eda_summary": (
+            [str(line) for line in eda_summary]
+            if isinstance(eda_summary, list) and eda_summary
+            else None
+        ),
+        # T6.14：体检缺口建议 → 报告动态局限性数据源（无体检或旧记录 → None）
+        "supplement_plan": (insight or {}).get("supplement_plan"),
         "screening": _screening_payload(storage, run),
         "survival_analysis": (
             _survival_analysis_payload(storage, run.id, ranking)

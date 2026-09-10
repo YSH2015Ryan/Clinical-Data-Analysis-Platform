@@ -28,6 +28,7 @@ from app.engines import parser, quickfix, validation
 from app.engines.eda import compute_eda
 from app.engines.intelligent_task_advisor import IntelligentTaskAdvisor
 from app.engines.research_profiler import detect_research_direction
+from app.engines.supplement_advisor import advise_supplements
 from app.models.entities import Dataset, DatasetInsight, DatasetVersion, QualityReport
 from app.services.storage import StorageBackend, key_from_uri, storage_from_settings
 from app.workers.celery_app import celery_app
@@ -206,20 +207,25 @@ def auto_dataset_insight(dataset_id: str) -> None:
                 warnings=report.warnings,
             )
 
-        # 2-4. EDA + 任务推荐（规则）+ 研究画像
+        # 2-4. EDA + 任务推荐（规则）+ 研究画像 + 数据缺口建议(T6.14,确定性规则)
         eda = compute_eda(df, report.column_profiles)
         recommendation = IntelligentTaskAdvisor().analyze_dataset(
             df, report.column_profiles, switch="off"
         )
         research = detect_research_direction(df)
+        supplement_plan = advise_supplements(df, eda, report.column_profiles, research)
 
         # 5. 落库（替换旧 insight，幂等）
+        summary = _summary_lines(eda, recommendation, research, auto_fix_log, report)
+        if supplement_plan["items"]:
+            summary.append(supplement_plan["overall"])
         payload = {
             "eda": eda,
             "task_recommendation": asdict(recommendation),
             "research_profile": research,
             "auto_fix_log": auto_fix_log,
-            "summary": _summary_lines(eda, recommendation, research, auto_fix_log, report),
+            "summary": summary,
+            "supplement_plan": supplement_plan,
         }
         db.execute(delete(DatasetInsight).where(DatasetInsight.dataset_id == dataset.id))
         db.add(

@@ -20,6 +20,11 @@ _SURVIVAL_EVENTS_MIN = 100  # 生存任务事件数经验下限
 _SMALL_SAMPLE = 200  # 小样本提示阈值
 _MISSING_RATE_HIGH = 0.2  # 与校验 missing_warn 阈值同源（docs/05）
 
+# T6.14：体检 supplement_plan 中这些类型已由上方运行级动态条目覆盖
+# （运行级口径=建模数据，更贴近报告对象），不重复列入；
+# variable_roles/power 无运行级对应条目，并入清单。
+_PLAN_TYPES_COVERED_BY_RUN = {"epv", "imbalance", "survival_events"}
+
 
 def _dynamic_items(payload: dict[str, Any]) -> list[str]:
     items: list[str] = []
@@ -75,6 +80,15 @@ def _dynamic_items(payload: dict[str, Any]) -> list[str]:
         items.append(
             f"变量 {name} 缺失率 {rate * 100:.1f}%，其分析结果对缺失机制假设较敏感。"
         )
+
+    # T6.14：体检缺口建议(同一事实源 DatasetInsight.payload.supplement_plan)
+    plan = payload.get("supplement_plan") or {}
+    for plan_item in plan.get("items") or []:
+        if plan_item.get("deficit_type") in _PLAN_TYPES_COVERED_BY_RUN:
+            continue
+        suggestion = plan_item.get("suggestion")
+        if suggestion:
+            items.append(f"数据缺口（体检）：{suggestion}")
     return items
 
 

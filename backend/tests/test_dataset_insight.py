@@ -109,6 +109,9 @@ class TestInsightHappyPath:
         # 研究画像规则产出
         assert payload["research_profile"]["research_type"]
         assert isinstance(payload["summary"], list) and payload["summary"]
+        # T6.14：干净数据(60 例/3 特征/30 事件,EPV=10,年龄性别列齐备)无缺口
+        assert payload["supplement_plan"]["items"] == []
+        assert payload["supplement_plan"]["overall"]
 
     def test_insight_points_at_latest_version(self, sync_db: Any) -> None:
         ds = _make_dataset(sync_db, _CLEAN_CSV)
@@ -116,6 +119,41 @@ class TestInsightHappyPath:
         ins = _insight(sync_db, ds.id)
         v = sync_db.get(DatasetVersion, ins.dataset_version_id)
         assert v is not None and v.dataset_id == ds.id
+
+
+class TestSupplementPlanWiring:
+    """T6.14 接入:体检流水线产出 supplement_plan(引擎真实数值,docs/14 §5 已登记)。"""
+
+    # 92 例、40 特征、28 阳性 → EPV=0.7(实据场景复刻)
+    _EPV_DEFICIT_CSV = (
+        "death," + ",".join(f"f{j:02d}" for j in range(40)) + "\n"
+        + "\n".join(
+            f"{1 if i < 28 else 0}," + ",".join(str((i * 7 + j) % 10) for j in range(40))
+            for i in range(92)
+        )
+    ).encode("utf-8")
+
+    def test_epv_deficit_plan_real_numbers(self, sync_db: Any) -> None:
+        ds = _make_dataset(sync_db, self._EPV_DEFICIT_CSV, name="epv.csv")
+        insight_tasks.auto_dataset_insight(str(ds.id))
+        ins = _insight(sync_db, ds.id)
+        assert ins is not None
+        plan = ins.payload["supplement_plan"]
+        item = next(i for i in plan["items"] if i["deficit_type"] == "epv")
+        # 契约形状(docs/14 §5 变更记录 2026-09-09)
+        assert set(item) == {
+            "deficit_type",
+            "current",
+            "target",
+            "gap",
+            "suggestion",
+            "basis",
+        }
+        assert item["current"]["epv"] == 0.7
+        assert item["gap"]["missing_events"] == 372  # ⌈10×40 − 28⌉
+        assert item["gap"]["additional_rows"] == 1223  # ⌈372/(28/92)⌉
+        # 体检结论摘要含缺口总览行
+        assert any("数据缺口" in line for line in ins.payload["summary"])
 
 
 class TestAutoFix:
@@ -270,3 +308,6 @@ class TestInsightApi:
         assert body["dataset_id"] == str(ds.id)
         assert body["payload"]["eda"]["row_count"] == 60
         assert body["payload"]["summary"]
+        # T6.14:API 透出 supplement_plan 结构(docs/14 §5 变更记录 2026-09-09)
+        assert body["payload"]["supplement_plan"]["items"] == []
+        assert body["payload"]["supplement_plan"]["overall"]
