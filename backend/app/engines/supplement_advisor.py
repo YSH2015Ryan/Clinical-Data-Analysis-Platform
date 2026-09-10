@@ -12,7 +12,9 @@ research_profile);输出五类缺口建议,每条附 basis 依据串(真实数�
    ① 已触发时去重不报(① 的补样数字已覆盖同一缺口)。
 ③ 生存事件不足:队列研究(随访时间列+0/1 事件列)且事件数<100(本规则经验下限,
    依据串明示);缺口=100−事件数,建议引用真实中位随访时间。
-④⑤ 待后续子项落地(变量角色缺失/组间把握度)。
+④ 变量角色缺失:按研究类型核对必备角色(队列=随访时间+事件(结局)+年龄+性别;
+   病例对照=分组+年龄+性别;横断面=年龄+性别;时序不适用),只提示角色不猜数值。
+⑤ 待后续子项落地(组间把握度)。
 """
 
 import math
@@ -20,7 +22,16 @@ from typing import Any
 
 import pandas as pd
 
-from app.engines.research_profiler import _event_columns, _follow_up_columns
+# 复用 research_profiler 的探测器与词表(同一约定,不重复实现)
+from app.engines.research_profiler import (
+    _EVENT_HINTS,
+    _FOLLOW_UP_HINTS,
+    _GROUP_HINTS,
+    _event_columns,
+    _follow_up_columns,
+    _group_columns,
+    _name_has,
+)
 
 # Peduzzi 1996:logistic 模型每变量事件数(events per variable)≥10
 EPV_MIN = 10.0
@@ -50,6 +61,9 @@ def advise_supplements(
     survival_item = _rule_survival_events(df, eda, column_profiles, research_profile)
     if survival_item is not None:
         items.append(survival_item)
+    roles_item = _rule_variable_roles(df, eda, column_profiles, research_profile)
+    if roles_item is not None:
+        items.append(roles_item)
     overall = (
         "当前数据规模满足基本要求,未发现确定性规则可判定的数据缺口。"
         if not items
@@ -242,6 +256,105 @@ def _rule_survival_events(
         },
         "target": {"events_min": SURVIVAL_EVENTS_MIN},
         "gap": {"missing_events": missing},
+        "suggestion": suggestion,
+        "basis": basis,
+    }
+
+
+_AGE_HINTS = ("age", "年龄", "岁数")
+_SEX_HINTS = ("sex", "gender", "性别")
+_RESEARCH_TYPE_ZH = {
+    "cohort": "队列",
+    "case_control": "病例对照",
+    "cross_sectional": "横断面",
+}
+
+
+def _column_names(
+    df: Any, column_profiles: list[dict[str, Any]] | None
+) -> list[str]:
+    if isinstance(df, pd.DataFrame):
+        return [str(c) for c in df.columns]
+    return [str(p["name"]) for p in column_profiles or [] if p.get("name")]
+
+
+def _first_match(names: list[str], hints: tuple[str, ...]) -> str | None:
+    for name in names:
+        if _name_has(name, hints):
+            return name
+    return None
+
+
+def _first_or_none(columns: list[str]) -> str | None:
+    return columns[0] if columns else None
+
+
+def _rule_variable_roles(
+    df: Any,
+    eda: dict[str, Any] | None,
+    column_profiles: list[dict[str, Any]] | None,
+    research_profile: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """④ 变量角色缺失:按研究类型核对必备角色,只提示角色不猜数值。
+
+    检出优先用 df 的精确探测器(类型/取值校验);无 df 时退化为列名匹配。
+    列信息完全缺失 → 无法判定,不误报。时序研究不适用。
+    """
+    research_type = (research_profile or {}).get("research_type")
+    names = _column_names(df, column_profiles)
+    if research_type not in _RESEARCH_TYPE_ZH or not names:
+        return None
+
+    if isinstance(df, pd.DataFrame):
+        follow_col = _first_or_none(_follow_up_columns(df, {}))
+        event_col = _first_or_none(_event_columns(df, {}))
+        group_col = _first_or_none(_group_columns(df, {}))
+    else:
+        follow_col = _first_match(names, _FOLLOW_UP_HINTS)
+        event_col = _first_match(names, _EVENT_HINTS)
+        group_col = _first_match(names, _GROUP_HINTS)
+    age_col = _first_match(names, _AGE_HINTS)
+    sex_col = _first_match(names, _SEX_HINTS)
+
+    detected: dict[str, str | None] = {}
+    if research_type == "cohort":
+        detected = {
+            "随访时间": follow_col,
+            "事件(结局)": event_col,
+            "年龄": age_col,
+            "性别": sex_col,
+        }
+    elif research_type == "case_control":
+        detected = {
+            "分组(病例/对照)": group_col,
+            "年龄": age_col,
+            "性别": sex_col,
+        }
+    else:  # cross_sectional
+        detected = {"年龄": age_col, "性别": sex_col}
+
+    missing = [role for role, col in detected.items() if col is None]
+    if not missing:
+        return None
+
+    type_zh = _RESEARCH_TYPE_ZH[research_type]
+    found = {role: col for role, col in detected.items() if col is not None}
+    suggestion = (
+        f"按{type_zh}研究设计,缺少以下变量角色:{', '.join(missing)};"
+        f"这些是基线描述与混杂调整的必需变量,建议补充采集;"
+        f"若数据已有对应列但命名不同,可在分析时通过列指定(如 time_column/"
+        f"event_column 提示)告知系统。"
+    )
+    basis = (
+        f"研究类型={type_zh};已检出角色与列: "
+        + (", ".join(f"{r}→{c}" for r, c in found.items()) if found else "无")
+        + f";缺失角色: {', '.join(missing)}(列名匹配词表见 research_profiler)"
+    )
+    return {
+        "deficit_type": "variable_roles",
+        "current": {"research_type": research_type, "detected": detected},
+        "target": {"required_roles": list(detected)},
+        "gap": {"missing_roles": missing},
         "suggestion": suggestion,
         "basis": basis,
     }

@@ -167,3 +167,57 @@ class TestSurvivalEvents:
     def test_no_df_not_triggered(self) -> None:
         plan = advise_supplements(None, _eda(120, 8, 35), [], _research("cohort"))
         assert not any(i["deficit_type"] == "survival_events" for i in plan["items"])
+
+
+class TestVariableRoles:
+    """④ 变量角色缺失:按研究类型核对必备角色,只提示角色不猜数值。
+
+    队列=随访时间+事件(结局)+年龄+性别;病例对照=分组+年龄+性别;
+    横断面=年龄+性别;时序不适用。检出列名写进 basis(真实),缺失角色进 gap。
+    """
+
+    def test_cohort_missing_followup_and_event(self) -> None:
+        # 队列只有年龄/性别 → 缺随访时间与事件角色
+        df = pd.DataFrame({"age": [50, 60], "sex": ["M", "F"]})
+        plan = advise_supplements(df, _eda(2, 2, None), [], _research("cohort"))
+        item = next(i for i in plan["items"] if i["deficit_type"] == "variable_roles")
+        assert item["gap"]["missing_roles"] == ["随访时间", "事件(结局)"]
+        assert item["current"]["detected"]["年龄"] == "age"
+        assert item["current"]["detected"]["性别"] == "sex"
+        assert "随访" in item["suggestion"]
+        assert "age" in item["basis"]  # 依据串含真实检出列名
+
+    def test_cross_sectional_missing_sex(self) -> None:
+        df = pd.DataFrame({"age": [50, 60], "bmi": [22.0, 25.0]})
+        plan = advise_supplements(df, _eda(2, 2, None), [], _research())
+        item = next(i for i in plan["items"] if i["deficit_type"] == "variable_roles")
+        assert item["gap"]["missing_roles"] == ["性别"]
+
+    def test_cohort_all_roles_present_not_triggered(self) -> None:
+        df = pd.DataFrame(
+            {
+                "followup_days": [100, 200, 300],
+                "death": [0, 1, 0],
+                "age": [50, 60, 70],
+                "sex": ["M", "F", "M"],
+            }
+        )
+        plan = advise_supplements(df, _eda(3, 4, 1), [], _research("cohort"))
+        assert not any(i["deficit_type"] == "variable_roles" for i in plan["items"])
+
+    def test_time_series_not_applicable(self) -> None:
+        df = pd.DataFrame({"date": ["2026-01-01"], "value": [1.0]})
+        plan = advise_supplements(df, _eda(1, 2, None), [], _research("time_series"))
+        assert not any(i["deficit_type"] == "variable_roles" for i in plan["items"])
+
+    def test_profiles_only_fallback(self) -> None:
+        # 无 df 时退化为按 column_profiles 的列名判定
+        profiles = [{"name": "age"}, {"name": "bmi"}]
+        plan = advise_supplements(None, _eda(100, 2, None), profiles, _research())
+        item = next(i for i in plan["items"] if i["deficit_type"] == "variable_roles")
+        assert item["gap"]["missing_roles"] == ["性别"]
+
+    def test_no_columns_info_not_triggered(self) -> None:
+        # 既无 df 又无 profiles → 无法判定,不误报
+        plan = advise_supplements(None, _eda(100, 2, None), [], _research())
+        assert not any(i["deficit_type"] == "variable_roles" for i in plan["items"])
