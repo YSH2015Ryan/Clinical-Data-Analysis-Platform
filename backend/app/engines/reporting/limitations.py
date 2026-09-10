@@ -59,9 +59,7 @@ def _dynamic_items(payload: dict[str, Any]) -> list[str]:
             )
 
     if n_samples is not None and n_samples < _SMALL_SAMPLE:
-        items.append(
-            f"样本量较小（N={n_samples}），交叉验证折间波动可能掩盖真实的模型间差异。"
-        )
+        items.append(f"样本量较小（N={n_samples}），交叉验证折间波动可能掩盖真实的模型间差异。")
 
     transform_log = payload.get("transform_log") or []
     if transform_log:
@@ -77,9 +75,7 @@ def _dynamic_items(payload: dict[str, Any]) -> list[str]:
         if float(p.get("missing_rate") or 0.0) > _MISSING_RATE_HIGH
     ]
     for name, rate in high_missing[:3]:  # 最多列 3 个，避免清单冗长
-        items.append(
-            f"变量 {name} 缺失率 {rate * 100:.1f}%，其分析结果对缺失机制假设较敏感。"
-        )
+        items.append(f"变量 {name} 缺失率 {rate * 100:.1f}%，其分析结果对缺失机制假设较敏感。")
 
     # T6.14：体检缺口建议(同一事实源 DatasetInsight.payload.supplement_plan)
     plan = payload.get("supplement_plan") or {}

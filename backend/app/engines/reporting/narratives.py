@@ -88,8 +88,7 @@ _METRIC_GUIDE: dict[str, dict[str, Any]] = {
     },
     "mae": {
         "title": "MAE（平均绝对误差）",
-        "meaning": "预测值与真实值偏差的平均绝对值，单位与结局变量一致，"
-        "比 RMSE 更抗极端值。",
+        "meaning": "预测值与真实值偏差的平均绝对值，单位与结局变量一致，比 RMSE 更抗极端值。",
         "rule": "越低越好；只有与结局变量的量纲/离散程度对比才能判断大小。",
         "direction": "min",
         "bands": [],
@@ -135,7 +134,7 @@ def build_performance_guides(
         return []
     metric_names: list[str] = []
     for row in table:
-        for name in (row.get("metrics") or {}):
+        for name in row.get("metrics") or {}:
             if name not in metric_names:
                 metric_names.append(name)
     if primary_metric and primary_metric in metric_names:

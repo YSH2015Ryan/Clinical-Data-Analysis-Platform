@@ -357,10 +357,7 @@ def validate(
     if n_rows == 0:
         issues.append(
             Issue(
-                "RV002", 
-                "blocker", 
-                "文件不含数据行", 
-                suggestion=get_optimized_suggestion("RV002")
+                "RV002", "blocker", "文件不含数据行", suggestion=get_optimized_suggestion("RV002")
             )
         )
 
@@ -426,10 +423,10 @@ def validate(
                 "检测到「一行一条记录」的长表结构",
                 detail=f"列 {df.columns[item_idx]} + {df.columns[value_idx]} "
                 "表明每行是一条检验/检查记录，而非一行一个患者",
-                suggestion=get_optimized_suggestion("RV801", {
-                    "item_column": df.columns[item_idx], 
-                    "value_column": df.columns[value_idx]
-                }),
+                suggestion=get_optimized_suggestion(
+                    "RV801",
+                    {"item_column": df.columns[item_idx], "value_column": df.columns[value_idx]},
+                ),
             )
         )
 
@@ -446,10 +443,9 @@ def validate(
                     column=str(df.columns[sus_idx]),
                     detail=f"列 {df.columns[sus_idx]} 含 敏感/耐药/中介 判定值 {n_sus} 行",
                     affected_rows=n_sus,
-                    suggestion=get_optimized_suggestion("RV802", {
-                        "sus_column": df.columns[sus_idx], 
-                        "sus_count": n_sus
-                    }),
+                    suggestion=get_optimized_suggestion(
+                        "RV802", {"sus_column": df.columns[sus_idx], "sus_count": n_sus}
+                    ),
                 )
             )
 
@@ -469,9 +465,9 @@ def validate(
                     "warning",
                     "同一检验项目存在多种单位",
                     detail=f"如：{top}",
-                    suggestion=get_optimized_suggestion("RV803", {
-                        "examples": list(multi.head(3).index)
-                    }),
+                    suggestion=get_optimized_suggestion(
+                        "RV803", {"examples": list(multi.head(3).index)}
+                    ),
                 )
             )
 
@@ -486,10 +482,9 @@ def validate(
                         "warning",
                         f"列 {p['name']} 存在极端值（绝对值达 {extreme:g}），疑似单位或录入错误",
                         column=p["name"],
-                        suggestion=get_optimized_suggestion("RV804", {
-                            "column": p["name"], 
-                            "extreme": extreme
-                        }),
+                        suggestion=get_optimized_suggestion(
+                            "RV804", {"column": p["name"], "extreme": extreme}
+                        ),
                     )
                 )
 
@@ -515,11 +510,9 @@ def validate(
                     "RV102",
                     "warning",
                     f"推荐字段缺失：{field_name}",
-                    suggestion=get_optimized_suggestion("RV702", {
-                        "field_name": field_name, 
-                        "field_zh": zh, 
-                        "advice": advice
-                    }),
+                    suggestion=get_optimized_suggestion(
+                        "RV702", {"field_name": field_name, "field_zh": zh, "advice": advice}
+                    ),
                 )
             )
 
@@ -541,11 +534,9 @@ def validate(
                         f"列 {name} 缺失 {rate:.1%}，建议删除或插补",
                         column=name,
                         affected_rows=missing,
-                        suggestion=get_optimized_suggestion("RV201", {
-                            "column": name,
-                            "missing_rate": rate,
-                            "severity": "blocker"
-                        }),
+                        suggestion=get_optimized_suggestion(
+                            "RV201", {"column": name, "missing_rate": rate, "severity": "blocker"}
+                        ),
                     )
                 )
             elif rate > cfg.missing_warn:
@@ -556,11 +547,9 @@ def validate(
                         f"列 {name} 缺失 {rate:.1%}",
                         column=name,
                         affected_rows=missing,
-                        suggestion=get_optimized_suggestion("RV201", {
-                            "column": name,
-                            "missing_rate": rate,
-                            "severity": "warning"
-                        }),
+                        suggestion=get_optimized_suggestion(
+                            "RV201", {"column": name, "missing_rate": rate, "severity": "warning"}
+                        ),
                     )
                 )
 
@@ -576,10 +565,9 @@ def validate(
                         f"列 {name} 发现 {illegal} 个非数值，可在线替换为缺失",
                         column=name,
                         affected_rows=illegal,
-                        suggestion=get_optimized_suggestion("RV301", {
-                            "column": name,
-                            "invalid_count": illegal
-                        }),
+                        suggestion=get_optimized_suggestion(
+                            "RV301", {"column": name, "invalid_count": illegal}
+                        ),
                     )
                 )
 
@@ -616,13 +604,16 @@ def validate(
                             f"最小值 {_native(out.min())}",
                             column=name,
                             affected_rows=len(out),
-                            suggestion=get_optimized_suggestion("RV502", {
-                                "column": name,
-                                "unreasonable_count": len(out),
-                                "min_val": _native(out.min()),
-                                "max_val": _native(out.max()),
-                                "expected_range": f"{low}–{high} {unit}"
-                            }),
+                            suggestion=get_optimized_suggestion(
+                                "RV502",
+                                {
+                                    "column": name,
+                                    "unreasonable_count": len(out),
+                                    "min_val": _native(out.min()),
+                                    "max_val": _native(out.max()),
+                                    "expected_range": f"{low}–{high} {unit}",
+                                },
+                            ),
                         )
                     )
 
@@ -637,10 +628,9 @@ def validate(
                         f"{name} 存在 {n_out} 个异常值（IQR×{cfg.iqr_k}）",
                         column=name,
                         affected_rows=n_out,
-                        suggestion=get_optimized_suggestion("RV501", {
-                            "column": name,
-                            "outlier_count": n_out
-                        }),
+                        suggestion=get_optimized_suggestion(
+                            "RV501", {"column": name, "outlier_count": n_out}
+                        ),
                     )
                 )
 
@@ -652,10 +642,9 @@ def validate(
                     "info",
                     f"列 {name} 唯一值 {s.nunique()} 个，建议合并或视为文本",
                     column=name,
-                    suggestion=get_optimized_suggestion("RV601", {
-                        "column": name,
-                        "unique_count": s.nunique()
-                    }),
+                    suggestion=get_optimized_suggestion(
+                        "RV601", {"column": name, "unique_count": s.nunique()}
+                    ),
                 )
             )
 
@@ -671,9 +660,9 @@ def validate(
                             "warning",
                             f"{name} 阳性率 {min_rate:.1%}，建议使用 class_weight 与 PR-AUC",
                             column=name,
-                            suggestion=get_optimized_suggestion("RV703", {
-                                "minority_ratio": min_rate
-                            }),
+                            suggestion=get_optimized_suggestion(
+                                "RV703", {"minority_ratio": min_rate}
+                            ),
                         )
                     )
 
@@ -686,9 +675,7 @@ def validate(
                 "warning",
                 f"发现 {full_dup} 行完全重复，可在线去重",
                 affected_rows=full_dup,
-                suggestion=get_optimized_suggestion("RV704", {
-                    "duplicate_count": full_dup
-                }),
+                suggestion=get_optimized_suggestion("RV704", {"duplicate_count": full_dup}),
             )
         )
     for i in range(n_cols):
@@ -703,10 +690,9 @@ def validate(
                         f"ID 列 {name} 有 {n_dup} 个重复值，疑似同一患者重复",
                         column=name,
                         affected_rows=n_dup,
-                        suggestion=get_optimized_suggestion("RV705", {
-                            "suspect_count": n_dup,
-                            "id_column": name
-                        }),
+                        suggestion=get_optimized_suggestion(
+                            "RV705", {"suspect_count": n_dup, "id_column": name}
+                        ),
                     )
                 )
 

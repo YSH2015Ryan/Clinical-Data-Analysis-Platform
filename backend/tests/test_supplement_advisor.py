@@ -123,9 +123,7 @@ class TestClassImbalance:
 def _cohort_df(n_rows: int, n_events: int) -> pd.DataFrame:
     """合成队列数据:followup_days(1..n)数值随访列 + death 0/1 事件列。"""
     events = [1] * n_events + [0] * (n_rows - n_events)
-    return pd.DataFrame(
-        {"followup_days": list(range(1, n_rows + 1)), "death": events}
-    )
+    return pd.DataFrame({"followup_days": list(range(1, n_rows + 1)), "death": events})
 
 
 class TestSurvivalEvents:
@@ -259,9 +257,7 @@ class TestGroupPower:
 
     def test_three_level_group_not_triggered(self) -> None:
         # 三分类分组列:t 检验把握度不适用,不出数字(不编造)
-        df = pd.DataFrame(
-            {"group": ["A"] * 20 + ["B"] * 20 + ["C"] * 20, "value": range(60)}
-        )
+        df = pd.DataFrame({"group": ["A"] * 20 + ["B"] * 20 + ["C"] * 20, "value": range(60)})
         plan = advise_supplements(df, _eda(60, 2, None), [], _research("case_control"))
         assert not any(i["deficit_type"] == "power" for i in plan["items"])
 

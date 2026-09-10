@@ -6,7 +6,6 @@ import json
 
 import numpy as np
 import pandas as pd
-
 from app.engines.model_registry import ModelRegistry, validate_adapter
 from app.plugins.builtin.dlnm_models import DLNMAdapter
 

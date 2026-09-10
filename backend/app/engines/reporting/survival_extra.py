@@ -5,7 +5,8 @@
   为 KM 分层曲线提供统计学显著性依据（lifelines 真实计算，不虚构）。
 """
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 

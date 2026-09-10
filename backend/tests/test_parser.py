@@ -9,10 +9,10 @@ import pytest
 from app.engines.parser import (
     detect_delimiter,
     detect_encoding,
+    normalize_json_value,
     parse_csv,
     parse_excel,
     preview_json,
-    normalize_json_value,
 )
 
 TEXT = "id,姓名,年龄\n1,张三,55\n2,李四,61\n"

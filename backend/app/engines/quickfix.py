@@ -200,7 +200,9 @@ def _impute_missing(
     mask = s.isna()
     out = df.copy()
     out[column] = s.fillna(fill)
-    fill_log = float(fill) if isinstance(fill, (float, int)) and not isinstance(fill, bool) else fill
+    fill_log = (
+        float(fill) if isinstance(fill, (float, int)) and not isinstance(fill, bool) else fill
+    )
     return out, {
         **base,
         "affected_rows": int(mask.sum()),
@@ -235,7 +237,9 @@ def _normalize_units(
     _require_column(df, unit_column)
     conversions: dict[str, dict[str, Any]] = params.get("conversions") or {}
     if not conversions:
-        raise ValueError("缺少必需参数 conversions（如 {'mg/dL': {'factor': 0.0555, 'target': 'mmol/L'}}）")
+        raise ValueError(
+            "缺少必需参数 conversions（如 {'mg/dL': {'factor': 0.0555, 'target': 'mmol/L'}}）"
+        )
     out = df.copy()
     # 统一转为 float,避免 int 列赋换算后小数的 dtype 告警/报错(pandas>=2.2)
     out[column] = pd.to_numeric(out[column], errors="coerce").astype(float)

@@ -233,9 +233,7 @@ def _rule_survival_events(
         return None
 
     follow_median_raw = pd.to_numeric(df[follow_col], errors="coerce").median()
-    follow_median = (
-        None if pd.isna(follow_median_raw) else round(float(follow_median_raw), 2)
-    )
+    follow_median = None if pd.isna(follow_median_raw) else round(float(follow_median_raw), 2)
     missing = SURVIVAL_EVENTS_MIN - n_events
     median_text = (
         f"当前中位随访 {follow_median}({follow_col})," if follow_median is not None else ""
@@ -276,9 +274,7 @@ _RESEARCH_TYPE_ZH = {
 }
 
 
-def _column_names(
-    df: Any, column_profiles: list[dict[str, Any]] | None
-) -> list[str]:
+def _column_names(df: Any, column_profiles: list[dict[str, Any]] | None) -> list[str]:
     if isinstance(df, pd.DataFrame):
         return [str(c) for c in df.columns]
     return [str(p["name"]) for p in column_profiles or [] if p.get("name")]

@@ -80,9 +80,7 @@ class TestComparisonGuide:
 class TestExplainabilityGuides:
     def test_feature_importance_guide_real_features(self) -> None:
         payload = _payload()
-        charts = [
-            c for c in payload["comparison"]["charts"] if c["kind"] == "feature_importance"
-        ]
+        charts = [c for c in payload["comparison"]["charts"] if c["kind"] == "feature_importance"]
         guides = build_explainability_guides(charts)
         assert guides
         fi = guides[0]
@@ -121,9 +119,7 @@ class TestClinicalGuides:
         assert "残差近似正态（p=0.31）" in diag["reading"]
 
     def test_logrank_guide_real_values(self) -> None:
-        survival = {
-            "logrank": {"statistic": 4.56, "p_value": 0.033, "n_high": 46, "n_low": 46}
-        }
+        survival = {"logrank": {"statistic": 4.56, "p_value": 0.033, "n_high": 46, "n_low": 46}}
         guides = build_clinical_guides(None, None, survival)
         lr = next(g for g in guides if "分层" in g["title"] or "log-rank" in g["title"].lower())
         assert "4.56" in lr["reading"] and "0.033" in lr["reading"]

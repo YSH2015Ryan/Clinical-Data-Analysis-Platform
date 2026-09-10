@@ -15,7 +15,7 @@ validation profile 不存在的键（data_type/semantic_type/...），异常被�
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
@@ -96,9 +96,7 @@ class IntelligentTaskAdvisor:
     # 规则结论（唯一判断来源）
     # ------------------------------------------------------------------
 
-    def _rule_recommendation(
-        self, column_profiles: list[dict[str, Any]]
-    ) -> TaskRecommendation:
+    def _rule_recommendation(self, column_profiles: list[dict[str, Any]]) -> TaskRecommendation:
         det = detect_task_from_profile(column_profiles)
         if det.recommended_task is not None:
             targets = [

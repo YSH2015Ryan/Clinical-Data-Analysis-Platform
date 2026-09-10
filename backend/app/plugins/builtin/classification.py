@@ -137,7 +137,7 @@ class _BaseClassifier:
                 artifacts["roc_curve"] = {
                     "fpr": mean_fpr.tolist(),
                     "tpr": mean_tpr.tolist(),
-                    "thresholds": [None] * 100,   # 宏平均无对应阈值
+                    "thresholds": [None] * 100,  # 宏平均无对应阈值
                     "macro_avg": True,
                 }
             except Exception:  # noqa: S110
@@ -145,6 +145,7 @@ class _BaseClassifier:
             # OvR macro 校准曲线（等距 10 桶插值平均）
             try:
                 from sklearn.calibration import calibration_curve as _cal_curve
+
                 prob_trues: list[np.ndarray[Any, Any]] = []
                 mean_pred = np.linspace(0, 1, 10)
                 for i in range(n_classes):

@@ -130,9 +130,7 @@ async def _test_local(cfg: settings_service.LlmRuntimeConfig) -> LlmTestResult:
 def _test_cloud_sync(cfg: settings_service.LlmRuntimeConfig) -> LlmTestResult:
     started = time.monotonic()
     if not cfg.cloud_enabled:
-        return LlmTestResult(
-            ok=False, provider="cloud", latency_ms=0, detail="云端已被部署层禁用"
-        )
+        return LlmTestResult(ok=False, provider="cloud", latency_ms=0, detail="云端已被部署层禁用")
     if not cfg.openai_api_key:
         return LlmTestResult(ok=False, provider="cloud", latency_ms=0, detail="未配置云端 key")
     try:

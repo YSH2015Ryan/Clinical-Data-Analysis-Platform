@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-
 from app.engines.model_registry import validate_adapter
 from app.plugins.builtin.gee_models import GEEAdapter, detect_group_column
 

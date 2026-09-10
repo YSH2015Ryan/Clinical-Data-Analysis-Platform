@@ -32,19 +32,40 @@ class TestStaticBase:
 class TestDynamicTriggers:
     def test_class_imbalance_low_prevalence(self) -> None:
         items = build_limitations(
-            _payload(target_summary={"n_samples": 500, "n_features": 8, "positives": 20, "prevalence": 0.04})
+            _payload(
+                target_summary={
+                    "n_samples": 500,
+                    "n_features": 8,
+                    "positives": 20,
+                    "prevalence": 0.04,
+                }
+            )
         )
         assert any("不均衡" in i and "4.0%" in i for i in items)
 
     def test_class_imbalance_high_prevalence(self) -> None:
         items = build_limitations(
-            _payload(target_summary={"n_samples": 500, "n_features": 8, "positives": 480, "prevalence": 0.96})
+            _payload(
+                target_summary={
+                    "n_samples": 500,
+                    "n_features": 8,
+                    "positives": 480,
+                    "prevalence": 0.96,
+                }
+            )
         )
         assert any("不均衡" in i for i in items)
 
     def test_epv_below_10(self) -> None:
         items = build_limitations(
-            _payload(target_summary={"n_samples": 200, "n_features": 10, "positives": 30, "prevalence": 0.15})
+            _payload(
+                target_summary={
+                    "n_samples": 200,
+                    "n_features": 10,
+                    "positives": 30,
+                    "prevalence": 0.15,
+                }
+            )
         )
         assert any("EPV" in i and "3.0" in i for i in items)
 
@@ -52,14 +73,26 @@ class TestDynamicTriggers:
         items = build_limitations(
             _payload(
                 run={"task_type": "survival"},
-                target_summary={"n_samples": 300, "n_features": 5, "events": 40, "median_followup": 12.0},
+                target_summary={
+                    "n_samples": 300,
+                    "n_features": 5,
+                    "events": 40,
+                    "median_followup": 12.0,
+                },
             )
         )
         assert any("事件数" in i and "40" in i for i in items)
 
     def test_small_sample(self) -> None:
         items = build_limitations(
-            _payload(target_summary={"n_samples": 120, "n_features": 5, "positives": 60, "prevalence": 0.5})
+            _payload(
+                target_summary={
+                    "n_samples": 120,
+                    "n_features": 5,
+                    "positives": 60,
+                    "prevalence": 0.5,
+                }
+            )
         )
         assert any("样本量" in i and "120" in i for i in items)
 

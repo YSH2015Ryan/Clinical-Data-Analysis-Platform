@@ -242,11 +242,16 @@ def detect_task_from_profile(column_profile: list[dict[str, Any]]) -> TaskDetect
 
         # binary 判断：值域 ⊆ {0,1}
         if dtype == "continuous":
-            binary = (p_min is not None and p_max is not None
-                      and float(p_min) == 0.0 and float(p_max) == 1.0 and unique == 2)
+            binary = (
+                p_min is not None
+                and p_max is not None
+                and float(p_min) == 0.0
+                and float(p_max) == 1.0
+                and unique == 2
+            )
         else:
             # categorical unique==2：语义明确时确定为二值，否则保守认为可能
-            binary = (unique == 2)
+            binary = unique == 2
 
         # FollowUp 时间列候选
         if semantic == "FollowUp" and dtype == "continuous" and conf >= 0.85:
@@ -271,10 +276,12 @@ def detect_task_from_profile(column_profile: list[dict[str, Any]]) -> TaskDetect
                 )
         elif dtype == "continuous":
             if semantic == "Label":
-                regression_cands.append(Candidate(name, conf, f"Label 语义（连续值）"))
+                regression_cands.append(Candidate(name, conf, "Label 语义（连续值）"))
             elif semantic == "FollowUp" and conf >= 0.85:
                 regression_cands.append(
-                    Candidate(name, _FOLLOWUP_AS_REGRESSION_CONF, f"{semantic} 语义（无配对事件列）")
+                    Candidate(
+                        name, _FOLLOWUP_AS_REGRESSION_CONF, f"{semantic} 语义（无配对事件列）"
+                    )
                 )
 
     # 模式规则：正数连续 + 列名含时间词 → 时间列候选（event_cands 存在时）

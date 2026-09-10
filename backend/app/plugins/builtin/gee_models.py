@@ -24,7 +24,6 @@ from statsmodels.genmod.cov_struct import (
 
 from app.engines.adapters import BaseModelAdapter
 
-
 logger = logging.getLogger(__name__)
 _GROUP_KEYWORDS = ("id", "subject", "patient", "group")
 

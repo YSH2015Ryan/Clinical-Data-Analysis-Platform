@@ -297,9 +297,7 @@ def _screening_payload(storage: Any, run: AnalysisRun) -> dict[str, Any] | None:
             df,
             task_type=run.task_type,
             label_col=(
-                str(target_cfg.get("label_col") or "label")
-                if run.task_type != "survival"
-                else None
+                str(target_cfg.get("label_col") or "label") if run.task_type != "survival" else None
             ),
             time_col=(
                 str(target_cfg.get("time_col") or "time") if run.task_type == "survival" else None

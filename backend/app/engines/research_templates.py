@@ -99,7 +99,7 @@ TEMPLATES: tuple[ResearchTemplate, ...] = (
         key="longitudinal",
         name="纵向/重复测量",
         description=(
-            "分析含时间索引的重复测量数据：GEE 处理个体内相关，GAM 刻画时间趋势，" "树模型作对照。"
+            "分析含时间索引的重复测量数据：GEE 处理个体内相关，GAM 刻画时间趋势，树模型作对照。"
         ),
     ),
 )
@@ -155,7 +155,7 @@ def _epv_advice(events: int | None, n_features: int) -> dict[str, Any]:
             None,
             _EPV_THRESHOLD,
             False,
-            "未检测到事件/阳性计数，无法核对每变量事件数（EPV），" "请确认结局列后重新评估。",
+            "未检测到事件/阳性计数，无法核对每变量事件数（EPV），请确认结局列后重新评估。",
         )
     epv = events / n_features
     meets = epv >= _EPV_THRESHOLD
@@ -254,9 +254,7 @@ def _eval_prognostic(df: pd.DataFrame, hints: dict[str, Any]) -> dict[str, Any]:
         task_type = "survival"
         reasons.append(f"检测到随访时间列 {time_cols[0]} 与事件列 {event_cols[0]}，按生存结局建模")
         excluded = {time_cols[0], event_cols[0]}
-        events: int | None = int(
-            pd.to_numeric(df[event_cols[0]], errors="coerce").fillna(0).sum()
-        )
+        events: int | None = int(pd.to_numeric(df[event_cols[0]], errors="coerce").fillna(0).sum())
     else:
         outcome = _binary_outcome_column(df, hints)
         if outcome is None:

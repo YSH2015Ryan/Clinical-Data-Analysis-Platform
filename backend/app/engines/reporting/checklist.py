@@ -65,7 +65,7 @@ def _epv_item(payload: dict[str, Any], task_type: str) -> tuple[str, str]:
     status = _STATUS_MET if epv >= _EPV_THRESHOLD else _STATUS_PARTIAL
     return (
         status,
-        f"事件/阳性数 {events}，预测因子 {k} 个，EPV = {epv:.1f}" f"（经验下限 {_EPV_THRESHOLD}）",
+        f"事件/阳性数 {events}，预测因子 {k} 个，EPV = {epv:.1f}（经验下限 {_EPV_THRESHOLD}）",
     )
 
 

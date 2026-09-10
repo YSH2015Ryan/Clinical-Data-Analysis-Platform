@@ -196,9 +196,7 @@ async def get_analysis_draft(
         )
     det = detect_task_from_profile(dataset.column_profile)
     task_type = det.recommended_task
-    config = await dataset_service.recommended_preprocess_dsl(
-        db, dataset, storage_from_settings()
-    )
+    config = await dataset_service.recommended_preprocess_dsl(db, dataset, storage_from_settings())
     standard_models: list[str] = []
     if task_type is not None:
         await plugin_service.sync_plugins_to_db(db, registry)

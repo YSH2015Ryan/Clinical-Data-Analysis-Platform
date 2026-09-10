@@ -55,7 +55,7 @@ def _screen_classification(
             "statistic": round(float(stat), 4),
             "effect": round(float(np.median(x_pos) - np.median(x_neg)), 4),
             "p_value": float(p),
-            "n_used": int(len(pair)),
+            "n_used": len(pair),
         }
     table = pd.crosstab(x, yy)
     if table.shape[0] < 2:
@@ -78,7 +78,7 @@ def _screen_classification(
         "statistic": round(stat_val, 4) if stat_val is not None else None,
         "effect": round(cramers_v, 4) if cramers_v is not None else None,
         "p_value": float(p),
-        "n_used": int(len(pair)),
+        "n_used": len(pair),
     }
 
 
@@ -127,7 +127,7 @@ def _screen_survival(
             "statistic": stat,
             "effect": round(hr, 4),
             "p_value": p,
-            "n_used": int(len(sub)),
+            "n_used": len(sub),
         }
     except Exception:
         return None
@@ -148,7 +148,7 @@ def _screen_regression(df: pd.DataFrame, feature: str, y: pd.Series) -> dict[str
             "statistic": None,
             "effect": round(float(r), 4),
             "p_value": float(p),
-            "n_used": int(len(pair)),
+            "n_used": len(pair),
         }
     groups = [g["y"].to_numpy(dtype=float) for _, g in pair.groupby("x") if len(g) >= 2]
     if len(groups) < 2:
@@ -164,7 +164,7 @@ def _screen_regression(df: pd.DataFrame, feature: str, y: pd.Series) -> dict[str
         "statistic": round(float(f_stat), 4),
         "effect": round(eta2, 4) if eta2 is not None else None,
         "p_value": float(p),
-        "n_used": int(len(pair)),
+        "n_used": len(pair),
     }
 
 
@@ -431,7 +431,7 @@ def subgroup_analysis(
             levels.append(
                 {
                     "level": str(level),
-                    "n": int(len(sub)),
+                    "n": len(sub),
                     "effect": effect,
                     "ci_lower": lo,
                     "ci_upper": hi,

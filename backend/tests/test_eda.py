@@ -5,7 +5,6 @@
 
 import numpy as np
 import pandas as pd
-
 from app.engines.eda import compute_eda
 
 
@@ -21,12 +20,32 @@ def _df() -> pd.DataFrame:
 
 
 _PROFILES = [
-    {"name": "age", "inferred_type": "continuous", "semantic": "Age",
-     "semantic_confidence": 0.9, "missing_rate": 0.1, "unique": 180},
-    {"name": "gender", "inferred_type": "categorical", "semantic": "Gender",
-     "semantic_confidence": 0.9, "missing_rate": 0.0, "unique": 2},
-    {"name": "death", "inferred_type": "continuous", "semantic": "Event",
-     "semantic_confidence": 0.9, "missing_rate": 0.0, "unique": 2, "min": 0.0, "max": 1.0},
+    {
+        "name": "age",
+        "inferred_type": "continuous",
+        "semantic": "Age",
+        "semantic_confidence": 0.9,
+        "missing_rate": 0.1,
+        "unique": 180,
+    },
+    {
+        "name": "gender",
+        "inferred_type": "categorical",
+        "semantic": "Gender",
+        "semantic_confidence": 0.9,
+        "missing_rate": 0.0,
+        "unique": 2,
+    },
+    {
+        "name": "death",
+        "inferred_type": "continuous",
+        "semantic": "Event",
+        "semantic_confidence": 0.9,
+        "missing_rate": 0.0,
+        "unique": 2,
+        "min": 0.0,
+        "max": 1.0,
+    },
 ]
 
 
@@ -79,9 +98,16 @@ class TestCorrelations:
     def test_cramers_v_categorical_pairs(self) -> None:
         df = _df()
         df["smoke"] = np.where(df["gender"] == "男", "是", "否")  # 完全相关
-        profiles = _PROFILES + [
-            {"name": "smoke", "inferred_type": "categorical", "semantic": None,
-             "semantic_confidence": 0.0, "missing_rate": 0.0, "unique": 2},
+        profiles = [
+            *_PROFILES,
+            {
+                "name": "smoke",
+                "inferred_type": "categorical",
+                "semantic": None,
+                "semantic_confidence": 0.0,
+                "missing_rate": 0.0,
+                "unique": 2,
+            },
         ]
         eda = compute_eda(df, profiles)
         cat = eda["correlations"]["categorical"]
@@ -122,8 +148,16 @@ class TestRobustness:
 
     def test_single_column(self) -> None:
         df = pd.DataFrame({"x": [1.0, 2.0, 3.0]})
-        profiles = [{"name": "x", "inferred_type": "continuous", "semantic": None,
-                     "semantic_confidence": 0.0, "missing_rate": 0.0, "unique": 3}]
+        profiles = [
+            {
+                "name": "x",
+                "inferred_type": "continuous",
+                "semantic": None,
+                "semantic_confidence": 0.0,
+                "missing_rate": 0.0,
+                "unique": 3,
+            }
+        ]
         eda = compute_eda(df, profiles)
         assert eda["correlations"]["continuous"]["columns"] == ["x"]
 
