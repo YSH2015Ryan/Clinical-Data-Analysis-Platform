@@ -27,7 +27,9 @@ MCID_REFERENCE = {
 }
 
 
-def cohens_d(group1: np.ndarray, group2: np.ndarray, pooled: bool = True) -> dict[str, Any]:
+def cohens_d(
+    group1: np.ndarray[Any, Any], group2: np.ndarray[Any, Any], pooled: bool = True
+) -> dict[str, Any]:
     """
     计算 Cohen's d 效应量
 
@@ -168,7 +170,7 @@ def compare_with_mcid(
 
 
 def hosmer_lemeshow_test(
-    y_true: np.ndarray, y_pred: np.ndarray, n_bins: int = 10
+    y_true: np.ndarray[Any, Any], y_pred: np.ndarray[Any, Any], n_bins: int = 10
 ) -> dict[str, Any]:
     """
     Hosmer-Lemeshow 校准度检验
@@ -208,8 +210,8 @@ def hosmer_lemeshow_test(
     bin_indices = np.digitize(p, bin_edges[1:-1])
 
     # 计算每组的观察值和期望值
-    observed = []
-    expected = []
+    observed: list[Any] = []
+    expected: list[Any] = []
 
     for i in range(n_bins):
         mask_bin = bin_indices == i
@@ -230,16 +232,16 @@ def hosmer_lemeshow_test(
         observed.extend([observed_events, observed_non_events])
         expected.extend([expected_events, expected_non_events])
 
-    observed = np.array(observed)
-    expected = np.array(expected)
+    observed_arr = np.array(observed)
+    expected_arr = np.array(expected)
 
     # χ² 统计量
     # 避免除以0
-    expected = np.where(expected == 0, 1e-10, expected)
-    statistic = np.sum((observed - expected) ** 2 / expected)
+    expected_arr = np.where(expected_arr == 0, 1e-10, expected_arr)
+    statistic = np.sum((observed_arr - expected_arr) ** 2 / expected_arr)
 
     # 自由度 = 分组数 - 2
-    actual_bins = len(observed) // 2
+    actual_bins = len(observed_arr) // 2
     df = actual_bins - 2
 
     if df <= 0:
@@ -278,7 +280,7 @@ def hosmer_lemeshow_test(
 
 
 def compute_optimal_threshold(
-    y_true: np.ndarray, y_pred: np.ndarray, method: str = "youden"
+    y_true: np.ndarray[Any, Any], y_pred: np.ndarray[Any, Any], method: str = "youden"
 ) -> dict[str, Any]:
     """
     计算最优阈值

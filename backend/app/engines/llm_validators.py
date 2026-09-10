@@ -205,3 +205,39 @@ def get_validator() -> OutputValidator:
     if _validator is None:
         _validator = OutputValidator()
     return _validator
+
+
+def numbers_in(obj: Any) -> list[float]:
+    """递归提取 facts 中的所有数值（含字符串文本中的数字，如检验结论里的 p 值）。
+
+    幻觉校验的合法数值域：引擎真实计算值既可能以数值类型出现（metrics），
+    也可能嵌在结论文字里（conclusion 字符串），两者都属「来自引擎」。
+    """
+    validator = get_validator()
+    numbers: list[float] = []
+    if isinstance(obj, bool):
+        return numbers
+    if isinstance(obj, int | float):
+        numbers.append(float(obj))
+    elif isinstance(obj, str):
+        numbers.extend(validator._extract_numbers(obj))
+    elif isinstance(obj, dict):
+        for value in obj.values():
+            numbers.extend(numbers_in(value))
+    elif isinstance(obj, list | tuple):
+        for item in obj:
+            numbers.extend(numbers_in(item))
+    return numbers
+
+
+def hallucinated_numbers(text: str, facts: Any) -> list[float]:
+    """输出文本中不属于 facts 的数值（常见统计阈值豁免）。"""
+    validator = get_validator()
+    allowed = numbers_in(facts)
+    hallucinated: list[float] = []
+    for num in validator._extract_numbers(text):
+        if num in validator.COMMON_THRESHOLDS:
+            continue
+        if not any(validator._is_close(num, ref, rel_tol=0.05) for ref in allowed):
+            hallucinated.append(num)
+    return hallucinated

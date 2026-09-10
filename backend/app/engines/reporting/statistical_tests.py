@@ -11,7 +11,7 @@ from scipy import stats
 
 
 def paired_t_test(
-    metric1: np.ndarray, metric2: np.ndarray, alternative: str = "two-sided"
+    metric1: np.ndarray[Any, Any], metric2: np.ndarray[Any, Any], alternative: str = "two-sided"
 ) -> dict[str, Any]:
     """
     配对 t 检验
@@ -92,7 +92,9 @@ def paired_t_test(
     }
 
 
-def delong_test(y_true: np.ndarray, y_score1: np.ndarray, y_score2: np.ndarray) -> dict[str, Any]:
+def delong_test(
+    y_true: np.ndarray[Any, Any], y_score1: np.ndarray[Any, Any], y_score2: np.ndarray[Any, Any]
+) -> dict[str, Any]:
     """
     DeLong 检验
 
@@ -208,7 +210,7 @@ def delong_test(y_true: np.ndarray, y_score1: np.ndarray, y_score2: np.ndarray) 
     }
 
 
-def friedman_test(*metrics: np.ndarray) -> dict[str, Any]:
+def friedman_test(*metrics: np.ndarray[Any, Any]) -> dict[str, Any]:
     """
     Friedman 检验
 
@@ -234,7 +236,7 @@ def friedman_test(*metrics: np.ndarray) -> dict[str, Any]:
         }
 
     # 构造数据矩阵（行=折，列=模型）
-    data = []
+    data: list[Any] = []
     min_len = min(len(m) for m in metrics)
 
     for i in range(min_len):
@@ -250,10 +252,10 @@ def friedman_test(*metrics: np.ndarray) -> dict[str, Any]:
             "conclusion": "有效样本不足，无法进行Friedman检验",
         }
 
-    data = np.array(data)
+    data_matrix = np.array(data)
 
     # Friedman 检验
-    statistic, p_value = stats.friedmanchisquare(*data.T)
+    statistic, p_value = stats.friedmanchisquare(*data_matrix.T)
 
     significant = bool(p_value < 0.05)
 
@@ -273,7 +275,7 @@ def friedman_test(*metrics: np.ndarray) -> dict[str, Any]:
 
 
 def wilcoxon_signed_rank_test(
-    metric1: np.ndarray, metric2: np.ndarray, alternative: str = "two-sided"
+    metric1: np.ndarray[Any, Any], metric2: np.ndarray[Any, Any], alternative: str = "two-sided"
 ) -> dict[str, Any]:
     """
     Wilcoxon 符号秩检验（非参数版本的配对t检验）
@@ -335,7 +337,9 @@ def wilcoxon_signed_rank_test(
     }
 
 
-def mcnemar_test(y_true: np.ndarray, y_pred1: np.ndarray, y_pred2: np.ndarray) -> dict[str, Any]:
+def mcnemar_test(
+    y_true: np.ndarray[Any, Any], y_pred1: np.ndarray[Any, Any], y_pred2: np.ndarray[Any, Any]
+) -> dict[str, Any]:
     """
     McNemar 检验
 

@@ -323,14 +323,14 @@ def _survival_analysis_payload(
     target = _read_parquet(storage, f"runs/{run_id}/target.parquet")
     if target is None:
         return None
-    times = target["time"].to_numpy(dtype=float)
-    events = target["event"].to_numpy(dtype=int)
+    times = target["time"].to_numpy(dtype=float).tolist()
+    events = target["event"].to_numpy(dtype=int).tolist()
     at_risk = at_risk_table(times, events)
     logrank = None
     if ranking:
         oof = _read_parquet(storage, f"runs/{run_id}/oof_{ranking[0]}.parquet")
         if oof is not None and "oof" in oof.columns and len(oof) == len(target):
-            logrank = median_risk_logrank(times, events, oof["oof"].to_numpy(dtype=float))
+            logrank = median_risk_logrank(times, events, oof["oof"].to_numpy(dtype=float).tolist())
             if logrank is not None:
                 logrank["model_key"] = ranking[0]
     if at_risk is None and logrank is None:

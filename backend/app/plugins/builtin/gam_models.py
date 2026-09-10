@@ -223,7 +223,7 @@ class GAMAdapter(BaseModelAdapter):
     def _sorted_unique(values: pd.Series) -> list[Any]:
         unique = pd.unique(values).tolist()
         try:
-            return cast(list[Any], sorted(unique))
+            return sorted(unique)
         except TypeError:
             return unique
 

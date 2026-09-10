@@ -59,8 +59,7 @@ def generate_baseline_table(
     # 分层信息
     strata_info = []
     if stratify_by and stratify_by in df.columns:
-        strata_groups = df[stratify_by].unique()
-        strata_groups = [g for g in strata_groups if pd.notna(g)]
+        strata_groups = [g for g in df[stratify_by].unique() if pd.notna(g)]
 
         for group in strata_groups:
             group_df = df[df[stratify_by] == group]
@@ -103,7 +102,7 @@ def _detect_categorical_cols(df: pd.DataFrame) -> list[str]:
     """自动检测分类变量"""
     categorical = []
     for col in df.columns:
-        if pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_categorical_dtype(df[col]):
+        if pd.api.types.is_object_dtype(df[col]) or isinstance(df[col].dtype, pd.CategoricalDtype):
             categorical.append(col)
         elif pd.api.types.is_numeric_dtype(df[col]):
             n_unique = df[col].nunique()
@@ -129,7 +128,7 @@ def _summarize_continuous(
     # 检查正态性（样本量>20时）
     use_mean = len(values) <= 20 or _is_normal(values)
 
-    row = {
+    row: dict[str, Any] = {
         "variable": col,
         "type": "continuous",
         "format": "mean±sd" if use_mean else "median(iqr)",
@@ -183,13 +182,13 @@ def _summarize_categorical(
 
     返回格式：n (%)，每个类别一行
     """
-    rows = []
+    rows: list[dict[str, Any]] = []
 
     # 获取所有类别
     categories = df[col].value_counts().index.tolist()
 
     # 父行（变量名）
-    parent_row = {
+    parent_row: dict[str, Any] = {
         "variable": col,
         "type": "categorical_header",
         "total": "",
@@ -209,7 +208,11 @@ def _summarize_categorical(
         if pd.isna(category):
             continue
 
-        row = {"variable": f"  {category}", "type": "categorical_value", "category": str(category)}
+        row: dict[str, Any] = {
+            "variable": f"  {category}",
+            "type": "categorical_value",
+            "category": str(category),
+        }
 
         # 总体统计
         n_total = int((df[col] == category).sum())
@@ -253,7 +256,7 @@ def _is_normal(values: pd.Series) -> bool:
 
     try:
         _, p_value = stats.shapiro(values)
-        return p_value > 0.05
+        return bool(p_value > 0.05)
     except Exception:
         return True
 

@@ -259,11 +259,12 @@ class GEEAdapter(BaseModelAdapter):
         else:
             group_column = None
         supplied_groups = options.get("groups")
+        groups: np.ndarray[Any, Any] | None
         if supplied_groups is not None:
-            groups = pd.Series(supplied_groups)
-            if len(groups) != len(frame):
+            supplied = pd.Series(supplied_groups)
+            if len(supplied) != len(frame):
                 raise ValueError("groups must contain one value per row")
-            groups = groups.to_numpy()
+            groups = supplied.to_numpy()
         elif group_column is not None:
             groups = frame[group_column].to_numpy()
         else:

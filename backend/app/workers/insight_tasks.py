@@ -53,7 +53,11 @@ def _safe_auto_fixes(issues: list[dict[str, Any]]) -> list[quickfix.QuickFixActi
     actions: list[quickfix.QuickFixAction] = []
     seen: set[tuple[str, str]] = set()
     for issue in issues:
-        action_type = _FIXABLE.get((issue.get("rule_id"), issue.get("severity")))
+        rule_id = issue.get("rule_id")
+        severity = issue.get("severity")
+        if not isinstance(rule_id, str) or not isinstance(severity, str):
+            continue
+        action_type = _FIXABLE.get((rule_id, severity))
         column = issue.get("column")
         if action_type is None or not column or (action_type, column) in seen:
             continue

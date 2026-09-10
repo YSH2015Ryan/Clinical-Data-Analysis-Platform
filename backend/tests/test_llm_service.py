@@ -8,9 +8,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 import requests
+from app.engines.llm_validators import OutputValidator, get_validator
 from app.services.llm import LLMService
 from app.services.llm_providers.ollama_provider import OllamaProvider
-from app.services.llm_validators import OutputValidator, get_validator
 
 
 class TestOllamaProvider:

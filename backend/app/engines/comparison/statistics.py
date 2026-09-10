@@ -99,7 +99,7 @@ def _get_primary_metric(task_type: str) -> str:
     return primary_metrics.get(task_type, "auc")
 
 
-def _extract_fold_metrics(row: dict[str, Any], metric_name: str) -> np.ndarray | None:
+def _extract_fold_metrics(row: dict[str, Any], metric_name: str) -> np.ndarray[Any, Any] | None:
     """
     从模型数据中提取折级别指标
 
@@ -135,7 +135,7 @@ def _extract_fold_metrics(row: dict[str, Any], metric_name: str) -> np.ndarray |
         return None
 
     # 转换为 numpy 数组
-    folds_array = np.array(folds)
+    folds_array: np.ndarray[Any, Any] = np.array(folds)
 
     # 移除 NaN
     folds_array = folds_array[np.isfinite(folds_array)]
@@ -147,7 +147,10 @@ def _extract_fold_metrics(row: dict[str, Any], metric_name: str) -> np.ndarray |
 
 
 def _compute_pvalue(
-    best_folds: np.ndarray, current_folds: np.ndarray, task_type: str, metric_name: str
+    best_folds: np.ndarray[Any, Any],
+    current_folds: np.ndarray[Any, Any],
+    task_type: str,
+    metric_name: str,
 ) -> tuple[float | None, str]:
     """
     计算 p 值

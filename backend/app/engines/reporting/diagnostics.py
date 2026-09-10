@@ -10,7 +10,7 @@ import numpy as np
 from scipy import stats
 
 
-def shapiro_wilk_test(residuals: np.ndarray) -> dict[str, Any]:
+def shapiro_wilk_test(residuals: np.ndarray[Any, Any]) -> dict[str, Any]:
     """
     Shapiro-Wilk 正态性检验
 
@@ -71,7 +71,7 @@ def shapiro_wilk_test(residuals: np.ndarray) -> dict[str, Any]:
     }
 
 
-def breusch_pagan_test(X: np.ndarray, residuals: np.ndarray) -> dict[str, Any]:
+def breusch_pagan_test(X: np.ndarray[Any, Any], residuals: np.ndarray[Any, Any]) -> dict[str, Any]:
     """
     Breusch-Pagan 同方差性检验
 
@@ -209,7 +209,7 @@ def generate_diagnostic_paragraph(
     return "\n\n".join(paragraphs)
 
 
-def durbin_watson_test(residuals: np.ndarray) -> dict[str, Any]:
+def durbin_watson_test(residuals: np.ndarray[Any, Any]) -> dict[str, Any]:
     """
     Durbin-Watson 自相关检验
 
@@ -297,7 +297,7 @@ def ols_coefficient_table(
     return rows
 
 
-def vif_analysis(X: np.ndarray, feature_names: list[str] | None = None) -> dict[str, Any]:
+def vif_analysis(X: np.ndarray[Any, Any], feature_names: list[str] | None = None) -> dict[str, Any]:
     """
     方差膨胀因子 (VIF) 分析
 
