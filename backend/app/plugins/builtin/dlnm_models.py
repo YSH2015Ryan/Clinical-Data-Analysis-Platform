@@ -131,7 +131,7 @@ class DLNMAdapter(BaseModelAdapter):
     def _design(self, X: Any) -> np.ndarray[Any, Any]:
         lag_matrix = self._create_lag_matrix(X, self._max_lag)
         n_features = len(self._input_columns)
-        blocks = []
+        blocks: list[np.ndarray[Any, Any]] = []
         for feature in range(n_features):
             start = feature * (self._max_lag + 1)
             stop = (feature + 1) * (self._max_lag + 1)
@@ -231,7 +231,7 @@ class DLNMAdapter(BaseModelAdapter):
         curves: dict[str, dict[str, Any]] = {}
         for index, column in enumerate(result.columns):
             beta = result.coefficients[index]
-            effects = np.polynomial.polynomial.polyval(scaled, beta)
+            effects = np.polynomial.polynomial.polyval(scaled, beta)  # type: ignore[no-untyped-call]
             curves[column] = {
                 "lag": lags.astype(int).tolist(),
                 "effect": _json_value(effects),
@@ -245,7 +245,7 @@ class DLNMAdapter(BaseModelAdapter):
     def get_model_fit(self, model: Any | None = None) -> dict[str, Any]:
         result = self._require_model(model)
         k = len(result.coefficients.reshape(-1)) + 1
-        variance = max(result.rss / result.nobs, np.finfo(float).tiny)
+        variance = max(result.rss / result.nobs, float(np.finfo(float).tiny))
         aic = float(result.nobs * np.log(2.0 * np.pi * variance) + result.nobs + 2.0 * k)
         effects = self.get_lag_effects(result)
         r2 = 1.0 - result.rss / result.tss if result.tss > 0 else 0.0

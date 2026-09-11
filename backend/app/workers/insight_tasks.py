@@ -28,6 +28,7 @@ from app.engines import parser, quickfix, validation
 from app.engines.eda import compute_eda
 from app.engines.intelligent_task_advisor import IntelligentTaskAdvisor
 from app.engines.research_profiler import detect_research_direction
+from app.engines.supplement_advisor import advise_supplements
 from app.models.entities import Dataset, DatasetInsight, DatasetVersion, QualityReport
 from app.services.storage import StorageBackend, key_from_uri, storage_from_settings
 from app.workers.celery_app import celery_app
@@ -52,7 +53,11 @@ def _safe_auto_fixes(issues: list[dict[str, Any]]) -> list[quickfix.QuickFixActi
     actions: list[quickfix.QuickFixAction] = []
     seen: set[tuple[str, str]] = set()
     for issue in issues:
-        action_type = _FIXABLE.get((issue.get("rule_id"), issue.get("severity")))
+        rule_id = issue.get("rule_id")
+        severity = issue.get("severity")
+        if not isinstance(rule_id, str) or not isinstance(severity, str):
+            continue
+        action_type = _FIXABLE.get((rule_id, severity))
         column = issue.get("column")
         if action_type is None or not column or (action_type, column) in seen:
             continue
@@ -70,13 +75,16 @@ def _persist_fixed_version(
     transform_log: list[dict[str, Any]],
 ) -> DatasetVersion:
     """同步版 quickfix 服务：写新存储对象 + DatasetVersion + 重校验刷新展示状态。"""
-    version_no = int(
-        db.execute(
-            select(func.coalesce(func.max(DatasetVersion.version_no), 0)).where(
-                DatasetVersion.dataset_id == dataset.id
-            )
-        ).scalar_one()
-    ) + 1
+    version_no = (
+        int(
+            db.execute(
+                select(func.coalesce(func.max(DatasetVersion.version_no), 0)).where(
+                    DatasetVersion.dataset_id == dataset.id
+                )
+            ).scalar_one()
+        )
+        + 1
+    )
     safe_name = dataset.name.replace("/", "_").replace("\\", "_")[-120:]
     key = f"datasets/{dataset.project_id}/{dataset.id}/v{version_no}/{safe_name}"
     buf = io.BytesIO()
@@ -128,14 +136,22 @@ def _summary_lines(
     ss = eda["sample_size"]
     lines.append(f"数据集共 {eda['row_count']} 行、{eda['column_count']} 列。")
     if auto_fix_log:
-        fixed = sorted({f"{e['column']}（{e['action']}，{e['affected_rows']} 行）" for e in auto_fix_log})
-        lines.append(f"已自动修复 {len(auto_fix_log)} 项：{'、'.join(fixed)}；源文件保持不变，可随时回溯。")
+        fixed = sorted(
+            {f"{e['column']}（{e['action']}，{e['affected_rows']} 行）" for e in auto_fix_log}
+        )
+        lines.append(
+            f"已自动修复 {len(auto_fix_log)} 项：{'、'.join(fixed)}；源文件保持不变，可随时回溯。"
+        )
     if report.blockers:
         lines.append(f"仍有 {report.blockers} 项阻塞级问题需人工处理后方可建模。")
     if ss.get("n_events") is not None:
         lines.append(
             f"结局事件列 {ss['event_column']}：事件数 {ss['n_events']}，EPV={ss['epv']}"
-            + ("（≥10，满足常规建模要求）" if ss.get("epv_adequate") else "（<10，建议精简特征数或扩充样本）")
+            + (
+                "（≥10，满足常规建模要求）"
+                if ss.get("epv_adequate")
+                else "（<10，建议精简特征数或扩充样本）"
+            )
         )
     missing = eda["missing"]
     lines.append(f"完整病例比例 {missing['complete_case_ratio']:.1%}。")
@@ -206,26 +222,29 @@ def auto_dataset_insight(dataset_id: str) -> None:
                 warnings=report.warnings,
             )
 
-        # 2-4. EDA + 任务推荐（规则）+ 研究画像
+        # 2-4. EDA + 任务推荐（规则）+ 研究画像 + 数据缺口建议(T6.14,确定性规则)
         eda = compute_eda(df, report.column_profiles)
         recommendation = IntelligentTaskAdvisor().analyze_dataset(
             df, report.column_profiles, switch="off"
         )
         research = detect_research_direction(df)
+        supplement_plan = advise_supplements(df, eda, report.column_profiles, research)
 
         # 5. 落库（替换旧 insight，幂等）
+        summary = _summary_lines(eda, recommendation, research, auto_fix_log, report)
+        if supplement_plan["items"]:
+            summary.append(supplement_plan["overall"])
         payload = {
             "eda": eda,
             "task_recommendation": asdict(recommendation),
             "research_profile": research,
             "auto_fix_log": auto_fix_log,
-            "summary": _summary_lines(eda, recommendation, research, auto_fix_log, report),
+            "summary": summary,
+            "supplement_plan": supplement_plan,
         }
         db.execute(delete(DatasetInsight).where(DatasetInsight.dataset_id == dataset.id))
         db.add(
-            DatasetInsight(
-                dataset_id=dataset.id, dataset_version_id=version.id, payload=payload
-            )
+            DatasetInsight(dataset_id=dataset.id, dataset_version_id=version.id, payload=payload)
         )
         db.commit()
         logger.info(

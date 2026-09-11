@@ -8,7 +8,9 @@ from app.engines.fix_guidance import fix_guidance_for
 from app.engines.validation import Issue
 
 
-def _issue(rule_id: str, severity: str = "warning", column: str | None = "bmi", rows: int = 10) -> Issue:
+def _issue(
+    rule_id: str, severity: str = "warning", column: str | None = "bmi", rows: int = 10
+) -> Issue:
     return Issue(rule_id, severity, "msg", column=column, affected_rows=rows)
 
 
@@ -26,8 +28,23 @@ class TestContract:
     def test_json_serializable(self) -> None:
         import json
 
-        for rid in ("RV001", "RV003", "RV101", "RV201", "RV301", "RV401", "RV501",
-                    "RV502", "RV601", "RV701", "RV801", "RV802", "RV803", "RV804", "RV999"):
+        for rid in (
+            "RV001",
+            "RV003",
+            "RV101",
+            "RV201",
+            "RV301",
+            "RV401",
+            "RV501",
+            "RV502",
+            "RV601",
+            "RV701",
+            "RV801",
+            "RV802",
+            "RV803",
+            "RV804",
+            "RV999",
+        ):
             json.dumps(fix_guidance_for(_issue(rid)), ensure_ascii=False)
 
     def test_deterministic(self) -> None:
@@ -40,7 +57,11 @@ class TestActionMapping:
     def test_rv201_warning_impute_first(self) -> None:
         g = fix_guidance_for(_issue("RV201", "warning", "bmi", 20))
         first = g["methods"][0]
-        assert first["action"] == {"type": "impute_missing", "column": "bmi", "params": {"strategy": "auto"}}
+        assert first["action"] == {
+            "type": "impute_missing",
+            "column": "bmi",
+            "params": {"strategy": "auto"},
+        }
         assert first["risk"]  # 一键动作必附风险说明
 
     def test_rv201_blocker_no_impute(self) -> None:

@@ -4,22 +4,22 @@
 提供用户友好的错误提示和操作步骤，替代技术术语。
 """
 
-from typing import Dict, Any
+from typing import Any
 
 
-def get_optimized_suggestion(rule_id: str, context: Dict[str, Any] = None) -> str:
+def get_optimized_suggestion(rule_id: str, context: dict[str, Any] | None = None) -> str:
     """
     获取优化的提示信息
-    
+
     Args:
         rule_id: 规则 ID（如 RV801）
         context: 上下文信息（如列名、数值等）
-        
+
     Returns:
         优化的提示文本
     """
     context = context or {}
-    
+
     suggestions = {
         "RV001": _rv001_encoding_error,
         "RV002": _rv002_empty_data,
@@ -40,15 +40,15 @@ def get_optimized_suggestion(rule_id: str, context: Dict[str, Any] = None) -> st
         "RV803": _rv803_mixed_units,
         "RV804": _rv804_extreme_values,
     }
-    
+
     func = suggestions.get(rule_id)
     if func:
         return func(context)
-    
+
     return "请参考平台文档修复此问题。"
 
 
-def _rv001_encoding_error(ctx: Dict[str, Any]) -> str:
+def _rv001_encoding_error(ctx: dict[str, Any]) -> str:
     encoding_hint = ctx.get("encoding_hint", "GBK")
     return f"""❌ 文件编码错误，无法读取
 
@@ -71,7 +71,7 @@ def _rv001_encoding_error(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv002_empty_data(ctx: Dict[str, Any]) -> str:
+def _rv002_empty_data(ctx: dict[str, Any]) -> str:
     return """❌ 文件中没有数据
 
 可能原因：
@@ -85,10 +85,10 @@ def _rv002_empty_data(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv003_duplicate_columns(ctx: Dict[str, Any]) -> str:
+def _rv003_duplicate_columns(ctx: dict[str, Any]) -> str:
     duplicates = ctx.get("duplicates", [])
     dup_text = "、".join(f"「{d}」" for d in duplicates[:3])
-    
+
     return f"""❌ 检测到重复的列名
 
 重复的列：{dup_text}{"等" if len(duplicates) > 3 else ""}
@@ -104,19 +104,19 @@ Excel 导出时可能自动添加了 .1, .2 后缀
 """
 
 
-def _rv201_missing_values(ctx: Dict[str, Any]) -> str:
+def _rv201_missing_values(ctx: dict[str, Any]) -> str:
     column = ctx.get("column", "")
     missing_rate = ctx.get("missing_rate", 0)
     severity = ctx.get("severity", "warning")
-    
+
     if severity == "blocker":
         threshold_text = "超过 50%"
         impact = "无法进行有效分析"
     else:
         threshold_text = "20%-50%"
         impact = "可能影响分析质量"
-    
-    return f"""⚠️ 列「{column}」缺失值过多（{missing_rate*100:.1f}%）
+
+    return f"""⚠️ 列「{column}」缺失值过多（{missing_rate * 100:.1f}%）
 
 缺失比例：{threshold_text}
 影响：{impact}
@@ -137,10 +137,10 @@ def _rv201_missing_values(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv301_invalid_values(ctx: Dict[str, Any]) -> str:
+def _rv301_invalid_values(ctx: dict[str, Any]) -> str:
     column = ctx.get("column", "")
     invalid_count = ctx.get("invalid_count", 0)
-    
+
     return f"""⚠️ 列「{column}」包含非法值（{invalid_count} 个）
 
 非法值示例：空格、特殊符号、文本（如"未测"）
@@ -159,9 +159,9 @@ def _rv301_invalid_values(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv401_date_format(ctx: Dict[str, Any]) -> str:
+def _rv401_date_format(ctx: dict[str, Any]) -> str:
     column = ctx.get("column", "")
-    
+
     return f"""ℹ️ 列「{column}」日期格式不一致
 
 平台将自动统一为 YYYY-MM-DD 格式
@@ -176,10 +176,10 @@ def _rv401_date_format(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv501_outliers(ctx: Dict[str, Any]) -> str:
+def _rv501_outliers(ctx: dict[str, Any]) -> str:
     column = ctx.get("column", "")
     outlier_count = ctx.get("outlier_count", 0)
-    
+
     return f"""⚠️ 列「{column}」检测到异常值（{outlier_count} 个）
 
 异常值：远离正常范围的极端数值（可能是录入错误）
@@ -198,13 +198,13 @@ def _rv501_outliers(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv502_clinical_range(ctx: Dict[str, Any]) -> str:
+def _rv502_clinical_range(ctx: dict[str, Any]) -> str:
     column = ctx.get("column", "")
     unreasonable_count = ctx.get("unreasonable_count", 0)
     min_val = ctx.get("min_val")
     max_val = ctx.get("max_val")
     expected_range = ctx.get("expected_range", "")
-    
+
     return f"""⚠️ 列「{column}」存在临床不合理值（{unreasonable_count} 个）
 
 实际范围：{min_val} ~ {max_val}
@@ -221,10 +221,10 @@ def _rv502_clinical_range(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv601_high_cardinality(ctx: Dict[str, Any]) -> str:
+def _rv601_high_cardinality(ctx: dict[str, Any]) -> str:
     column = ctx.get("column", "")
     unique_count = ctx.get("unique_count", 0)
-    
+
     return f"""⚠️ 列「{column}」类别过多（{unique_count} 个不同值）
 
 影响：类别过多会导致模型训练困难
@@ -243,7 +243,7 @@ def _rv601_high_cardinality(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv701_target_missing(ctx: Dict[str, Any]) -> str:
+def _rv701_target_missing(ctx: dict[str, Any]) -> str:
     return """❌ 缺少目标变量（要预测的结果列）
 
 平台需要知道您想预测什么结果才能开始分析
@@ -265,11 +265,11 @@ def _rv701_target_missing(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv702_missing_key_fields(ctx: Dict[str, Any]) -> str:
+def _rv702_missing_key_fields(ctx: dict[str, Any]) -> str:
     field_name = ctx.get("field_name", "")
     field_zh = ctx.get("field_zh", "")
     advice = ctx.get("advice", "")
-    
+
     return f"""⚠️ 建议补充「{field_zh}」列
 
 当前缺少：{field_name}
@@ -284,10 +284,10 @@ def _rv702_missing_key_fields(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv703_class_imbalance(ctx: Dict[str, Any]) -> str:
+def _rv703_class_imbalance(ctx: dict[str, Any]) -> str:
     minority_ratio = ctx.get("minority_ratio", 0)
-    
-    return f"""⚠️ 目标变量类别不平衡（少数类占比 {minority_ratio*100:.1f}%）
+
+    return f"""⚠️ 目标变量类别不平衡（少数类占比 {minority_ratio * 100:.1f}%）
 
 影响：模型可能倾向于预测多数类
 
@@ -307,9 +307,9 @@ def _rv703_class_imbalance(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv704_duplicate_rows(ctx: Dict[str, Any]) -> str:
+def _rv704_duplicate_rows(ctx: dict[str, Any]) -> str:
     duplicate_count = ctx.get("duplicate_count", 0)
-    
+
     return f"""⚠️ 检测到完全重复的行（{duplicate_count} 行）
 
 可能原因：
@@ -329,10 +329,10 @@ def _rv704_duplicate_rows(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv705_duplicate_patients(ctx: Dict[str, Any]) -> str:
+def _rv705_duplicate_patients(ctx: dict[str, Any]) -> str:
     suspect_count = ctx.get("suspect_count", 0)
     id_column = ctx.get("id_column", "")
-    
+
     return f"""ℹ️ 疑似同一患者的多次记录（{suspect_count} 组）
 
 检测依据：列「{id_column}」有重复值
@@ -355,10 +355,10 @@ def _rv705_duplicate_patients(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv801_long_table(ctx: Dict[str, Any]) -> str:
+def _rv801_long_table(ctx: dict[str, Any]) -> str:
     item_column = ctx.get("item_column", "")
     value_column = ctx.get("value_column", "")
-    
+
     return f"""❌ 检测到长表格式（每个检验项目占一行）
 
 当前格式：
@@ -398,10 +398,10 @@ def _rv801_long_table(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv802_susceptibility(ctx: Dict[str, Any]) -> str:
+def _rv802_susceptibility(ctx: dict[str, Any]) -> str:
     sus_column = ctx.get("sus_column", "")
     sus_count = ctx.get("sus_count", 0)
-    
+
     return f"""⚠️ 检测到药敏试验记录（{sus_count} 行）
 
 列「{sus_column}」包含：敏感、耐药、中介
@@ -420,10 +420,10 @@ def _rv802_susceptibility(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv803_mixed_units(ctx: Dict[str, Any]) -> str:
+def _rv803_mixed_units(ctx: dict[str, Any]) -> str:
     examples = ctx.get("examples", [])
     example_text = "、".join(f"「{e}」" for e in examples[:3])
-    
+
     return f"""⚠️ 同一检验项目存在多种单位
 
 示例：{example_text}
@@ -443,10 +443,10 @@ def _rv803_mixed_units(ctx: Dict[str, Any]) -> str:
 """
 
 
-def _rv804_extreme_values(ctx: Dict[str, Any]) -> str:
+def _rv804_extreme_values(ctx: dict[str, Any]) -> str:
     column = ctx.get("column", "")
     extreme = ctx.get("extreme", 0)
-    
+
     return f"""⚠️ 列「{column}」存在极端值（绝对值达 {extreme:g}）
 
 可能原因：

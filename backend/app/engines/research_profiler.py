@@ -12,7 +12,6 @@ from typing import Any
 
 import pandas as pd
 
-
 _TIME_HINTS = (
     "time",
     "date",
@@ -91,7 +90,7 @@ def _name_has(name: object, hints: tuple[str, ...]) -> bool:
 
 def _is_binary(series: pd.Series) -> bool:
     values = series.dropna().unique().tolist()
-    return bool(values) and set(values).issubset({0, 1, "0", "1", False, True})
+    return bool(values) and set(values).issubset({0, 1, "0", "1"})
 
 
 def _looks_datetime(series: pd.Series) -> bool:
@@ -115,9 +114,7 @@ def _time_columns(df: pd.DataFrame) -> list[str]:
 
 
 def _follow_up_columns(df: pd.DataFrame, hints: Mapping[str, Any]) -> list[str]:
-    explicit = (
-        hints.get("time_column") or hints.get("time_col") or hints.get("follow_up_column")
-    )
+    explicit = hints.get("time_column") or hints.get("time_col") or hints.get("follow_up_column")
     names = [str(explicit)] if explicit in df.columns else []
     for column in df.columns:
         name = str(column)

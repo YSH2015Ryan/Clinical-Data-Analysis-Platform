@@ -10,7 +10,8 @@ from typing import Any
 # quickfix 动作的风险说明（与前端 FIX_RISK 同源；一键动作必须附风险）
 _RISK: dict[str, str] = {
     "drop_column": "该列将从新版本中彻底移除，其中的数据在新版本不可恢复（适用于确认无用的列）。",
-    "drop_duplicates": "完全重复的数据行将被删除，仅保留一份；若重复本身是真实记录，会造成样本损失。",
+    "drop_duplicates": "完全重复的数据行将被删除，仅保留一份；"
+    "若重复本身是真实记录，会造成样本损失。",
     "to_missing": "无法识别的取值将被置为缺失，原取值在新版本不可恢复。",
     "winsorize_outliers": "异常值将被截断到分位数边界，极端值会被修改但不会被删除。",
     "impute_missing": "缺失值将被自动填充（数值列用中位数，分类列用众数），原始缺失状态不可恢复。",
@@ -18,7 +19,9 @@ _RISK: dict[str, str] = {
 }
 
 
-def _action(action_type: str, column: str | None, params: dict[str, Any] | None = None) -> dict[str, Any]:
+def _action(
+    action_type: str, column: str | None, params: dict[str, Any] | None = None
+) -> dict[str, Any]:
     return {"type": action_type, "column": column, "params": params or {}}
 
 
@@ -51,7 +54,8 @@ def fix_guidance_for(issue: Any) -> dict[str, Any]:
         if sev == "blocker":
             return {
                 "problem": f"列「{col}」缺失率超过 50%（{rate_hint}），信息损失严重。",
-                "impact": "缺失过半的列插补后分布严重失真，纳入建模会引入系统性偏倚，统计结论不可靠。",
+                "impact": "缺失过半的列插补后分布严重失真，纳入建模会引入系统性偏倚，"
+                "统计结论不可靠。",
                 "methods": [
                     _method(
                         "删除该列（推荐）",
@@ -66,7 +70,8 @@ def fix_guidance_for(issue: Any) -> dict[str, Any]:
             }
         return {
             "problem": f"列「{col}」存在缺失（{rate_hint}）。",
-            "impact": "含缺失的行在多数建模流程中被剔除，样本量减少、可能引入选择偏倚；插补不当会压缩方差。",
+            "impact": "含缺失的行在多数建模流程中被剔除，样本量减少、可能引入选择偏倚；"
+            "插补不当会压缩方差。",
             "methods": [
                 _method(
                     "一键插补（数值列中位数 / 分类列众数）",
@@ -95,7 +100,10 @@ def fix_guidance_for(issue: Any) -> dict[str, Any]:
                     "将无法识别的取值置为缺失，之后可按缺失流程插补；列恢复为数值型。",
                     _action("to_missing", col),
                 ),
-                _manual("修正源数据后重新上传", "若非法值是录入错误（如单位混入），请在 Excel 修正后重新上传。"),
+                _manual(
+                    "修正源数据后重新上传",
+                    "若非法值是录入错误（如单位混入），请在 Excel 修正后重新上传。",
+                ),
             ],
         }
 
@@ -105,8 +113,14 @@ def fix_guidance_for(issue: Any) -> dict[str, Any]:
                 "problem": f"数据包含 {n} 行完全重复的记录。",
                 "impact": "重复行会让同一患者被多次计数，高估样本量并低估置信区间宽度。",
                 "methods": [
-                    _method("一键去重", "仅保留每组完全重复记录中的一份。", _action("drop_duplicates", None)),
-                    _manual("核对后保留", "若重复是真实的多次就诊记录，应保留并考虑改用重复测量模型。"),
+                    _method(
+                        "一键去重",
+                        "仅保留每组完全重复记录中的一份。",
+                        _action("drop_duplicates", None),
+                    ),
+                    _manual(
+                        "核对后保留", "若重复是真实的多次就诊记录，应保留并考虑改用重复测量模型。"
+                    ),
                 ],
             }
         return {
@@ -123,7 +137,8 @@ def fix_guidance_for(issue: Any) -> dict[str, Any]:
     if rid in ("RV501", "RV804"):
         return {
             "problem": f"列「{col}」存在 {n} 个统计异常值/极端值。",
-            "impact": "极端值会显著拉偏均值、回归系数与变量重要性；但也可能是真实重症患者，直接删除会丢失信息。",
+            "impact": "极端值会显著拉偏均值、回归系数与变量重要性；"
+            "但也可能是真实重症患者，直接删除会丢失信息。",
             "methods": [
                 _method(
                     "一键截尾（Winsorize）",
@@ -152,8 +167,14 @@ def fix_guidance_for(issue: Any) -> dict[str, Any]:
             "problem": f"列「{col}」唯一值过多，疑似 ID 列或自由文本。",
             "impact": "高基数列无法作为分类特征（每个类别样本过少），若为 ID 还会造成数据泄漏。",
             "methods": [
-                _method("删除该列", "确认是 ID/姓名等标识列时删除，避免泄漏与过拟合。", _action("drop_column", col)),
-                _manual("合并类别", "若是有意义的分类（如诊断名称），在 Excel 归并相似类别后重新上传。"),
+                _method(
+                    "删除该列",
+                    "确认是 ID/姓名等标识列时删除，避免泄漏与过拟合。",
+                    _action("drop_column", col),
+                ),
+                _manual(
+                    "合并类别", "若是有意义的分类（如诊断名称），在 Excel 归并相似类别后重新上传。"
+                ),
             ],
         }
 
@@ -162,7 +183,9 @@ def fix_guidance_for(issue: Any) -> dict[str, Any]:
             "problem": "结局类别不平衡（少数类占比过低）。",
             "impact": "模型会偏向多数类，准确率虚高而少数类召回很差；需用 PR-AUC/类别权重评估。",
             "methods": [
-                _manual("无需修复", "平台建模时自动使用类别权重与 PR-AUC 指标；报告中应说明类别比例。"),
+                _manual(
+                    "无需修复", "平台建模时自动使用类别权重与 PR-AUC 指标；报告中应说明类别比例。"
+                ),
                 _manual("扩充少数类样本", "若少数类样本过少（EPV 不足），优先补充病例。"),
             ],
         }
@@ -170,9 +193,13 @@ def fix_guidance_for(issue: Any) -> dict[str, Any]:
     if rid == "RV801":
         return {
             "problem": "检测到长表结构（一行一条检验记录，而非一行一个患者）。",
-            "impact": "建模要求宽表（一行一个患者、一列一个变量）；长表直接建模会把同一患者拆成多条样本。",
+            "impact": "建模要求宽表（一行一个患者、一列一个变量）；"
+            "长表直接建模会把同一患者拆成多条样本。",
             "methods": [
-                _manual("用数据准备功能转宽表", "使用平台「数据准备」向导（长表+诊断表 → 宽表）完成转换。"),
+                _manual(
+                    "用数据准备功能转宽表",
+                    "使用平台「数据准备」向导（长表+诊断表 → 宽表）完成转换。",
+                ),
                 _manual("Excel 数据透视表", "自行用数据透视表转为宽表后重新上传。"),
             ],
         }
@@ -196,7 +223,10 @@ def fix_guidance_for(issue: Any) -> dict[str, Any]:
             "problem": "同一检验项目存在多种单位。",
             "impact": "不同单位的数值直接混合会让分布与统计量完全失真。",
             "methods": [
-                _manual("统一单位后重新上传", "在 Excel 用公式换算（如 mmol/L × 18 = mg/dL）后重新上传。"),
+                _manual(
+                    "统一单位后重新上传",
+                    "在 Excel 用公式换算（如 mmol/L × 18 = mg/dL）后重新上传。",
+                ),
             ],
         }
 
@@ -205,7 +235,10 @@ def fix_guidance_for(issue: Any) -> dict[str, Any]:
             "problem": "未识别到结局（目标）变量列。",
             "impact": "没有结局变量无法做预测建模；只能做探索性分析。",
             "methods": [
-                _manual("在列画像中标记语义", "若已有结局列但未识别，在「列画像」中将其标记为 Label/Event。"),
+                _manual(
+                    "在列画像中标记语义",
+                    "若已有结局列但未识别，在「列画像」中将其标记为 Label/Event。",
+                ),
                 _manual("补充结局列后重新上传", "在 Excel 中添加结局/事件列后重新上传。"),
             ],
         }
@@ -224,7 +257,10 @@ def fix_guidance_for(issue: Any) -> dict[str, Any]:
             "problem": "文件无法解析（编码或格式错误）。",
             "impact": "数据完全无法读取，后续任何分析都无法进行。",
             "methods": [
-                _manual("另存为 UTF-8 CSV", "用 Excel「另存为 → CSV UTF-8」或记事本「另存为 → UTF-8」后重新上传。"),
+                _manual(
+                    "另存为 UTF-8 CSV",
+                    "用 Excel「另存为 → CSV UTF-8」或记事本「另存为 → UTF-8」后重新上传。",
+                ),
             ],
         }
 
@@ -233,7 +269,9 @@ def fix_guidance_for(issue: Any) -> dict[str, Any]:
             "problem": "存在重复列名。",
             "impact": "重复列名会让数据对齐出错（后列覆盖前列），分析结果不可信。",
             "methods": [
-                _manual("重命名重复列", "在 Excel 中将重复列改名（如「血压」→「收缩压」）后重新上传。"),
+                _manual(
+                    "重命名重复列", "在 Excel 中将重复列改名（如「血压」→「收缩压」）后重新上传。"
+                ),
             ],
         }
 

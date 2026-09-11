@@ -10,10 +10,11 @@ LLM 服务统一接口
 import logging
 from typing import TYPE_CHECKING, Any, Literal
 
+from app.engines.llm_validators import get_validator
+
 from .llm_privacy import assert_cloud_payload_safe
 from .llm_providers.ollama_provider import OllamaProvider
 from .llm_providers.openai_provider import OpenAIProvider
-from .llm_validators import get_validator
 
 if TYPE_CHECKING:
     from .settings import LlmRuntimeConfig

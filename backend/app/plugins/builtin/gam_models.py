@@ -158,9 +158,7 @@ class GAMAdapter(BaseModelAdapter):
             series = frame[column]
             requested = feature_types.get(column)
             if requested is not None and requested not in {"continuous", "categorical"}:
-                raise ValueError(
-                    f"feature_types[{column!r}] must be 'continuous' or 'categorical'"
-                )
+                raise ValueError(f"feature_types[{column!r}] must be 'continuous' or 'categorical'")
             if requested is not None:
                 kind = requested
             elif column in overrides or (
@@ -225,7 +223,7 @@ class GAMAdapter(BaseModelAdapter):
     def _sorted_unique(values: pd.Series) -> list[Any]:
         unique = pd.unique(values).tolist()
         try:
-            return cast(list[Any], sorted(unique))
+            return sorted(unique)
         except TypeError:
             return unique
 
@@ -242,17 +240,14 @@ class GAMAdapter(BaseModelAdapter):
         if requested is not None and requested not in {"regression", "classification"}:
             raise ValueError("task_type must be 'regression' or 'classification'")
         unique = self._sorted_unique(response)
-        is_classification = (
-            requested == "classification"
-            or (
-                requested is None
-                and (
-                    isinstance(response.dtype, pd.CategoricalDtype)
-                    or pd.api.types.is_object_dtype(response)
-                    or pd.api.types.is_string_dtype(response)
-                    or pd.api.types.is_bool_dtype(response)
-                    or len(unique) == 2
-                )
+        is_classification = requested == "classification" or (
+            requested is None
+            and (
+                isinstance(response.dtype, pd.CategoricalDtype)
+                or pd.api.types.is_object_dtype(response)
+                or pd.api.types.is_string_dtype(response)
+                or pd.api.types.is_bool_dtype(response)
+                or len(unique) == 2
             )
         )
         if is_classification:

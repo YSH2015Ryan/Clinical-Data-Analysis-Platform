@@ -722,13 +722,17 @@ def _auto_generate_html_report(db: Any, run: AnalysisRun) -> None:
     from app.models.entities import Report
     from app.workers.report_tasks import generate_report
 
-    existing = db.execute(
-        select(Report).where(
-            Report.run_id == run.id,
-            Report.format == "html",
-            Report.status.in_(["PENDING", "READY"]),
+    existing = (
+        db.execute(
+            select(Report).where(
+                Report.run_id == run.id,
+                Report.format == "html",
+                Report.status.in_(["PENDING", "READY"]),
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if existing is not None:
         return
     report = Report(run_id=run.id, format="html", created_by=run.created_by)

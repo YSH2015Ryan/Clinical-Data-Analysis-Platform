@@ -34,6 +34,15 @@ const ACTION_LABEL: Record<string, string> = {
   to_missing: "非法值置缺失",
 };
 
+/** T6.14 缺口类型标签 */
+const DEFICIT_LABEL: Record<string, string> = {
+  epv: "样本量/EPV 不足",
+  imbalance: "类别不均衡",
+  survival_events: "生存事件不足",
+  variable_roles: "变量角色缺失",
+  power: "组间把握度不足",
+};
+
 function fmt(v: number | null | undefined, digits = 2): string {
   return v == null ? "—" : v.toFixed(digits);
 }
@@ -132,6 +141,7 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
 
   const { eda, task_recommendation: rec, research_profile: rp, auto_fix_log: fixLog, summary } =
     insight.payload;
+  const supplement = insight.payload.supplement_plan;
   const ss = eda.sample_size;
   const topMissing = eda.missing.columns.filter((c) => c.missing > 0).slice(0, 10);
   const contPairs = eda.correlations.continuous.top_pairs;
@@ -165,6 +175,30 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
                 </Tag>
               ))}
             </Space>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
+      {/* T6.14 数据缺口建议（规则引擎真实计算；依据串可展开核对） */}
+      {supplement && supplement.items.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          message={`数据缺口建议（${supplement.items.length} 项）——补充数据可提升分析可靠性`}
+          description={
+            <ul style={{ margin: "4px 0", paddingLeft: 20 }}>
+              {supplement.items.map((item, i) => (
+                <li key={i} style={{ marginBottom: 8 }}>
+                  <Tag color="orange">{DEFICIT_LABEL[item.deficit_type] ?? item.deficit_type}</Tag>
+                  {item.suggestion}
+                  <br />
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                    依据：{item.basis}
+                  </Typography.Text>
+                </li>
+              ))}
+            </ul>
           }
           style={{ marginBottom: 16 }}
         />

@@ -12,7 +12,8 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
-from .llm_validators import get_validator
+from app.engines.llm_validators import hallucinated_numbers, numbers_in
+
 from .settings import FeatureSwitch
 
 if TYPE_CHECKING:
@@ -46,42 +47,6 @@ def switch_to_choice(switch: FeatureSwitch) -> "ModelChoice | None":
         "cloud": "cloud",
     }
     return mapping.get(switch)
-
-
-def _numbers_in(obj: Any) -> list[float]:
-    """递归提取 facts 中的所有数值（含字符串文本中的数字，如检验结论里的 p 值）。
-
-    幻觉校验的合法数值域：引擎真实计算值既可能以数值类型出现（metrics），
-    也可能嵌在结论文字里（conclusion 字符串），两者都属「来自引擎」。
-    """
-    validator = get_validator()
-    numbers: list[float] = []
-    if isinstance(obj, bool):
-        return numbers
-    if isinstance(obj, int | float):
-        numbers.append(float(obj))
-    elif isinstance(obj, str):
-        numbers.extend(validator._extract_numbers(obj))
-    elif isinstance(obj, dict):
-        for value in obj.values():
-            numbers.extend(_numbers_in(value))
-    elif isinstance(obj, list | tuple):
-        for item in obj:
-            numbers.extend(_numbers_in(item))
-    return numbers
-
-
-def _hallucinated_numbers(text: str, facts: Any) -> list[float]:
-    """输出文本中不属于 facts 的数值（常见统计阈值豁免）。"""
-    validator = get_validator()
-    allowed = _numbers_in(facts)
-    hallucinated: list[float] = []
-    for num in validator._extract_numbers(text):
-        if num in validator.COMMON_THRESHOLDS:
-            continue
-        if not any(validator._is_close(num, ref, rel_tol=0.05) for ref in allowed):
-            hallucinated.append(num)
-    return hallucinated
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +99,7 @@ def _parse_questions(raw: str, facts: dict[str, Any]) -> list[dict[str, Any]] | 
         models = [str(m) for m in (item.get("models") or []) if str(m) in allowed_models]
         charts = [str(c) for c in (item.get("charts") or []) if str(c) in _CHART_WHITELIST]
         # 幻觉拦截：问题/设计文本中的数值必须来自 Facts
-        if _hallucinated_numbers(f"{question} {design}", facts):
+        if hallucinated_numbers(f"{question} {design}", facts):
             logger.warning(f"research_question_hallucination: {question[:40]}")
             continue
         questions.append(
@@ -191,7 +156,7 @@ def _citable_numbers(facts: dict[str, Any], cap: int = 40) -> list[float]:
     否则 LLM 引用真实结论数字会被误判为幻觉。
     """
     seen: list[float] = []
-    for num in _numbers_in(facts):
+    for num in numbers_in(facts):
         if not any(abs(num - s) < 1e-12 for s in seen):
             seen.append(num)
         if len(seen) >= cap:
@@ -297,7 +262,7 @@ def explain_validation_issues(
         if not (_EXPLAIN_MIN_LEN <= len(text) <= _EXPLAIN_MAX_LEN):
             logger.warning(f"issue_explain_bad_length: {issue.get('rule_id')}: {len(text)}")
             continue
-        if _hallucinated_numbers(text, issue):
+        if hallucinated_numbers(text, issue):
             logger.warning(f"issue_explain_hallucination: {issue.get('rule_id')}")
             continue
         issue["llm_explanation"] = text
@@ -362,7 +327,7 @@ def _parse_iteration_advice(raw: str, facts: dict[str, Any]) -> dict[str, Any] |
     if not add and not drop and not selected:
         return None  # 无实质建议 → 回退规则版（避免空建议卡片）
     # 幻觉拦截：回答/摘要中的数值必须来自 Facts
-    if _hallucinated_numbers(f"{answer} {summary}", facts):
+    if hallucinated_numbers(f"{answer} {summary}", facts):
         logger.warning("iteration_advice_hallucination")
         return None
     return {

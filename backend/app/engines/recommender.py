@@ -145,9 +145,7 @@ def recommend_config_from_profile(
     because it requires row-level relationships that are not represented here.
     """
     dropped_ids = [
-        column["name"]
-        for column in column_profile
-        if column.get("inferred_type") == "id"
+        column["name"] for column in column_profile if column.get("inferred_type") == "id"
     ]
 
     per_column = {

@@ -7,7 +7,6 @@ DoD:
 """
 
 import pandas as pd
-
 from app.engines.validation import parse_error_issue, validate
 
 

@@ -8,7 +8,7 @@
 import io
 import os
 import uuid
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from app.models.base import Base
@@ -22,9 +22,7 @@ from sqlalchemy.orm import sessionmaker
 # 故意制造：bmi 缺失（RV201 warning）、wbc 一个极端异常值（RV501/RV804 warning）
 _CLEAN_CSV = (
     "patient_id,age,gender,death\n"
-    + "\n".join(
-        f"P{i:03d},{20 + i % 40},{'男' if i % 2 else '女'},{i % 2}" for i in range(60)
-    )
+    + "\n".join(f"P{i:03d},{20 + i % 40},{'男' if i % 2 else '女'},{i % 2}" for i in range(60))
 ).encode("utf-8")
 
 _FIXABLE_CSV = (
@@ -109,6 +107,9 @@ class TestInsightHappyPath:
         # 研究画像规则产出
         assert payload["research_profile"]["research_type"]
         assert isinstance(payload["summary"], list) and payload["summary"]
+        # T6.14：干净数据(60 例/3 特征/30 事件,EPV=10,年龄性别列齐备)无缺口
+        assert payload["supplement_plan"]["items"] == []
+        assert payload["supplement_plan"]["overall"]
 
     def test_insight_points_at_latest_version(self, sync_db: Any) -> None:
         ds = _make_dataset(sync_db, _CLEAN_CSV)
@@ -116,6 +117,43 @@ class TestInsightHappyPath:
         ins = _insight(sync_db, ds.id)
         v = sync_db.get(DatasetVersion, ins.dataset_version_id)
         assert v is not None and v.dataset_id == ds.id
+
+
+class TestSupplementPlanWiring:
+    """T6.14 接入:体检流水线产出 supplement_plan(引擎真实数值,docs/14 §5 已登记)。"""
+
+    # 92 例、40 特征、28 阳性 → EPV=0.7(实据场景复刻)
+    _EPV_DEFICIT_CSV = (
+        "death,"
+        + ",".join(f"f{j:02d}" for j in range(40))
+        + "\n"
+        + "\n".join(
+            f"{1 if i < 28 else 0}," + ",".join(str((i * 7 + j) % 10) for j in range(40))
+            for i in range(92)
+        )
+    ).encode("utf-8")
+
+    def test_epv_deficit_plan_real_numbers(self, sync_db: Any) -> None:
+        ds = _make_dataset(sync_db, self._EPV_DEFICIT_CSV, name="epv.csv")
+        insight_tasks.auto_dataset_insight(str(ds.id))
+        ins = _insight(sync_db, ds.id)
+        assert ins is not None
+        plan = ins.payload["supplement_plan"]
+        item = next(i for i in plan["items"] if i["deficit_type"] == "epv")
+        # 契约形状(docs/14 §5 变更记录 2026-09-09)
+        assert set(item) == {
+            "deficit_type",
+            "current",
+            "target",
+            "gap",
+            "suggestion",
+            "basis",
+        }
+        assert item["current"]["epv"] == 0.7
+        assert item["gap"]["missing_events"] == 372  # ⌈10×40 − 28⌉
+        assert item["gap"]["additional_rows"] == 1223  # ⌈372/(28/92)⌉
+        # 体检结论摘要含缺口总览行
+        assert any("数据缺口" in line for line in ins.payload["summary"])
 
 
 class TestAutoFix:
@@ -128,17 +166,19 @@ class TestAutoFix:
         kinds = {(e["action"], e["column"]) for e in log}
         assert ("impute_missing", "bmi") in kinds
         # 修复生成新 DatasetVersion（版本号递增，源版本不变）
-        versions = sync_db.execute(
-            select(DatasetVersion)
-            .where(DatasetVersion.dataset_id == ds.id)
-            .order_by(DatasetVersion.version_no)
-        ).scalars().all()
+        versions = (
+            sync_db.execute(
+                select(DatasetVersion)
+                .where(DatasetVersion.dataset_id == ds.id)
+                .order_by(DatasetVersion.version_no)
+            )
+            .scalars()
+            .all()
+        )
         assert len(versions) >= 2
         assert versions[0].version_no == 1
         # EDA 基于修复后数据：bmi 缺失应为 0
-        bmi = next(
-            d for d in ins.payload["eda"]["distributions"] if d["name"] == "bmi"
-        )
+        bmi = next(d for d in ins.payload["eda"]["distributions"] if d["name"] == "bmi")
         assert bmi["missing"] == 0
 
     def test_blocker_stops_fixing(self, sync_db: Any, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -151,16 +191,16 @@ class TestAutoFix:
             status = "FAILED"
             blockers = 1
             warnings = 0
-            issues: list[Any] = []
-            column_profiles: list[dict[str, Any]] = []
+            issues: ClassVar[list[Any]] = []
+            column_profiles: ClassVar[list[dict[str, Any]]] = []
 
-        monkeypatch.setattr(
-            insight_tasks.validation, "validate", lambda *a, **k: _FakeReport()
-        )
+        monkeypatch.setattr(insight_tasks.validation, "validate", lambda *a, **k: _FakeReport())
         ds = _make_dataset(sync_db, _CLEAN_CSV)
         insight_tasks.auto_dataset_insight(str(ds.id))
         versions = sync_db.execute(
-            select(func.count()).select_from(DatasetVersion).where(DatasetVersion.dataset_id == ds.id)
+            select(func.count())
+            .select_from(DatasetVersion)
+            .where(DatasetVersion.dataset_id == ds.id)
         ).scalar_one()
         assert versions == 1  # 未产生修复版本
         monkeypatch.setattr(insight_tasks.validation, "validate", real_validate)
@@ -171,17 +211,23 @@ class TestIdempotency:
         ds = _make_dataset(sync_db, _FIXABLE_CSV)
         insight_tasks.auto_dataset_insight(str(ds.id))
         first_versions = sync_db.execute(
-            select(func.count()).select_from(DatasetVersion).where(DatasetVersion.dataset_id == ds.id)
+            select(func.count())
+            .select_from(DatasetVersion)
+            .where(DatasetVersion.dataset_id == ds.id)
         ).scalar_one()
         insight_tasks.auto_dataset_insight(str(ds.id))
         # 第二次跑：缺失已补齐 → 不再产生新修复版本
         second_versions = sync_db.execute(
-            select(func.count()).select_from(DatasetVersion).where(DatasetVersion.dataset_id == ds.id)
+            select(func.count())
+            .select_from(DatasetVersion)
+            .where(DatasetVersion.dataset_id == ds.id)
         ).scalar_one()
         assert second_versions == first_versions
         # insight 仍只有一条（替换而非累积）
         rows = sync_db.execute(
-            select(func.count()).select_from(DatasetInsight).where(DatasetInsight.dataset_id == ds.id)
+            select(func.count())
+            .select_from(DatasetInsight)
+            .where(DatasetInsight.dataset_id == ds.id)
         ).scalar_one()
         assert rows == 1
 
@@ -225,9 +271,7 @@ class TestInsightApi:
         )
         assert resp.status_code == 404
 
-    async def test_200_after_worker_run(
-        self, client: Any, db_session: Any, sync_db: Any
-    ) -> None:
+    async def test_200_after_worker_run(self, client: Any, db_session: Any, sync_db: Any) -> None:
         from app.core.security import create_token, hash_password
 
         user = User(
@@ -255,7 +299,9 @@ class TestInsightApi:
         key = f"datasets/{proj.id}/{ds.id}/cohort.csv"
         ds.storage_uri = storage_from_settings().put(key, io.BytesIO(_CLEAN_CSV), len(_CLEAN_CSV))
         db_session.add(
-            DatasetVersion(dataset_id=ds.id, version_no=1, storage_uri=ds.storage_uri, transform_log=[])
+            DatasetVersion(
+                dataset_id=ds.id, version_no=1, storage_uri=ds.storage_uri, transform_log=[]
+            )
         )
         await db_session.commit()
 
@@ -270,3 +316,6 @@ class TestInsightApi:
         assert body["dataset_id"] == str(ds.id)
         assert body["payload"]["eda"]["row_count"] == 60
         assert body["payload"]["summary"]
+        # T6.14:API 透出 supplement_plan 结构(docs/14 §5 变更记录 2026-09-09)
+        assert body["payload"]["supplement_plan"]["items"] == []
+        assert body["payload"]["supplement_plan"]["overall"]

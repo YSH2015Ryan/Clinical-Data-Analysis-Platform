@@ -46,9 +46,7 @@ def _reg_csv() -> bytes:
     age = rng.normal(60, 10, n)
     biomarker = rng.normal(0, 1, n)
     y = 20 + 0.5 * age + 3.0 * biomarker + rng.normal(0, 2.0, n)
-    return (
-        pd.DataFrame({"age": age, "biomarker": biomarker, "y": y}).to_csv(index=False).encode()
-    )
+    return pd.DataFrame({"age": age, "biomarker": biomarker, "y": y}).to_csv(index=False).encode()
 
 
 @pytest.fixture()
@@ -114,9 +112,7 @@ def _html(run: AnalysisRun) -> str:
 def _ranking(run_id: uuid.UUID) -> list[str]:
     factory = worker_db.get_sync_session_factory()
     with factory() as db:
-        comparison = db.execute(
-            select(Comparison).where(Comparison.run_id == run_id)
-        ).scalar_one()
+        comparison = db.execute(select(Comparison).where(Comparison.run_id == run_id)).scalar_one()
         return list(comparison.ranking)
 
 

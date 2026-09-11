@@ -59,7 +59,7 @@ def validate_dataset(dataset_id: str) -> None:
             raw = storage_from_settings().get(key_from_uri(dataset.storage_uri))
             result = parser.parse(raw, dataset.source_type)
             report = validation.validate(result.df, raw_columns=result.raw_columns)
-            
+
             # Phase 6 T6.6（P0-1 修复）：智能任务推荐——规则结论恒产出，
             # LLM 仅增强表达（分功能开关 task_recommend 门控，失败静默回退规则）
             task_recommendation = None
@@ -68,9 +68,7 @@ def validate_dataset(dataset_id: str) -> None:
 
                 llm_cfg = get_llm_config_sync(db)
                 switch = llm_cfg.feature_switches.get("task_recommend", "off")
-                service = (
-                    init_llm_service_from_runtime(llm_cfg) if switch != "off" else None
-                )
+                service = init_llm_service_from_runtime(llm_cfg) if switch != "off" else None
                 advisor = IntelligentTaskAdvisor(service)
                 task_recommendation = advisor.analyze_dataset(
                     result.df,
@@ -86,11 +84,9 @@ def validate_dataset(dataset_id: str) -> None:
                 )
             except Exception as llm_exc:
                 logger.warning(
-                    "task_recommendation_failed",
-                    dataset_id=dataset_id,
-                    error=str(llm_exc)
+                    "task_recommendation_failed", dataset_id=dataset_id, error=str(llm_exc)
                 )
-            
+
             dataset.encoding = result.encoding
             dataset.preview = _redact_preview(parser.preview_json(result.df))
             dataset.column_profile = parser.normalize_json_value(report.column_profiles)
@@ -152,16 +148,16 @@ def _explain_blockers(db: Any, issues: list[dict[str, Any]]) -> None:
 
 
 def _quality_report(
-    dataset: Dataset, 
-    version: DatasetVersion, 
+    dataset: Dataset,
+    version: DatasetVersion,
     report: validation.ValidationReport,
-    task_recommendation: Any = None
+    task_recommendation: Any = None,
 ) -> QualityReport:
     """构建质量报告，包含智能任务推荐（如果可用）"""
-    
+
     # 将任务推荐添加到 issues 中（作为 info 级别）
     issues = [i.to_dict() for i in report.issues]
-    
+
     if task_recommendation:
         # 添加任务推荐信息
         recommendation_issue = {
@@ -175,12 +171,12 @@ def _quality_report(
                 "recommended_targets": task_recommendation.recommended_targets,
                 "unsuitable_tasks": task_recommendation.unsuitable_tasks,
                 "eda_suggestions": task_recommendation.eda_suggestions,
-                "can_start_modeling": task_recommendation.can_start_modeling
+                "can_start_modeling": task_recommendation.can_start_modeling,
             },
-            "affected_rows": None
+            "affected_rows": None,
         }
         issues.append(recommendation_issue)
-    
+
     return QualityReport(
         dataset_id=dataset.id,
         dataset_version_id=version.id,

@@ -20,6 +20,11 @@ _SURVIVAL_EVENTS_MIN = 100  # 生存任务事件数经验下限
 _SMALL_SAMPLE = 200  # 小样本提示阈值
 _MISSING_RATE_HIGH = 0.2  # 与校验 missing_warn 阈值同源（docs/05）
 
+# T6.14：体检 supplement_plan 中这些类型已由上方运行级动态条目覆盖
+# （运行级口径=建模数据，更贴近报告对象），不重复列入；
+# variable_roles/power 无运行级对应条目，并入清单。
+_PLAN_TYPES_COVERED_BY_RUN = {"epv", "imbalance", "survival_events"}
+
 
 def _dynamic_items(payload: dict[str, Any]) -> list[str]:
     items: list[str] = []
@@ -54,9 +59,7 @@ def _dynamic_items(payload: dict[str, Any]) -> list[str]:
             )
 
     if n_samples is not None and n_samples < _SMALL_SAMPLE:
-        items.append(
-            f"样本量较小（N={n_samples}），交叉验证折间波动可能掩盖真实的模型间差异。"
-        )
+        items.append(f"样本量较小（N={n_samples}），交叉验证折间波动可能掩盖真实的模型间差异。")
 
     transform_log = payload.get("transform_log") or []
     if transform_log:
@@ -72,9 +75,16 @@ def _dynamic_items(payload: dict[str, Any]) -> list[str]:
         if float(p.get("missing_rate") or 0.0) > _MISSING_RATE_HIGH
     ]
     for name, rate in high_missing[:3]:  # 最多列 3 个，避免清单冗长
-        items.append(
-            f"变量 {name} 缺失率 {rate * 100:.1f}%，其分析结果对缺失机制假设较敏感。"
-        )
+        items.append(f"变量 {name} 缺失率 {rate * 100:.1f}%，其分析结果对缺失机制假设较敏感。")
+
+    # T6.14：体检缺口建议(同一事实源 DatasetInsight.payload.supplement_plan)
+    plan = payload.get("supplement_plan") or {}
+    for plan_item in plan.get("items") or []:
+        if plan_item.get("deficit_type") in _PLAN_TYPES_COVERED_BY_RUN:
+            continue
+        suggestion = plan_item.get("suggestion")
+        if suggestion:
+            items.append(f"数据缺口（体检）：{suggestion}")
     return items
 
 

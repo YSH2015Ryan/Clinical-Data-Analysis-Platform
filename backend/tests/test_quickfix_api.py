@@ -23,6 +23,7 @@ def _no_insight_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     """阶段 A 体检任务单独在 test_dataset_insight 覆盖；此处避免 eager 执行触库。"""
     monkeypatch.setattr(auto_dataset_insight, "delay", lambda *_a, **_k: None)
 
+
 # 含 RV301（alt=未知）+ RV401（1 行完全重复）
 CSV = (
     b"patient_id,age,alt,os_months,death\n"

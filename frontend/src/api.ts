@@ -349,6 +349,20 @@ export interface EdaResult {
   };
 }
 
+export interface SupplementPlanItem {
+  deficit_type: string;
+  current: Record<string, unknown>;
+  target: Record<string, unknown>;
+  gap: Record<string, unknown>;
+  suggestion: string;
+  basis: string;
+}
+
+export interface SupplementPlan {
+  items: SupplementPlanItem[];
+  overall: string;
+}
+
 export interface DatasetInsightPayload {
   eda: EdaResult;
   task_recommendation: {
@@ -368,6 +382,8 @@ export interface DatasetInsightPayload {
   };
   auto_fix_log: { action: string; column: string | null; affected_rows: number }[];
   summary: string[];
+  /** T6.14 数据缺口建议（docs/14 §5 变更记录 2026-09-09）；旧体检记录可能缺失 */
+  supplement_plan?: SupplementPlan;
 }
 
 export interface DatasetInsight {

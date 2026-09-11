@@ -15,8 +15,6 @@ import json
 from typing import Any
 
 import pandas as pd
-import pytest
-
 from app.engines.intelligent_task_advisor import (
     IntelligentTaskAdvisor,
     TaskRecommendation,
@@ -54,12 +52,34 @@ def _df() -> pd.DataFrame:
 def _profiles() -> list[dict[str, Any]]:
     """与 engines/validation 真实产出的 profile 键一致。"""
     return [
-        {"name": "年龄", "inferred_type": "continuous", "semantic": "Age",
-         "semantic_confidence": 0.9, "missing_rate": 0.0, "unique": 4, "min": 55.0, "max": 70.0},
-        {"name": "死亡", "inferred_type": "categorical", "semantic": "Event",
-         "semantic_confidence": 0.92, "missing_rate": 0.0, "unique": 2},
-        {"name": "随访月", "inferred_type": "continuous", "semantic": "FollowUp",
-         "semantic_confidence": 0.9, "missing_rate": 0.25, "unique": 4, "min": 5.0, "max": 24.0},
+        {
+            "name": "年龄",
+            "inferred_type": "continuous",
+            "semantic": "Age",
+            "semantic_confidence": 0.9,
+            "missing_rate": 0.0,
+            "unique": 4,
+            "min": 55.0,
+            "max": 70.0,
+        },
+        {
+            "name": "死亡",
+            "inferred_type": "categorical",
+            "semantic": "Event",
+            "semantic_confidence": 0.92,
+            "missing_rate": 0.0,
+            "unique": 2,
+        },
+        {
+            "name": "随访月",
+            "inferred_type": "continuous",
+            "semantic": "FollowUp",
+            "semantic_confidence": 0.9,
+            "missing_rate": 0.25,
+            "unique": 4,
+            "min": 5.0,
+            "max": 24.0,
+        },
     ]
 
 
@@ -78,10 +98,24 @@ class TestRuleBaseline:
     def test_no_label_falls_back_to_eda(self) -> None:
         df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
         profiles = [
-            {"name": "a", "inferred_type": "continuous", "semantic": None,
-             "semantic_confidence": 0.0, "missing_rate": 0.0, "unique": 3, "min": 1.0, "max": 3.0},
-            {"name": "b", "inferred_type": "text", "semantic": None,
-             "semantic_confidence": 0.0, "missing_rate": 0.0, "unique": 3},
+            {
+                "name": "a",
+                "inferred_type": "continuous",
+                "semantic": None,
+                "semantic_confidence": 0.0,
+                "missing_rate": 0.0,
+                "unique": 3,
+                "min": 1.0,
+                "max": 3.0,
+            },
+            {
+                "name": "b",
+                "inferred_type": "text",
+                "semantic": None,
+                "semantic_confidence": 0.0,
+                "missing_rate": 0.0,
+                "unique": 3,
+            },
         ]
         rec = IntelligentTaskAdvisor(None).analyze_dataset(df, profiles, switch="off")
         assert rec.recommended_tasks == ["eda"]
@@ -90,7 +124,7 @@ class TestRuleBaseline:
         assert rec.unsuitable_tasks  # 说明为何不适合建模
 
     def test_profile_keys_match_validation_schema(self) -> None:
-        """防回归：advisor 必须读 validation 真实键（inferred_type/semantic/missing_rate/unique）。"""
+        """防回归：advisor 必须读 validation 真实键（inferred_type/semantic 等）。"""
         rec = IntelligentTaskAdvisor(None).analyze_dataset(_df(), _profiles(), switch="off")
         # 若读错键，missing_rate 等全丢，结论会退化为 eda
         assert rec.recommended_tasks != ["eda"]
@@ -100,10 +134,14 @@ class TestLLMEnhancement:
     """开关打开时：LLM 只增强表达；结构/幻觉不合格回退规则。"""
 
     def _good_llm_json(self) -> str:
-        return json.dumps({
-            "overall_assessment": "数据含随访时间与死亡事件列，4 例样本中事件 2 例，适合生存分析方向探索。",
-            "eda_suggestions": ["年龄分布与事件的关系", "缺失模式检查"],
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "overall_assessment": "数据含随访时间与死亡事件列，4 例样本中事件 2 例，"
+                "适合生存分析方向探索。",
+                "eda_suggestions": ["年龄分布与事件的关系", "缺失模式检查"],
+            },
+            ensure_ascii=False,
+        )
 
     def test_llm_enhances_expression(self) -> None:
         llm = _StubLLM(complete_result=self._good_llm_json())
@@ -125,20 +163,26 @@ class TestLLMEnhancement:
         assert "survival" in rec.recommended_tasks
 
     def test_llm_hallucinated_numbers_rejected(self) -> None:
-        bad = json.dumps({
-            "overall_assessment": "该数据 AUC 可达 0.87，样本量 5000 例充足。",
-            "eda_suggestions": [],
-        }, ensure_ascii=False)
+        bad = json.dumps(
+            {
+                "overall_assessment": "该数据 AUC 可达 0.87，样本量 5000 例充足。",
+                "eda_suggestions": [],
+            },
+            ensure_ascii=False,
+        )
         llm = _StubLLM(complete_result=bad)
         rec = IntelligentTaskAdvisor(llm).analyze_dataset(_df(), _profiles(), switch="local")
         assert "0.87" not in rec.overall_assessment
         assert "5000" not in rec.overall_assessment
 
     def test_llm_invented_columns_rejected(self) -> None:
-        bad = json.dumps({
-            "overall_assessment": "建议以「肿瘤分期」为协变量建模。",
-            "eda_suggestions": ["分析肿瘤分期与死亡的关系"],
-        }, ensure_ascii=False)
+        bad = json.dumps(
+            {
+                "overall_assessment": "建议以「肿瘤分期」为协变量建模。",
+                "eda_suggestions": ["分析肿瘤分期与死亡的关系"],
+            },
+            ensure_ascii=False,
+        )
         llm = _StubLLM(complete_result=bad)
         rec = IntelligentTaskAdvisor(llm).analyze_dataset(_df(), _profiles(), switch="local")
         assert "肿瘤分期" not in rec.overall_assessment

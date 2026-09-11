@@ -10,7 +10,6 @@
 """
 
 import pandas as pd
-
 from app.engines.task_detection import detect_task, detect_task_from_profile
 
 
@@ -46,9 +45,7 @@ class TestGenericBinaryMustNotBeatSemanticRegression:
     """核心场景:连续结局(有语义) + 无语义 0/1 标志列 → 应推荐回归。"""
 
     def test_label_continuous_plus_flag(self) -> None:
-        df = pd.DataFrame(
-            {"flag": [0, 1, 0, 1], "label": [0.5, 1.5, 2.5, 3.5]}
-        )
+        df = pd.DataFrame({"flag": [0, 1, 0, 1], "label": [0.5, 1.5, 2.5, 3.5]})
         r = detect_task(df)
         assert r.recommended_task == "regression"
         assert "label" in r.reason
@@ -56,17 +53,13 @@ class TestGenericBinaryMustNotBeatSemanticRegression:
         assert any(c.column == "flag" for c in r.candidates["label_col"])
 
     def test_followup_regression_plus_flag(self) -> None:
-        df = pd.DataFrame(
-            {"flag": [0, 1, 0], "os_months": [12.0, 24.0, 36.0]}
-        )
+        df = pd.DataFrame({"flag": [0, 1, 0], "os_months": [12.0, 24.0, 36.0]})
         r = detect_task(df)
         assert r.recommended_task == "regression"
         assert "os_months" in r.reason
 
     def test_generic_multiclass_plus_semantic_regression(self) -> None:
-        df = pd.DataFrame(
-            {"grp": ["A", "B", "C", "A"], "label": [0.5, 1.5, 2.5, 3.5]}
-        )
+        df = pd.DataFrame({"grp": ["A", "B", "C", "A"], "label": [0.5, 1.5, 2.5, 3.5]})
         r = detect_task(df)
         assert r.recommended_task == "regression"
 
@@ -91,9 +84,7 @@ class TestUnchangedBehavior:
         assert r.recommended_task == "classification"
 
     def test_survival_untouched(self) -> None:
-        df = pd.DataFrame(
-            {"os_months": [12.0, 24.0, 36.0], "death": [0, 1, 0], "flag": [1, 0, 1]}
-        )
+        df = pd.DataFrame({"os_months": [12.0, 24.0, 36.0], "death": [0, 1, 0], "flag": [1, 0, 1]})
         assert detect_task(df).recommended_task == "survival"
 
 
@@ -106,9 +97,7 @@ class TestProfileParity:
 
     def test_profile_matches_df_detection_classification(self) -> None:
         df = pd.DataFrame({"age": [50.0, 60.0, 70.0], "death": [0, 1, 0]})
-        assert (
-            detect_task_from_profile(_profile_of(df)).recommended_task == "classification"
-        )
+        assert detect_task_from_profile(_profile_of(df)).recommended_task == "classification"
 
     def test_profile_matches_df_detection_survival(self) -> None:
         df = pd.DataFrame({"os_months": [12.0, 24.0, 36.0], "death": [0, 1, 0]})
@@ -116,6 +105,4 @@ class TestProfileParity:
 
     def test_profile_generic_binary_alone(self) -> None:
         df = pd.DataFrame({"x": [1.0, 2.0, 3.0], "flag": [0, 1, 0]})
-        assert (
-            detect_task_from_profile(_profile_of(df)).recommended_task == "classification"
-        )
+        assert detect_task_from_profile(_profile_of(df)).recommended_task == "classification"

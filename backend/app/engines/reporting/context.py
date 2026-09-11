@@ -5,11 +5,19 @@
 不报错；免责声明与可复现附录强制存在（CLAUDE.md §8）。
 """
 
+import json
 from typing import Any
 
 from app.engines.reporting.captions import caption_for
 from app.engines.reporting.checklist import build_reporting_checklist
 from app.engines.reporting.limitations import build_limitations
+from app.engines.reporting.narratives import (
+    build_clinical_guides,
+    build_comparison_guide,
+    build_explainability_guides,
+    build_performance_guides,
+)
+from app.engines.reporting.redflags import detect_perfect_metric_redflag
 
 DISCLAIMER = "本报告由 CDAP 自动生成，仅供科研参考，不构成临床诊断建议。"
 NOT_APPLICABLE = "本次分析不适用"
@@ -42,6 +50,22 @@ _EXPLAIN_KINDS = {"feature_importance", "hr_forest"}
 
 def _na() -> dict[str, Any]:
     return {"note": NOT_APPLICABLE}
+
+
+def _humanize_params(params: Any) -> str:
+    """§3 预处理参数人性化（T6.15①）：dict → '键=值' 分号连接；空/非 dict → '—'。
+
+    中文不转义（ensure_ascii=False）；嵌套结构紧凑 JSON 化。附录仍保留原始
+    preprocess_steps 供可复现核对。
+    """
+    if not isinstance(params, dict) or not params:
+        return "—"
+    parts = []
+    for key, value in params.items():
+        if isinstance(value, (dict, list)):
+            value = json.dumps(value, ensure_ascii=False)
+        parts.append(f"{key}={value}")
+    return "；".join(parts)
 
 
 def _section(key: str, applicable: bool, data: dict[str, Any]) -> dict[str, Any]:
@@ -174,6 +198,9 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
             "本结论仅基于本次数据的交叉验证结果，需结合临床背景解读。"
         )
 
+    # T6.15②：完美指标红旗（EPV<10 且主指标≥0.99），触发后贯穿局限性/结论章
+    red_flag = detect_perfect_metric_redflag(payload)
+
     sections = [
         _section(
             "overview",
@@ -200,7 +227,15 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 "transform_log": payload.get("transform_log") or [],
             },
         ),
-        _section("preprocessing", steps is not None, {"steps": steps or []}),
+        _section(
+            "preprocessing",
+            steps is not None,
+            {
+                "steps": [
+                    {**s, "params_text": _humanize_params(s.get("params"))} for s in (steps or [])
+                ]
+            },
+        ),
         _section(
             "methods",
             bool(run),
@@ -227,6 +262,12 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 "survival_analysis": survival_analysis,
                 # T6.7：LLM 解读段落（None → 模板不渲染）
                 "llm_paragraph": llm_interp.get("performance"),
+                # T6.15③：指标三段式（含义/判读规则/本数据真实值），LLM 缺失时保可读底线
+                "guides": build_performance_guides(
+                    table,
+                    ((comparison or {}).get("ranking") or [None])[0],
+                    recommendation.get("primary_metric"),
+                ),
             },
         ),
         _section(
@@ -239,12 +280,13 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 "primary_metric": recommendation.get("primary_metric"),
                 "formula": recommendation.get("formula"),
                 "llm_paragraph": llm_interp.get("model_comparison"),
+                "guide": build_comparison_guide(comparison, table),
             },
         ),
         _section(
             "explainability",
             bool(explain_charts),
-            {"charts": explain_charts},
+            {"charts": explain_charts, "guides": build_explainability_guides(explain_charts)},
         ),
         _section(
             "clinical_interpretation",
@@ -254,16 +296,29 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 "notice": INTERPRETATION_NOTICE,
                 "statements": statements,
                 "llm_paragraph": llm_interp.get("clinical_interpretation"),
+                "guides": build_clinical_guides(diagnostics, calibration, survival_analysis),
             },
         ),
         # P3：动态局限性（payload 真实统计触发）+ 静态基础条目
-        _section("limitations", True, {"items": build_limitations(payload)}),
+        # T6.15②：完美指标红旗触发时置顶局限性条目
+        _section(
+            "limitations",
+            True,
+            {
+                "items": (
+                    [red_flag["limitation"], *build_limitations(payload)]
+                    if red_flag
+                    else build_limitations(payload)
+                )
+            },
+        ),
         # T6.11：TRIPOD/STROBE 自查（条目状态与依据全部由 payload 真实字段推导）
         _section("checklist", True, build_reporting_checklist(payload)),
         _section(
             "conclusion",
             conclusion_text is not None,
-            {"text": conclusion_text or ""},
+            # T6.15②：红旗触发时结论章强制醒目警示（推荐措辞降级，排名数值不变）
+            {"text": conclusion_text or "", "red_flag": red_flag["warning"] if red_flag else None},
         ),
     ]
 

@@ -120,7 +120,10 @@ def normalize_json_value(value: Any) -> Any:
         normalized = {}
         for key, item in value.items():
             normalized_key = normalize_json_value(key)
-            if not isinstance(normalized_key, (str, bool, int, float)) and normalized_key is not None:
+            if (
+                not isinstance(normalized_key, (str, bool, int, float))
+                and normalized_key is not None
+            ):
                 normalized_key = str(normalized_key)
             normalized[normalized_key] = normalize_json_value(item)
         return normalized
@@ -135,8 +138,7 @@ def preview_json(df: pd.DataFrame, n: int = _PREVIEW_ROWS) -> dict[str, Any]:
     """前 n 行预览：NaN/NaT → None，numpy 标量 → 原生类型（JSON 可序列化）。"""
     head = df.head(n)
     rows = [
-        [normalize_json_value(v) for v in row]
-        for row in head.itertuples(index=False, name=None)
+        [normalize_json_value(v) for v in row] for row in head.itertuples(index=False, name=None)
     ]
     return {
         "columns": [str(c) for c in head.columns],

@@ -48,7 +48,9 @@ async def dataset(db_session: AsyncSession) -> tuple[Dataset, User]:
     from app.engines import parser, validation
 
     parsed = parser.parse(CSV_BYTES, "csv")
-    ds.column_profile = validation.validate(parsed.df, raw_columns=parsed.raw_columns).column_profiles
+    ds.column_profile = validation.validate(
+        parsed.df, raw_columns=parsed.raw_columns
+    ).column_profiles
     await db_session.commit()
     return ds, user
 

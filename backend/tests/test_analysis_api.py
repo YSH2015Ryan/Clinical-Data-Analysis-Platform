@@ -168,15 +168,36 @@ class TestTaskDetectionRecorded:
             await db_session.execute(select(Dataset).where(Dataset.id == version.dataset_id))
         ).scalar_one()
         dataset.column_profile = [
-            {"name": "age", "inferred_type": "continuous", "semantic": "Age",
-             "semantic_confidence": 0.9, "missing_rate": 0.0, "unique": 55,
-             "min": 30.0, "max": 90.0},
-            {"name": "biomarker", "inferred_type": "continuous", "semantic": None,
-             "semantic_confidence": 0.0, "missing_rate": 0.0, "unique": 60,
-             "min": -2.0, "max": 2.0},
-            {"name": "label", "inferred_type": "continuous", "semantic": "Label",
-             "semantic_confidence": 0.9, "missing_rate": 0.0, "unique": 2,
-             "min": 0.0, "max": 1.0},
+            {
+                "name": "age",
+                "inferred_type": "continuous",
+                "semantic": "Age",
+                "semantic_confidence": 0.9,
+                "missing_rate": 0.0,
+                "unique": 55,
+                "min": 30.0,
+                "max": 90.0,
+            },
+            {
+                "name": "biomarker",
+                "inferred_type": "continuous",
+                "semantic": None,
+                "semantic_confidence": 0.0,
+                "missing_rate": 0.0,
+                "unique": 60,
+                "min": -2.0,
+                "max": 2.0,
+            },
+            {
+                "name": "label",
+                "inferred_type": "continuous",
+                "semantic": "Label",
+                "semantic_confidence": 0.9,
+                "missing_rate": 0.0,
+                "unique": 2,
+                "min": 0.0,
+                "max": 1.0,
+            },
         ]
         await db_session.commit()
 
@@ -217,9 +238,7 @@ class TestTaskDetectionRecorded:
             "selected_models": ["lasso"],
             "model_params": {},
         }
-        resp = await client.post(
-            "/api/v1/analysis-runs", json=body, headers=_auth(researcher)
-        )
+        resp = await client.post("/api/v1/analysis-runs", json=body, headers=_auth(researcher))
         assert resp.status_code == 202, resp.text
         run = await db_session.get(AnalysisRun, uuid.UUID(resp.json()["id"]))
         assert run.task_detection is not None
@@ -266,10 +285,14 @@ class TestCreateRun:
         assert resp.status_code == 202
         db_session.expunge_all()
         reports = (
-            await db_session.execute(
-                select(Report).where(Report.run_id == uuid.UUID(resp.json()["id"]))
+            (
+                await db_session.execute(
+                    select(Report).where(Report.run_id == uuid.UUID(resp.json()["id"]))
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         html_reports = [r for r in reports if r.format == "html"]
         assert len(html_reports) == 1
         assert html_reports[0].status == "READY"  # eager 模式同步渲染完成

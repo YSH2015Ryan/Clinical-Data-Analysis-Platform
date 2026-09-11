@@ -1,7 +1,6 @@
 """Tests for the rule-based research direction profiler."""
 
 import pandas as pd
-
 from app.engines.research_profiler import detect_research_direction
 
 
@@ -33,9 +32,7 @@ def test_recommend_models_regression() -> None:
 
 
 def test_recommend_models_survival() -> None:
-    result = detect_research_direction(
-        pd.DataFrame({"follow_up": [1, 2, 3], "event": [0, 1, 0]})
-    )
+    result = detect_research_direction(pd.DataFrame({"follow_up": [1, 2, 3], "event": [0, 1, 0]}))
     assert "coxph" in result["recommended_models"]
     assert "rsf" in result["recommended_models"]
 

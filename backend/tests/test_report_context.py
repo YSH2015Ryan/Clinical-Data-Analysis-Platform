@@ -277,3 +277,62 @@ class TestAbstract:
         assert "生存分析" in abstract["purpose"]
         assert "methods" not in abstract  # 无数据 → 省略，不虚构
         assert "results" not in abstract and "conclusion" not in abstract
+
+
+class TestSupplementPlanLimitations:
+    """T6.14 接入:报告动态局限性消费体检 supplement_plan(同一事实源)。
+
+    只并入运行级动态条目未覆盖的类型(variable_roles/power);
+    epv/imbalance/survival_events 已由运行级条目覆盖(口径=建模数据,
+    更贴近报告对象),不重复列入。
+    """
+
+    def _plan(self) -> dict:
+        return {
+            "items": [
+                {
+                    "deficit_type": "epv",
+                    "current": {},
+                    "target": {},
+                    "gap": {},
+                    "suggestion": "体检口径的 EPV 建议(不应出现在报告局限性)",
+                    "basis": "b",
+                },
+                {
+                    "deficit_type": "variable_roles",
+                    "current": {},
+                    "target": {},
+                    "gap": {"missing_roles": ["性别"]},
+                    "suggestion": "缺少变量角色:性别,建议补充采集",
+                    "basis": "b",
+                },
+                {
+                    "deficit_type": "power",
+                    "current": {},
+                    "target": {},
+                    "gap": {},
+                    "suggestion": "小效应下把握度仅 0.12,需每组 394 例",
+                    "basis": "b",
+                },
+            ],
+            "overall": "o",
+        }
+
+    def test_uncovered_types_appended_epv_not_duplicated(self) -> None:
+        from app.engines.reporting.limitations import build_limitations
+
+        payload = _payload()
+        payload["supplement_plan"] = self._plan()
+        items = build_limitations(payload)
+        assert any("缺少变量角色:性别" in i for i in items)
+        assert any("每组 394 例" in i for i in items)
+        # 体检口径 EPV 建议不重复(运行级动态条目已覆盖该类型)
+        assert not any("体检口径的 EPV 建议" in i for i in items)
+
+    def test_no_supplement_plan_unchanged(self) -> None:
+        from app.engines.reporting.limitations import build_limitations
+
+        before = build_limitations(_payload())
+        payload = _payload()
+        payload["supplement_plan"] = None
+        assert build_limitations(payload) == before

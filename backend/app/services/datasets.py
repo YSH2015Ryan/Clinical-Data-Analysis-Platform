@@ -219,9 +219,7 @@ async def recommended_preprocess_dsl(
             message="数据集尚未完成验证，请等待验证完成后再生成推荐配置",
         )
     report = await get_latest_report(db, dataset.id)
-    is_long = report is not None and any(
-        i.get("rule_id") == "RV801" for i in (report.issues or [])
-    )
+    is_long = report is not None and any(i.get("rule_id") == "RV801" for i in (report.issues or []))
     if not is_long:
         return recommend_config_from_profile(dataset.column_profile)
     raw = storage.get(key_from_uri(dataset.storage_uri))

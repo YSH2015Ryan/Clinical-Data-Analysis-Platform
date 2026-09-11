@@ -15,17 +15,13 @@ validation profile 不存在的键（data_type/semantic_type/...），异常被�
 
 import json
 import logging
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from typing import Any, Literal, Protocol
 
 import pandas as pd
 
+from app.engines.llm_validators import hallucinated_numbers
 from app.engines.task_detection import detect_task_from_profile
-from app.services.llm_tasks import _hallucinated_numbers, switch_to_choice
-
-if TYPE_CHECKING:
-    from app.services.llm import LLMService
-    from app.services.settings import FeatureSwitch
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +30,31 @@ _VALID_TASKS = {"classification", "regression", "survival", "eda"}
 
 # 可直接建模的最低规则置信度（与 task_detection 语义支撑阈值一致）
 _MIN_MODELING_CONF = 0.6
+
+_ModelChoice = Literal["local", "cloud", "auto"]
+
+# 分功能开关 → 模型策略（与 services/llm_tasks.switch_to_choice 同义；
+# 引擎层不 import services，本地维护映射，off → 跳过 LLM 走规则回退）
+_SWITCH_TO_CHOICE: dict[str, _ModelChoice] = {
+    "local": "local",
+    "local_first": "auto",
+    "cloud": "cloud",
+}
+
+
+class _LLMCompletable(Protocol):
+    """引擎所需的 LLM 最小接口（services/llm.LLMService 的结构子类型）。"""
+
+    def complete(
+        self,
+        prompt: str,
+        *,
+        facts: dict[str, Any] | None = None,
+        model_choice: _ModelChoice | None = None,
+        temperature: float = 0.3,
+        seed: int = 42,
+        max_tokens: int = 600,
+    ) -> str: ...
 
 
 @dataclass
@@ -55,7 +76,7 @@ class IntelligentTaskAdvisor:
     仍返回规则版推荐，保证 AI_RECOMMEND 卡在所有部署下都有真实内容。
     """
 
-    def __init__(self, llm_service: "LLMService | None" = None):
+    def __init__(self, llm_service: _LLMCompletable | None = None):
         self.llm = llm_service
 
     def analyze_dataset(
@@ -63,12 +84,12 @@ class IntelligentTaskAdvisor:
         df: pd.DataFrame,
         column_profiles: list[dict[str, Any]],
         *,
-        switch: "FeatureSwitch" = "off",
+        switch: str = "off",
         temperature: float = 0.3,
     ) -> TaskRecommendation:
         """分析数据集并给出任务推荐（规则为基线，LLM 增强表达）。"""
         base = self._rule_recommendation(column_profiles)
-        choice = switch_to_choice(switch)
+        choice = _SWITCH_TO_CHOICE.get(switch)
         if choice is None or self.llm is None:
             return base
         facts = self._build_facts(df, column_profiles, base)
@@ -96,9 +117,7 @@ class IntelligentTaskAdvisor:
     # 规则结论（唯一判断来源）
     # ------------------------------------------------------------------
 
-    def _rule_recommendation(
-        self, column_profiles: list[dict[str, Any]]
-    ) -> TaskRecommendation:
+    def _rule_recommendation(self, column_profiles: list[dict[str, Any]]) -> TaskRecommendation:
         det = detect_task_from_profile(column_profiles)
         if det.recommended_task is not None:
             targets = [
@@ -207,7 +226,7 @@ Facts:
                 logger.warning(f"task_advisor_invented_column: {quoted}")
                 return None
         # 幻觉数值拦截：表达文本中的数值必须来自 facts
-        if _hallucinated_numbers(text_all, facts):
+        if hallucinated_numbers(text_all, facts):
             logger.warning("task_advisor_hallucination")
             return None
         return {"overall_assessment": assessment, "eda_suggestions": suggestions}

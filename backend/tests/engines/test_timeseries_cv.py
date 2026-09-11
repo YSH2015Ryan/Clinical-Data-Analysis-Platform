@@ -33,11 +33,7 @@ def test_timeseries_cv_chronological_order() -> None:
     assert all(np.all(np.diff(train) > 0) for train, _ in splits)
     assert all(np.all(np.diff(test) > 0) for _, test in splits)
     assert (
-        sum(
-            len(left & right)
-            for i, left in enumerate(test_sets)
-            for right in test_sets[i + 1 :]
-        )
+        sum(len(left & right) for i, left in enumerate(test_sets) for right in test_sets[i + 1 :])
         == 0
     )
 

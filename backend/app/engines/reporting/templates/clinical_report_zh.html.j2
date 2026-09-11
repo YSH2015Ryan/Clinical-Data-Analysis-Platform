@@ -48,9 +48,14 @@
   details.fold[open] > summary::before { content: "－ "; color: #888; }
   details.fold > table { margin: 6px 0 4px; }
   .na { color: #999; font-style: italic; }
+  .red-flag { border: 2px solid #b3001b; background: #fdf3f4; color: #7a0012;
+              padding: 10px 14px; font-weight: bold; line-height: 1.8; text-align: justify; }
   .notice { background: #fafafa; border-left: 3px solid #999; padding: 8px 12px; font-size: 12px; }
   .llm-paragraph { background: #f5f7fa; border-left: 3px solid #7a9cc6; padding: 8px 12px;
                    text-align: justify; line-height: 1.8; }
+  .guide { background: #fbfbf8; border: 1px solid #ddd; padding: 8px 12px; margin: 10px 0;
+           line-height: 1.8; text-align: justify; }
+  .guide p { margin: 4px 0; }
   .disclaimer { border-top: 1.5px solid #333; border-bottom: 1.5px solid #333; padding: 10px 4px;
                 font-weight: bold; margin-top: 20px; text-align: center; }
   img.chart { max-width: 100%; display: block; margin: 12px auto 0; }
@@ -104,7 +109,7 @@
 <p>样本量：{{ s.data.n_samples }}；变量数：{{ s.data.n_features }}。
 {% if s.data.get('prevalence') is not none %}阳性 {{ s.data.positives }} 例（阳性率 {{ '%.2f%%' | format(s.data.prevalence * 100) }}）。{% endif %}
 {% if s.data.get('n_classes') is not none and s.data.n_classes > 2 %}多分类（{{ s.data.n_classes }} 类）。{% endif %}
-{% if s.data.events is not none %}事件数：{{ s.data.events }}；中位随访时间：{{ s.data.median_followup }}。{% endif %}</p>
+{% if s.data.events is defined and s.data.events is not none %}事件数：{{ s.data.events }}；中位随访时间：{{ s.data.median_followup }}。{% endif %}</p>
 {% if s.data.columns %}
 {% call tbl("变量概况") %}
   <tr><th>变量</th><th>类型</th><th>缺失率</th><th>唯一值</th><th>最小值</th><th>最大值</th></tr>
@@ -146,8 +151,8 @@
   <tr><th>变量</th><th>检验</th><th>效应量</th><th>p 值</th><th>入选</th></tr>
   {% for r in sc.rows %}
   <tr><td>{{ r.feature }}</td><td>{{ r.test }}</td>
-      <td>{{ '%.4g' | format(r.effect) if r.effect is not none else "—" }}</td>
-      <td>{{ '%.3g' | format(r.p_value) }}</td>
+      <td>{{ r.effect | fmt_num('.4g') }}</td>
+      <td>{{ r.p_value | fmt_num }}</td>
       <td>{{ "是" if r.selected else "否" }}</td></tr>
   {% endfor %}
 {% endcall %}
@@ -179,7 +184,7 @@
   <tr><th>#</th><th>步骤</th><th>参数</th></tr>
   {% for step in s.data.steps %}
   <tr><td>{{ loop.index }}</td><td>{{ step.type }}</td>
-      <td><code>{{ step.params | tojson }}</code></td></tr>
+      <td>{{ step.params_text }}</td></tr>
   {% endfor %}
 {% endcall %}
 
@@ -211,6 +216,12 @@
   {% endfor %}
 {% endcall %}
 {% if s.data.significance_note %}<p class="meta">{{ s.data.significance_note | replace("**", "") }}</p>{% endif %}
+{% for g in s.data.guides %}
+<div class="guide"><p><strong>{{ g.title }}</strong></p>
+<p><strong>含义：</strong>{{ g.meaning }}</p>
+<p><strong>判读规则：</strong>{{ g.rule }}</p>
+{% if g.reading %}<p><strong>本数据：</strong>{{ g.reading }}</p>{% endif %}</div>
+{% endfor %}
 {% if s.data.llm_paragraph %}<p class="llm-paragraph">{{ s.data.llm_paragraph }}</p>{% endif %}
 {% if s.data.calibration %}
 {% set cal = s.data.calibration %}
@@ -230,7 +241,7 @@
   {% for c in d.coefficients %}
   <tr><td>{{ c.term }}</td><td>{{ '%.4f' | format(c.coef) }}</td>
       <td>[{{ '%.4f' | format(c.ci_lower) }}, {{ '%.4f' | format(c.ci_upper) }}]</td>
-      <td>{{ '%.3g' | format(c.p_value) }}</td></tr>
+      <td>{{ c.p_value | fmt_num }}</td></tr>
   {% endfor %}
 {% endcall %}
 {% endif %}
@@ -238,11 +249,11 @@
   <tr><th>检验</th><th>统计量</th><th>p 值</th><th>结论</th></tr>
   {% if d.shapiro and d.shapiro.statistic is not none %}
   <tr><td>残差正态性（{{ d.shapiro.test_name }}）</td><td>{{ '%.4f' | format(d.shapiro.statistic) }}</td>
-      <td>{{ '%.3g' | format(d.shapiro.p_value) }}</td><td>{{ d.shapiro.conclusion }}</td></tr>
+      <td>{{ d.shapiro.p_value | fmt_num }}</td><td>{{ d.shapiro.conclusion }}</td></tr>
   {% endif %}
   {% if d.breusch_pagan and d.breusch_pagan.statistic is not none %}
   <tr><td>同方差性（Breusch-Pagan）</td><td>{{ '%.4f' | format(d.breusch_pagan.statistic) }}</td>
-      <td>{{ '%.3g' | format(d.breusch_pagan.p_value) }}</td><td>{{ d.breusch_pagan.conclusion }}</td></tr>
+      <td>{{ d.breusch_pagan.p_value | fmt_num }}</td><td>{{ d.breusch_pagan.conclusion }}</td></tr>
   {% endif %}
   {% if d.durbin_watson and d.durbin_watson.statistic is not none %}
   <tr><td>自相关（Durbin-Watson）</td><td>{{ '%.3f' | format(d.durbin_watson.statistic) }}</td>
@@ -271,7 +282,7 @@
 {% if sa.logrank %}
 <p>按推荐模型 {{ sa.logrank.model_key }} 的交叉验证风险中位数（{{ '%.4f' | format(sa.logrank.median_risk) }}）
    分层：高风险组 {{ sa.logrank.n_high }} 例、低风险组 {{ sa.logrank.n_low }} 例，
-   log-rank 检验 χ²={{ '%.4f' | format(sa.logrank.statistic) }}，p={{ '%.3g' | format(sa.logrank.p_value) }}。</p>
+   log-rank 检验 χ²={{ '%.4f' | format(sa.logrank.statistic) }}，p={{ sa.logrank.p_value | fmt_num }}。</p>
 {% endif %}
 {% endif %}
 {% for c in s.data.charts %}
@@ -290,6 +301,12 @@
 <p>不推荐 {{ n.model_key }}：{{ n.reason }}</p>
 {% endfor %}
 {% if s.data.formula %}<p class="meta">排名公式披露：{{ s.data.formula }}</p>{% endif %}
+{% if s.data.guide %}
+<div class="guide"><p><strong>{{ s.data.guide.title }}</strong></p>
+<p><strong>含义：</strong>{{ s.data.guide.meaning }}</p>
+<p><strong>判读规则：</strong>{{ s.data.guide.rule }}</p>
+{% if s.data.guide.reading %}<p><strong>本数据：</strong>{{ s.data.guide.reading }}</p>{% endif %}</div>
+{% endif %}
 
 {% elif s.key == "explainability" %}
 {% for c in s.data.charts %}
@@ -297,11 +314,23 @@
   {% else %}<p class="na">[图表] {{ c.title }}</p>{% endif %}
   <p class="fig-caption"><span class="fig-label">图 {{ c.fig_no }}　{{ c.title }}。</span>{{ c.caption }}</p>
 {% endfor %}
+{% for g in s.data.guides %}
+<div class="guide"><p><strong>{{ g.title }}</strong></p>
+<p><strong>含义：</strong>{{ g.meaning }}</p>
+<p><strong>判读规则：</strong>{{ g.rule }}</p>
+{% if g.reading %}<p><strong>本数据：</strong>{{ g.reading }}</p>{% endif %}</div>
+{% endfor %}
 
 {% elif s.key == "clinical_interpretation" %}
 <p class="notice">{{ s.data.notice }}</p>
 {% if s.data.llm_paragraph %}<p class="llm-paragraph">{{ s.data.llm_paragraph }}</p>{% endif %}
 <ul>{% for st in s.data.statements %}<li>{{ st }}</li>{% endfor %}</ul>
+{% for g in s.data.guides %}
+<div class="guide"><p><strong>{{ g.title }}</strong></p>
+<p><strong>含义：</strong>{{ g.meaning }}</p>
+<p><strong>判读规则：</strong>{{ g.rule }}</p>
+{% if g.reading %}<p><strong>本数据：</strong>{{ g.reading }}</p>{% endif %}</div>
+{% endfor %}
 
 {% elif s.key == "limitations" %}
 <ul>{% for item in s.data["items"] %}<li>{{ item }}</li>{% endfor %}</ul>
@@ -318,6 +347,7 @@
 <p class="meta">{{ s.data.note }}</p>
 
 {% elif s.key == "conclusion" %}
+{% if s.data.red_flag %}<p class="red-flag"><strong>【结果可信度警示】</strong>{{ s.data.red_flag }}</p>{% endif %}
 <p>{{ s.data.text }}</p>
 {% endif %}
 {% endfor %}

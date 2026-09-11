@@ -5,7 +5,6 @@
 """
 
 import numpy as np
-
 from app.engines.reporting.survival_extra import at_risk_table, median_risk_logrank
 
 
@@ -24,7 +23,8 @@ class TestAtRiskTable:
         events = rng.integers(0, 2, 80).tolist()
         out = at_risk_table(times, events)
         assert len(out["times"]) == len(out["at_risk"]) == len(out["events_cum"])
-        assert all(b <= a for a, b in zip(out["at_risk"], out["at_risk"][1:]))
+        # 相邻两项比较（长度差 1 属有意为之，故 strict=False）
+        assert all(b <= a for a, b in zip(out["at_risk"], out["at_risk"][1:], strict=False))
         assert out["at_risk"][0] == 80
 
     def test_empty_input(self) -> None:

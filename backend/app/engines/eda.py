@@ -53,9 +53,7 @@ def _distributions(df: pd.DataFrame, profiles: list[dict[str, Any]]) -> list[dic
             q1, med, q3 = np.percentile(v, [25, 50, 75])
             mean = float(v.mean())
             std = float(v.std(ddof=1)) if len(v) > 1 else 0.0
-            skew = (
-                float(((v - mean) ** 3).mean() / (std**3)) if std > 0 and len(v) > 2 else 0.0
-            )
+            skew = float(((v - mean) ** 3).mean() / (std**3)) if std > 0 and len(v) > 2 else 0.0
             entry.update(
                 kind="continuous",
                 histogram={"counts": [int(c) for c in counts], "bin_edges": [_f(e) for e in edges]},
@@ -119,8 +117,11 @@ def _cramers_v(x: pd.Series, y: pd.Series) -> float | None:
 
 
 def _correlations(df: pd.DataFrame, profiles: list[dict[str, Any]]) -> dict[str, Any]:
-    cont = [p["name"] for p in profiles
-            if p.get("inferred_type") == "continuous" and p["name"] in df.columns]
+    cont = [
+        p["name"]
+        for p in profiles
+        if p.get("inferred_type") == "continuous" and p["name"] in df.columns
+    ]
     cont = cont[:_MAX_CORR_CONTINUOUS]
     cont_out: dict[str, Any] = {"columns": cont, "matrix": [], "top_pairs": []}
     if cont:
@@ -135,8 +136,11 @@ def _correlations(df: pd.DataFrame, profiles: list[dict[str, Any]]) -> dict[str,
                     pairs.append({"a": cont[i], "b": cont[j], "r": round(r, 4)})
         cont_out["top_pairs"] = sorted(pairs, key=lambda p: abs(p["r"]), reverse=True)[:_TOP_PAIRS]
 
-    cat = [p["name"] for p in profiles
-           if p.get("inferred_type") in ("categorical",) and p["name"] in df.columns]
+    cat = [
+        p["name"]
+        for p in profiles
+        if p.get("inferred_type") in ("categorical",) and p["name"] in df.columns
+    ]
     cat = cat[:_MAX_CORR_CATEGORICAL]
     cat_pairs = []
     for i in range(len(cat)):

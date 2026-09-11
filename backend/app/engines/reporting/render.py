@@ -4,6 +4,7 @@
 模板版本化：template_key + version 存入 Report，可复现旧报告样式。
 """
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -11,13 +12,26 @@ import jinja2
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 TEMPLATE_KEY = "clinical_report_zh"
-TEMPLATE_VERSION = "1.1.0"
+TEMPLATE_VERSION = "1.2.0"
+
+
+def _fmt_num(value: Any, spec: str = ".3g") -> str:
+    """数值渲染守卫（T6.15①）：None/nan/inf → '—'；否则按 spec 格式化。"""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if math.isnan(f) or math.isinf(f):
+        return "—"
+    return ("%" + spec) % f
+
 
 _env = jinja2.Environment(
     loader=jinja2.FileSystemLoader(_TEMPLATE_DIR),
     autoescape=True,
     keep_trailing_newline=True,
 )
+_env.filters["fmt_num"] = _fmt_num
 
 
 def render_html(
