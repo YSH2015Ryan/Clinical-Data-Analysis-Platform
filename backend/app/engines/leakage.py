@@ -50,6 +50,96 @@ def _normalized(name: str) -> str:
     return "".join(ch.lower() for ch in str(name) if ch.isalnum())
 
 
+# updateplan §24：日期派生目标与日期族特征的归一化词表（中英文）
+_DATE_TARGET_TOKENS = (
+    "monthgroup",
+    "dategroup",
+    "yeargroup",
+    "seasongroup",
+    "quartergroup",
+    "weekgroup",
+    "daygroup",
+    "月份分组",
+    "日期分组",
+)
+_DATE_FEATURE_TOKENS = (
+    "month",
+    "year",
+    "season",
+    "quarter",
+    "week",
+    "day",
+    "date",
+    "jieqi",
+    "月份",
+    "日期",
+    "年份",
+    "季节",
+    "季度",
+    "节气",
+)
+
+
+_NAME_GENERIC_TOKENS = {
+    "status", "result", "group", "final", "flag", "type", "code", "class", "level", "value",
+}
+
+
+def _name_tokens(name: str) -> set[str]:
+    """按非字母数字切词并小写（diabetes_result → {diabetes, result}）。"""
+    token, tokens = [], []
+    for ch in str(name).lower():
+        if ch.isalnum():
+            token.append(ch)
+        elif token:
+            tokens.append("".join(token))
+            token = []
+    if token:
+        tokens.append("".join(token))
+    return set(tokens)
+
+
+def _name_similarity_columns(df: pd.DataFrame, target_col: str) -> list[str]:
+    """§21：与目标共享非通用词根（长度 ≥3）的特征 → 疑似语义泄漏。
+
+    双向子串或共享词根均命中；通用词（status/result/group 等）不构成证据，
+    避免 month_group / date_group 类假阳性（该场景由 DATE_DERIVED_TARGET 覆盖）。
+    """
+    norm_target = _normalized(target_col)
+    target_tokens = {t for t in _name_tokens(target_col) if len(t) >= 3} - _NAME_GENERIC_TOKENS
+    if len(norm_target) < 3:
+        return []
+    hits: list[str] = []
+    for col in df.columns:
+        if col == target_col:
+            continue
+        norm = _normalized(str(col))
+        if len(norm) < 3:
+            continue
+        if norm_target in norm or norm in norm_target:
+            hits.append(str(col))
+            continue
+        feature_tokens = {t for t in _name_tokens(str(col)) if len(t) >= 3} - _NAME_GENERIC_TOKENS
+        if target_tokens & feature_tokens:
+            hits.append(str(col))
+    return hits
+
+
+def _date_derived_target_columns(df: pd.DataFrame, target_col: str) -> list[str]:
+    """§24：目标名为日期派生词，且存在日期族特征列 → 返回这些特征列。"""
+    norm_target = _normalized(target_col)
+    if not any(tok in norm_target for tok in _DATE_TARGET_TOKENS):
+        return []
+    hits: list[str] = []
+    for col in df.columns:
+        if col == target_col:
+            continue
+        norm = _normalized(str(col))
+        if any(tok in norm for tok in _DATE_FEATURE_TOKENS):
+            hits.append(str(col))
+    return hits
+
+
 def _target_proxy_columns(df: pd.DataFrame, target_col: str) -> list[str]:
     target = df[target_col]
     proxies: list[str] = []
@@ -102,6 +192,33 @@ def inspect_leakage(
                 tuple(proxies),
                 {"target_col": target_col, "correlation_threshold": 0.999999},
                 "确认变量是否为结局直接记录、结局后变量或数据复制；在预测前不可用时移除。",
+            )
+        )
+
+    name_hits = [c for c in _name_similarity_columns(df, target_col) if c not in proxies]
+    if name_hits:
+        findings.append(
+            LeakageFinding(
+                "NAME_SIMILARITY",
+                "warning",
+                f"特征名与目标 {target_col} 相似，疑似语义泄漏（名称含目标词根）",
+                tuple(name_hits),
+                {"target_col": target_col, "rule": "normalized_substring"},
+                "确认这些变量是否由目标派生或记录于结局之后；如是则移除。",
+            )
+        )
+
+    date_hits = _date_derived_target_columns(df, target_col)
+    if date_hits:
+        findings.append(
+            LeakageFinding(
+                "DATE_DERIVED_TARGET",
+                "critical",
+                f"目标 {target_col} 疑似可由日期族变量确定性重建，AUC 可能反映目标重建而非预测能力",
+                tuple(date_hits),
+                {"target_col": target_col, "rule": "date_family_tokens"},
+                "核查目标定义与日期变量的派生关系；建模前移除可重建目标的日期族变量，"
+                "或在报告中明确标注性能可能虚高。",
             )
         )
 
