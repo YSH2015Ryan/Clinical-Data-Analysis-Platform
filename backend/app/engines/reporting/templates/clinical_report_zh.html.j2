@@ -113,6 +113,10 @@
   {% if analysis_status.scope_banner %}
   <p class="scope">{{ analysis_status.scope_of_use }}</p>
   {% endif %}
+  {# §72：探索性模式固定声明（verbatim，不得改写） #}
+  {% if analysis_status.exploratory_statement %}
+  <p class="scope">{{ analysis_status.exploratory_statement }}</p>
+  {% endif %}
 </div>
 {% endif %}
 

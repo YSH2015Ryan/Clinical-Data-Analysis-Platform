@@ -397,10 +397,16 @@ def preprocess_run(run_id: str) -> None:
                 or cfg.validation.strategy == "time_series_split",
             )
             run.integrity = inspection.to_dict()
-            if inspection.has_blocking_issue:
+            # updateplan §72 Critical Issue Gate：blocker 或 critical 级发现均触发人工门；
+            # 用户确认「继续探索性分析」（exploratory_mode）后放行，报告强制 RED 并附固定声明
+            if inspection.has_gate_issue and not run.exploratory_mode:
                 raise ValueError(
                     "分析被方法学完整性门禁阻止："
-                    + "；".join(f.code for f in inspection.findings if f.severity == "blocker")
+                    + "；".join(
+                        f.code
+                        for f in inspection.findings
+                        if f.severity in ("blocker", "critical")
+                    )
                 )
 
             # 智能采样：按结局分层；配置 group_col 时保持患者组完整

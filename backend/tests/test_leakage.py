@@ -90,6 +90,22 @@ def test_date_derived_target_requires_date_features() -> None:
     assert not any(f.code == "DATE_DERIVED_TARGET" for f in result.findings)
 
 
+def test_gate_issue_includes_critical() -> None:
+    """updateplan §72：critical 级发现（如 DATE_DERIVED_TARGET）同样触发人工门。"""
+    df = pd.DataFrame({"month_group": [0, 1, 0, 1], "month": [1, 2, 3, 4]})
+    result = inspect_leakage(df, target_col="month_group")
+    assert not result.has_blocking_issue
+    assert result.has_gate_issue  # critical 触发 §72 门
+
+
+def test_gate_issue_ignores_warning_only() -> None:
+    """仅 warning（名称相似）不触发 §72 门，分析照常进行。"""
+    df = pd.DataFrame({"diabetes_status": [0, 1, 0, 1], "diabetes": [0, 1, 1, 0]})
+    result = inspect_leakage(df, target_col="diabetes_status")
+    assert not result.has_blocking_issue
+    assert not result.has_gate_issue
+
+
 def test_dsl_feature_time_columns_reach_engine() -> None:
     """P0-03 接通回归：DSL validation.feature_time_columns 经 worker 调用形参
     传入引擎后必须触发 FUTURE_FEATURE（此前 worker 未传该参数，规则空转）。"""

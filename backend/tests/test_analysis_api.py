@@ -20,7 +20,7 @@ from app.models.entities import (
     Project,
     User,
 )
-from app.services.storage import storage_from_settings
+from app.services.storage import key_from_uri, storage_from_settings
 from app.workers import db as worker_db
 from httpx import AsyncClient
 from sqlalchemy import create_engine, select
@@ -662,3 +662,127 @@ class TestComparison:
             f"/api/v1/analysis-runs/{uuid.uuid4()}/comparison", headers=_auth(researcher)
         )
         assert resp.status_code == 404
+
+
+def _proxy_csv() -> bytes:
+    """label_copy 与 label 完全相同 → TARGET_PROXY blocker → 完整性门禁拦截。"""
+    rng = np.random.default_rng(5)
+    n = 60
+    age = rng.normal(60, 10, n)
+    label = (age > 60).astype(int)
+    return (
+        pd.DataFrame({"age": age, "label": label, "label_copy": label})
+        .to_csv(index=False)
+        .encode()
+    )
+
+
+class TestExploratoryGate:
+    """§72 Critical Issue Gate：门禁拦截 FAILED → 用户确认 → 探索性模式重跑。
+
+    探索性模式 run 报告强制 RED 并含 §72 固定声明
+    （Results should not be interpreted as unbiased predictive performance）。
+    """
+
+    async def _gated_run(
+        self, client: AsyncClient, db_session: AsyncSession, researcher: User
+    ) -> str:
+        version = await _make_version(db_session, researcher, _proxy_csv(), "gate_proxy")
+        resp = await client.post(
+            "/api/v1/analysis-runs", json=_body(version.id, ["dummy"]), headers=_auth(researcher)
+        )
+        assert resp.status_code == 202, resp.text
+        db_session.expunge_all()
+        run_id = resp.json()["id"]
+        run = (
+            await db_session.execute(select(AnalysisRun).where(AnalysisRun.id == run_id))
+        ).scalar_one()
+        assert run.status == "FAILED"
+        assert "完整性门禁" in (run.error or "")
+        assert run.exploratory_mode is False
+        return str(run_id)
+
+    async def test_confirm_exploratory_redispatches_and_completes(
+        self, client: AsyncClient, db_session: AsyncSession, researcher: User
+    ) -> None:
+        run_id = await self._gated_run(client, db_session, researcher)
+        resp = await client.post(
+            f"/api/v1/analysis-runs/{run_id}/confirm-exploratory", headers=_auth(researcher)
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["exploratory_mode"] is True
+        db_session.expunge_all()
+        run = (
+            await db_session.execute(select(AnalysisRun).where(AnalysisRun.id == run_id))
+        ).scalar_one()
+        assert run.exploratory_mode is True
+        assert run.status == "COMPLETED"  # eager：重跑同步完成
+
+    async def test_exploratory_report_forced_red_with_fixed_sentence(
+        self, client: AsyncClient, db_session: AsyncSession, researcher: User
+    ) -> None:
+        from app.models.entities import Report
+
+        run_id = await self._gated_run(client, db_session, researcher)
+        resp = await client.post(
+            f"/api/v1/analysis-runs/{run_id}/confirm-exploratory", headers=_auth(researcher)
+        )
+        assert resp.status_code == 200, resp.text
+        db_session.expunge_all()
+        report = (
+            (
+                await db_session.execute(
+                    select(Report).where(
+                        Report.run_id == uuid.UUID(run_id), Report.format == "html"
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+        assert report is not None and report.status == "READY"
+        html = (
+            storage_from_settings().get(key_from_uri(report.storage_uri or "")).decode("utf-8")
+        )
+        assert 'class="status-banner status-red"' in html
+        assert "Results should not be interpreted as unbiased predictive performance" in html
+
+    async def test_confirm_exploratory_requires_gate_failure_400(
+        self, client: AsyncClient, db_session: AsyncSession, researcher: User, version: DatasetVersion
+    ) -> None:
+        """非门禁失败（如正常 COMPLETED）的 run 不允许确认探索性模式。"""
+        resp = await client.post(
+            "/api/v1/analysis-runs", json=_body(version.id, ["dummy"]), headers=_auth(researcher)
+        )
+        assert resp.status_code == 202
+        resp = await client.post(
+            f"/api/v1/analysis-runs/{resp.json()['id']}/confirm-exploratory",
+            headers=_auth(researcher),
+        )
+        assert resp.status_code == 400
+        assert resp.json()["code"] == "RUN_NOT_GATED"
+
+    async def test_confirm_exploratory_cross_owner_403(
+        self, client: AsyncClient, db_session: AsyncSession, researcher: User
+    ) -> None:
+        run_id = await self._gated_run(client, db_session, researcher)
+        other = User(
+            email="gate-other@example.com",
+            password_hash=hash_password("o-pass"),
+            role="researcher",
+            display_name="O",
+        )
+        db_session.add(other)
+        await db_session.commit()
+        resp = await client.post(
+            f"/api/v1/analysis-runs/{run_id}/confirm-exploratory", headers=_auth(other)
+        )
+        assert resp.status_code == 403
+
+    async def test_detail_exposes_exploratory_mode(
+        self, client: AsyncClient, db_session: AsyncSession, researcher: User
+    ) -> None:
+        run_id = await self._gated_run(client, db_session, researcher)
+        detail = await client.get(f"/api/v1/analysis-runs/{run_id}", headers=_auth(researcher))
+        assert detail.status_code == 200
+        assert detail.json()["exploratory_mode"] is False

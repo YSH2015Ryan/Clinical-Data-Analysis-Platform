@@ -377,6 +377,24 @@ async def cancel_run(db: AsyncSession, user: CurrentUser, run_id: uuid.UUID) -> 
     return run
 
 
+async def confirm_exploratory(
+    db: AsyncSession, user: CurrentUser, run_id: uuid.UUID
+) -> AnalysisRun:
+    """updateplan §72：门禁拦截 FAILED 的 run，用户确认「继续探索性分析」后置
+    exploratory_mode=True 并拨回 PENDING（由调用方重新 dispatch）。
+
+    仅接受因完整性门禁失败的 run——其他失败（数据/插件/超时）不提供绕过通道。
+    """
+    run = await get_run(db, user, run_id)
+    if run.status != "FAILED" or not (run.error or "").startswith("分析被方法学完整性门禁阻止"):
+        raise AppError("RUN_NOT_GATED", 400, "仅被方法学完整性门禁拦截的运行可确认探索性分析")
+    run.exploratory_mode = True
+    run.status = "PENDING"
+    run.error = None
+    run.finished_at = None
+    return run
+
+
 async def prepare_model_rerun(
     db: AsyncSession, user: CurrentUser, run_id: uuid.UUID, model_key: str
 ) -> AnalysisRun:

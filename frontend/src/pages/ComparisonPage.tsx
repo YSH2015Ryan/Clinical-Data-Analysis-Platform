@@ -383,6 +383,23 @@ export default function ComparisonPage() {
         </Space>
       </Space>
 
+      {/* §72：探索性模式红色横幅（固定声明，非 LLM 生成） */}
+      {run?.exploratory_mode && (
+        <Alert
+          type="error"
+          style={{ marginBottom: 16 }}
+          message="探索性分析模式（§72）：检测到重大数据或方法学问题，经研究者确认后继续"
+          description={
+            <div>
+              <div>以下结果仅供方法学筛查参考，不得作为确认性结论。</div>
+              <div style={{ marginTop: 4, fontWeight: 600 }}>
+                Results should not be interpreted as unbiased predictive performance.
+              </div>
+            </div>
+          }
+        />
+      )}
+
       {cmp ? (
         <Tabs
           items={[

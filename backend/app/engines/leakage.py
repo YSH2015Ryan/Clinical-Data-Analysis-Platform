@@ -39,10 +39,16 @@ class LeakageInspection:
     def has_blocking_issue(self) -> bool:
         return any(f.severity == "blocker" for f in self.findings)
 
+    @property
+    def has_gate_issue(self) -> bool:
+        """updateplan §72：blocker 或 critical 级发现触发人工门（Exploratory Mode 确认）。"""
+        return any(f.severity in ("blocker", "critical") for f in self.findings)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "findings": [f.to_dict() for f in self.findings],
             "has_blocking_issue": self.has_blocking_issue,
+            "has_gate_issue": self.has_gate_issue,
         }
 
 

@@ -23,6 +23,8 @@ class AnalysisRunOut(BaseModel):
     task_type: str
     created_at: datetime
     integrity: dict[str, Any] | None = None
+    # §72（14 章 2026-09-18 新增可选字段）：探索性模式标记
+    exploratory_mode: bool = False
 
 
 class AnalysisRunDetail(AnalysisRunOut):

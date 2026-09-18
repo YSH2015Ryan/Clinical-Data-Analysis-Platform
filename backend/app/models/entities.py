@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -245,6 +246,8 @@ class AnalysisRun(Base):
     model_params: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     task_detection: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     integrity: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # updateplan §72：用户确认在 critical 级方法学问题下继续 → 探索性模式（报告强制 RED）
+    exploratory_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     celery_chain_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(

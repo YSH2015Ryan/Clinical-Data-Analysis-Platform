@@ -731,6 +731,20 @@ export interface AnalysisRun {
   status: RunStatus;
   task_type: TaskType;
   created_at: string;
+  /** P0 方法学完整性发现（blocker/critical/warning 四级；§72 Gate 数据源） */
+  integrity?: {
+    findings?: Array<{
+      code: string;
+      severity: "blocker" | "critical" | "warning" | "info";
+      message: string;
+      columns?: string[];
+      recommended_action?: string;
+    }>;
+    has_blocking_issue?: boolean;
+    has_gate_issue?: boolean;
+  } | null;
+  /** §72：用户确认在 critical 级方法学问题下继续 → 探索性模式（报告强制 RED） */
+  exploratory_mode?: boolean;
 }
 
 export interface AnalysisRunDetail extends AnalysisRun {
@@ -783,6 +797,13 @@ export async function listModels(taskType: TaskType): Promise<ModelPlugin[]> {
 
 export async function rerunModel(runId: string, modelKey: string): Promise<{ status: string }> {
   return apiFetch(`/analysis-runs/${runId}/models/${modelKey}/rerun`, { method: "POST" });
+}
+
+/** §72 Critical Issue Gate：门禁拦截后用户确认「继续探索性分析」（报告强制 RED）。 */
+export async function confirmExploratory(
+  runId: string,
+): Promise<{ status: string; exploratory_mode: boolean }> {
+  return apiFetch(`/analysis-runs/${runId}/confirm-exploratory`, { method: "POST" });
 }
 
 // ---- T6.13 对话式迭代（docs/14 POST /analysis-runs/{id}/iterate） ----

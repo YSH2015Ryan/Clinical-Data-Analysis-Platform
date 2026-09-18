@@ -34,6 +34,12 @@ _STATUS_LABELS = {
     "RED": "检测到重大数据或方法学问题",
 }
 
+# updateplan §72 固定声明（verbatim，非 LLM 生成，不得改写）：
+# 探索性模式下报告必须声明结果不得按无偏预测性能解读
+EXPLORATORY_STATEMENT = (
+    "Results should not be interpreted as unbiased predictive performance."
+)
+
 
 def _epv(payload: dict[str, Any]) -> float | None:
     summary = payload.get("target_summary") or {}
@@ -88,6 +94,14 @@ def compute_analysis_status(payload: dict[str, Any]) -> dict[str, Any]:
         level = "YELLOW"
     else:
         level = "GREEN"
+
+    # §72：探索性模式（用户确认在 critical 级方法学问题下继续）强制 RED，
+    # 报告必须声明结果不得按无偏预测性能解读
+    exploratory = bool((payload.get("run") or {}).get("exploratory_mode"))
+    if exploratory:
+        level = "RED"
+        red.insert(0, "探索性分析模式：用户确认在存在 critical 级方法学问题的情况下继续（§72）")
+
     return {
         "level": level,
         "label": _STATUS_LABELS[level],
@@ -95,4 +109,6 @@ def compute_analysis_status(payload: dict[str, Any]) -> dict[str, Any]:
         # §70：RED 时首页醒目横幅展示固定 Scope of Use 声明
         "scope_banner": level == "RED",
         "scope_of_use": SCOPE_OF_USE,
+        # §72：探索性模式固定声明（非探索性 → None → 模板不渲染）
+        "exploratory_statement": EXPLORATORY_STATEMENT if exploratory else None,
     }

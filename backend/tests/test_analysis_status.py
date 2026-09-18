@@ -85,3 +85,37 @@ class TestStatusRendered:
         payload = _redflag_payload()
         payload["llm_note"] = "模型表现优秀，可放心临床使用"
         assert compute_analysis_status(payload)["level"] == "RED"
+
+
+class TestExploratoryMode:
+    """§72：用户确认在 critical 级方法学问题下继续 → 探索性模式，报告强制 RED。"""
+
+    def test_exploratory_mode_forces_red_on_healthy_payload(self) -> None:
+        payload = _payload()
+        payload["run"]["exploratory_mode"] = True
+        status = compute_analysis_status(payload)
+        assert status["level"] == "RED"
+        assert status["scope_banner"] is True
+        assert any("探索性" in r for r in status["reasons"])
+
+    def test_exploratory_fixed_sentence_verbatim(self) -> None:
+        """§72 固定声明逐字输出（非 LLM 生成，不得改写）。"""
+        payload = _payload()
+        payload["run"]["exploratory_mode"] = True
+        status = compute_analysis_status(payload)
+        assert (
+            status["exploratory_statement"]
+            == "Results should not be interpreted as unbiased predictive performance."
+        )
+
+    def test_exploratory_false_no_effect(self) -> None:
+        payload = _payload()
+        payload["run"]["exploratory_mode"] = False
+        assert compute_analysis_status(payload)["level"] == "GREEN"
+
+    def test_exploratory_render_includes_fixed_sentence(self) -> None:
+        payload = _payload()
+        payload["run"]["exploratory_mode"] = True
+        html = render_html(build_report_context(payload))
+        assert 'class="status-banner status-red"' in html
+        assert "Results should not be interpreted as unbiased predictive performance" in html

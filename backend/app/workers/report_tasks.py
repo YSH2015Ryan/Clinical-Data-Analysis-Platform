@@ -462,6 +462,8 @@ def assemble_report_payload(db: Any, run: AnalysisRun) -> dict[str, Any]:
             "selected_models": list(run.selected_models or []),
             "created_at": str(run.created_at),
             "finished_at": str(run.finished_at) if run.finished_at else None,
+            # §72：探索性模式 → 报告状态灯强制 RED 并附固定声明
+            "exploratory_mode": run.exploratory_mode,
         },
         "dataset": {"name": dataset.name if dataset else None},
         "target_summary": _target_summary(storage, run.id, run.task_type),

@@ -76,7 +76,7 @@ async def create_analysis_run(
         raise AppError("TASK_DISPATCH_FAILED", 503, "分析任务暂时无法排队，请稍后重试") from exc
     return AnalysisRunOut(
         id=run.id, status=run.status, task_type=run.task_type, created_at=run.created_at,
-        integrity=run.integrity,
+        integrity=run.integrity, exploratory_mode=run.exploratory_mode,
     )
 
 
@@ -94,7 +94,7 @@ async def list_project_runs(
         "items": [
             AnalysisRunOut(
                 id=r.id, status=r.status, task_type=r.task_type, created_at=r.created_at,
-                integrity=r.integrity,
+                integrity=r.integrity, exploratory_mode=r.exploratory_mode,
             )
             for r in runs
         ],
@@ -116,6 +116,7 @@ async def get_analysis_run(
         created_at=run.created_at,
         task_detection=run.task_detection,
         integrity=run.integrity,
+        exploratory_mode=run.exploratory_mode,
         error=run.error,
     )
 
@@ -155,6 +156,40 @@ async def cancel_analysis_run(
         except Exception as exc:
             logger.warning("revoke_failed", run_id=str(run_id), error=str(exc))
     return {"status": "CANCELED"}
+
+
+@router.post("/analysis-runs/{run_id}/confirm-exploratory")
+async def confirm_exploratory(
+    run_id: uuid.UUID,
+    user: CurrentUser = Depends(require_role("researcher")),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """updateplan §72 Critical Issue Gate：用户在门禁拦截后选择「继续探索性分析」。
+
+    置 exploratory_mode=True 并重新 dispatch；报告强制 RED 并附固定声明
+    （Results should not be interpreted as unbiased predictive performance）。
+    """
+    run = await analysis_service.confirm_exploratory(db, user, run_id)
+    await audit_service.record(
+        db,
+        "analysis.confirm_exploratory",
+        user_id=user.id,
+        resource_type="analysis_run",
+        resource_id=run.id,
+        detail={"integrity": run.integrity},
+    )
+    await db.commit()  # 先落库：worker 以独立会话读取 exploratory_mode
+    try:
+        run.celery_chain_id = dispatch_analysis_run(str(run.id), list(run.selected_models))
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        run = await analysis_service.get_run(db, user, run.id)
+        run.status = "FAILED"
+        run.error = f"任务派发失败：{exc}"[:2000]
+        await db.commit()
+        raise AppError("TASK_DISPATCH_FAILED", 503, "分析任务暂时无法排队，请稍后重试") from exc
+    return {"status": "PENDING", "exploratory_mode": True}
 
 
 @router.post("/analysis-runs/{run_id}/models/{model_key}/rerun", status_code=202)
