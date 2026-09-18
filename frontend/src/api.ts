@@ -746,6 +746,46 @@ export async function subgroupAnalysis(
   });
 }
 
+// ---- P1-12 混杂校正关联分析（updateplan §29；docs/14 §5 变更记录 2026-09-18） ----
+
+export interface AssociationEffect {
+  effect_label: string; // OR / β / HR
+  effect: number;
+  ci_lower: number;
+  ci_upper: number;
+  p_value: number;
+}
+
+export interface AdjustedAssociationResult {
+  task_type: TaskType;
+  exposure: string;
+  confounders: string[];
+  n_used: number;
+  unadjusted: AssociationEffect;
+  adjusted: AssociationEffect;
+  /** 固定文案：调整后关联 ≠ 因果效应（Principle 4） */
+  note: string;
+}
+
+export interface AdjustedAssociationRequest {
+  task_type: TaskType;
+  exposure: string;
+  confounders: string[];
+  label_col?: string;
+  time_col?: string;
+  event_col?: string;
+}
+
+export async function adjustedAssociation(
+  datasetId: string,
+  body: AdjustedAssociationRequest,
+): Promise<AdjustedAssociationResult> {
+  return apiFetch<AdjustedAssociationResult>(`/datasets/${datasetId}/adjusted-association`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 // ---- 分析运行（docs/14 §3 /analysis-runs；docs/08 §3 状态机） ----
 
 export type RunStatus =

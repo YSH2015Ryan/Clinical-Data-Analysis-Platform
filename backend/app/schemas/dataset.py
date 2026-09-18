@@ -186,6 +186,38 @@ class SubgroupAnalysisResult(BaseModel):
     correction_warning: str | None = None
 
 
+class AdjustedAssociationRequest(BaseModel):
+    """混杂校正关联分析请求（P1-12，updateplan §29）。
+
+    混杂清单由研究者指定——系统不自动猜测因果结构。
+    """
+
+    task_type: Literal["survival", "classification", "regression"]
+    exposure: str
+    confounders: list[str] = Field(min_length=1)
+    label_col: str | None = None
+    time_col: str | None = None
+    event_col: str | None = None
+
+
+class AssociationEffect(BaseModel):
+    effect_label: str  # OR / β / HR
+    effect: float
+    ci_lower: float
+    ci_upper: float
+    p_value: float
+
+
+class AdjustedAssociationResult(BaseModel):
+    task_type: str
+    exposure: str
+    confounders: list[str]
+    n_used: int
+    unadjusted: AssociationEffect
+    adjusted: AssociationEffect
+    note: str  # §29 + Principle 4 固定文案（调整后关联 ≠ 因果效应）
+
+
 class QuickFixAction(BaseModel):
     type: Literal[
         "drop_column",

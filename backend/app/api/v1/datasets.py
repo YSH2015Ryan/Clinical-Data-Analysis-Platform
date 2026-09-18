@@ -25,10 +25,13 @@ from app.engines.preprocessing import validate_dsl
 from app.engines.quickfix import QuickFixAction
 from app.engines.research_profiler import detect_research_direction
 from app.engines.research_templates import evaluate_templates
+from app.engines.adjustment import adjusted_association
 from app.engines.screening import subgroup_analysis, univariate_screen
 from app.engines.task_detection import detect_task_from_profile
 from app.schemas.auth import CurrentUser
 from app.schemas.dataset import (
+    AdjustedAssociationRequest,
+    AdjustedAssociationResult,
     AnalysisDraft,
     DatasetAccepted,
     DatasetDetail,
@@ -365,6 +368,35 @@ async def post_subgroup_analysis(
     except ValueError as exc:
         raise AppError(code="SUBGROUP_INVALID", status=400, message=str(exc)) from exc
     return SubgroupAnalysisResult.model_validate(result)
+
+
+@dataset_router.post("/{dataset_id}/adjusted-association", response_model=AdjustedAssociationResult)
+async def post_adjusted_association(
+    dataset_id: uuid.UUID,
+    body: AdjustedAssociationRequest,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AdjustedAssociationResult:
+    """P1-12 混杂校正关联分析（updateplan §29）：Unadjusted vs Adjusted 并列。
+
+    混杂清单由研究者指定；调整后关联不等于因果效应（Principle 4）。
+    """
+    dataframe = await _load_dataframe(dataset_id, user, db)
+    try:
+        result = await to_thread.run_sync(
+            lambda: adjusted_association(
+                dataframe,
+                task_type=body.task_type,
+                exposure=body.exposure,
+                confounders=body.confounders,
+                label_col=body.label_col,
+                time_col=body.time_col,
+                event_col=body.event_col,
+            )
+        )
+    except ValueError as exc:
+        raise AppError(code="ADJUSTMENT_INVALID", status=400, message=str(exc)) from exc
+    return AdjustedAssociationResult.model_validate(result)
 
 
 @dataset_router.post("/{dataset_id}/quick-fix", response_model=DatasetVersion)
