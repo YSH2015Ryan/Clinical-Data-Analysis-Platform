@@ -331,6 +331,21 @@ export interface EdaResult {
     rows_with_any_missing: number;
     complete_case_ratio: number;
   };
+  /** P1-11（§12）：缺失机制启发式（旧 insight 记录可能缺失该字段） */
+  missingness?: {
+    alpha: number;
+    variables: {
+      column: string;
+      n_missing: number;
+      missing_rate: number;
+      outcome_association_p: number | null;
+      associated_variables: string[];
+      mechanism: "likely_mcar" | "likely_mar" | "possible_mnar" | "undetermined";
+      warning: string | null;
+      imputation_advice: string;
+    }[];
+    has_outcome_associated_missingness: boolean;
+  };
   correlations: {
     continuous: {
       columns: string[];

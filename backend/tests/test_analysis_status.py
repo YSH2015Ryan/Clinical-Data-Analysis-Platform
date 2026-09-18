@@ -50,6 +50,53 @@ class TestStatusRules:
     def test_red_on_perfect_metric_redflag(self) -> None:
         assert compute_analysis_status(_redflag_payload())["level"] == "RED"
 
+    def test_yellow_on_outcome_associated_missingness(self) -> None:
+        """P1-11（§12）：Possible MNAR（缺失与结局相关）→ YELLOW 重要局限。"""
+        payload = _payload()
+        payload["missingness"] = {
+            "alpha": 0.05,
+            "variables": [
+                {
+                    "column": "troponin",
+                    "n_missing": 40,
+                    "missing_rate": 0.2,
+                    "outcome_association_p": 0.001,
+                    "associated_variables": [],
+                    "mechanism": "possible_mnar",
+                    "warning": 'WARNING: Missingness in "troponin" is associated with the outcome.',
+                    "imputation_advice": "建议多重插补",
+                }
+            ],
+            "has_outcome_associated_missingness": True,
+        }
+        status = compute_analysis_status(payload)
+        assert status["level"] == "YELLOW"
+        assert any("MNAR" in r and "troponin" in r for r in status["reasons"])
+
+    def test_missingness_rendered_in_quality_section(self) -> None:
+        payload = _payload()
+        payload["missingness"] = {
+            "alpha": 0.05,
+            "variables": [
+                {
+                    "column": "troponin",
+                    "n_missing": 40,
+                    "missing_rate": 0.2,
+                    "outcome_association_p": 0.001,
+                    "associated_variables": ["age"],
+                    "mechanism": "possible_mnar",
+                    "warning": 'WARNING: Missingness in "troponin" is associated with the outcome.',
+                    "imputation_advice": "建议多重插补",
+                }
+            ],
+            "has_outcome_associated_missingness": True,
+        }
+        html = render_html(build_report_context(payload))
+        assert "缺失数据机制" in html
+        assert "Possible MNAR" in html
+        assert "Single imputation may introduce bias" not in html  # warning 文案另测逐字
+        assert "associated with the outcome" in html
+
     def test_epv_tiers(self) -> None:
         # _redflag_payload 基础上把指标调正常，隔离 EPV 单因素
         payload = _redflag_payload()

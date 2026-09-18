@@ -214,6 +214,23 @@
   {% endfor %}
 {% endcall %}
 {% endif %}
+{# P1-11（§12）：缺失机制表 + MNAR 固定 WARNING（启发式，非严格因果推断） #}
+{% if s.data.missingness and s.data.missingness.variables %}
+{% set mz = s.data.missingness %}
+{% call tbl("缺失数据机制（启发式判断，α=" ~ mz.alpha ~ "）") %}
+  <tr><th>变量</th><th>缺失率</th><th>机制</th><th>关联变量</th><th>插补建议</th></tr>
+  {% for v in mz.variables %}
+  <tr><td>{{ v.column }}</td><td>{{ '%.1f%%' | format(v.missing_rate * 100) }}</td>
+      <td>{{ {"likely_mcar": "Likely MCAR", "likely_mar": "Likely MAR", "possible_mnar": "Possible MNAR", "undetermined": "Undetermined"}[v.mechanism] }}</td>
+      <td>{{ v.associated_variables | join("、") or "—" }}</td>
+      <td>{{ v.imputation_advice }}</td></tr>
+  {% endfor %}
+{% endcall %}
+{% for v in mz.variables %}{% if v.warning %}
+<p class="meta" style="color:#b3001b;font-weight:bold;">{{ v.warning }}</p>
+{% endif %}{% endfor %}
+<p class="meta">缺失机制为启发式判断（非严格因果推断）；不静默插补——插补方法须在预处理配置中明确选择并由研究者确认。</p>
+{% endif %}
 
 {% elif s.key == "preprocessing" %}
 {% call tbl("预处理步骤与参数") %}

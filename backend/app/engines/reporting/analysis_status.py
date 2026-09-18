@@ -81,6 +81,17 @@ def compute_analysis_status(payload: dict[str, Any]) -> dict[str, Any]:
     if red_flag is not None:
         red.append("完美指标红旗：接近满分的性能叠加低 EPV，疑似过拟合/数据泄漏")
 
+    # P1-11（§12）：缺失与结局相关（Possible MNAR）→ YELLOW 重要局限提示
+    missingness = payload.get("missingness") or {}
+    if missingness.get("has_outcome_associated_missingness"):
+        mnar_cols = [
+            v["column"] for v in missingness.get("variables", []) if v.get("mechanism") == "possible_mnar"
+        ]
+        yellow.append(
+            f"变量 {'、'.join(mnar_cols)} 的缺失与结局相关（Possible MNAR）："
+            "单一插补可能引入偏倚"
+        )
+
     epv = _epv(payload)
     if epv is not None:
         if epv < 5:

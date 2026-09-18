@@ -495,6 +495,8 @@ def assemble_report_payload(db: Any, run: AnalysisRun) -> dict[str, Any]:
         ),
         # T6.14：体检缺口建议 → 报告动态局限性数据源（无体检或旧记录 → None）
         "supplement_plan": (insight or {}).get("supplement_plan"),
+        # P1-11（§12）：缺失机制启发式 → 报告质量章节 + 状态灯 YELLOW 规则
+        "missingness": ((insight or {}).get("eda") or {}).get("missingness"),
         "screening": _screening_payload(storage, run),
         "survival_analysis": (
             _survival_analysis_payload(storage, run.id, ranking)

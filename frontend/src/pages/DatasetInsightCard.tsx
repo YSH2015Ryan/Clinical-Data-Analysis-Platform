@@ -4,7 +4,7 @@
  * 前端只做可视化（直方图/Top 计数/相关性对/EPV），不做任何推断。
  */
 
-import { Alert, Card, Col, Collapse, Row, Space, Statistic, Table, Tag, Typography } from "antd";
+import { Alert, Card, Col, Collapse, Row, Space, Statistic, Table, Tag, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
 import {
   getDatasetInsight,
@@ -306,26 +306,66 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
           {
             key: "missing",
             label: `缺失模式（${topMissing.length} 列含缺失）`,
-            children:
-              topMissing.length === 0 ? (
-                <Typography.Text type="secondary">无缺失</Typography.Text>
-              ) : (
-                <Table
-                  rowKey="name"
-                  size="small"
-                  dataSource={topMissing}
-                  pagination={false}
-                  columns={[
-                    { title: "列", dataIndex: "name" },
-                    { title: "缺失数", dataIndex: "missing" },
-                    {
-                      title: "缺失率",
-                      dataIndex: "missing_rate",
-                      render: (v: number) => `${(v * 100).toFixed(1)}%`,
-                    },
-                  ]}
-                />
-              ),
+            children: (
+              <>
+                {/* P1-11（§12）：缺失与结局相关 → 必须 WARNING */}
+                {eda.missingness?.has_outcome_associated_missingness && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 8 }}
+                    message="缺失与结局相关（Possible MNAR）"
+                    description="单一插补可能引入系统性偏倚，建议多重插补（MICE）或缺失感知模型，并由研究者确认。"
+                  />
+                )}
+                {topMissing.length === 0 ? (
+                  <Typography.Text type="secondary">无缺失</Typography.Text>
+                ) : (
+                  <Table
+                    rowKey="name"
+                    size="small"
+                    dataSource={topMissing}
+                    pagination={false}
+                    columns={[
+                      { title: "列", dataIndex: "name" },
+                      { title: "缺失数", dataIndex: "missing" },
+                      {
+                        title: "缺失率",
+                        dataIndex: "missing_rate",
+                        render: (v: number) => `${(v * 100).toFixed(1)}%`,
+                      },
+                      {
+                        title: "机制（启发式）",
+                        key: "mechanism",
+                        render: (_, r) => {
+                          const mz = eda.missingness?.variables.find(
+                            (v) => v.column === r.name,
+                          );
+                          if (!mz) return "—";
+                          const label = {
+                            likely_mcar: "Likely MCAR",
+                            likely_mar: "Likely MAR",
+                            possible_mnar: "Possible MNAR",
+                            undetermined: "Undetermined",
+                          }[mz.mechanism];
+                          const color = {
+                            likely_mcar: "green",
+                            likely_mar: "gold",
+                            possible_mnar: "red",
+                            undetermined: "default",
+                          }[mz.mechanism];
+                          return (
+                            <Tooltip title={mz.imputation_advice}>
+                              <Tag color={color}>{label}</Tag>
+                            </Tooltip>
+                          );
+                        },
+                      },
+                    ]}
+                  />
+                )}
+              </>
+            ),
           },
           {
             key: "corr",

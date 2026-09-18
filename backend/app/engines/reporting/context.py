@@ -226,6 +226,8 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                 "warnings": (quality or {}).get("warnings"),
                 "issues": (quality or {}).get("issues") or [],
                 "transform_log": payload.get("transform_log") or [],
+                # P1-11（§12）：缺失机制（MCAR/MAR/MNAR 启发式，缺体检 → None 不渲染）
+                "missingness": payload.get("missingness"),
             },
         ),
         _section(

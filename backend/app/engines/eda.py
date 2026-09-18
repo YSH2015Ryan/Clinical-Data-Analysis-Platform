@@ -16,6 +16,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from app.engines.missingness import analyze_missingness
+
 _HIST_BINS = 10
 _TOP_CATEGORIES = 10
 _TOP_PAIRS = 10
@@ -184,6 +186,11 @@ def _sample_size(df: pd.DataFrame, profiles: list[dict[str, Any]]) -> dict[str, 
     }
 
 
+def _outcome_cols(profiles: list[dict[str, Any]]) -> list[str]:
+    """画像中 semantic 为 Event/Label 的列（缺失机制 §12 结局关联检验用）。"""
+    return [p["name"] for p in profiles if p.get("semantic") in ("Event", "Label")]
+
+
 def compute_eda(df: pd.DataFrame, column_profiles: list[dict[str, Any]]) -> dict[str, Any]:
     """计算 EDA 汇总（确定性；同输入恒同输出）。"""
     return {
@@ -191,6 +198,8 @@ def compute_eda(df: pd.DataFrame, column_profiles: list[dict[str, Any]]) -> dict
         "column_count": len(df.columns),
         "distributions": _distributions(df, column_profiles),
         "missing": _missing(df, column_profiles),
+        # P1-11（updateplan §12）：缺失机制启发式（结局列取画像 Event/Label）
+        "missingness": analyze_missingness(df, outcome_cols=_outcome_cols(column_profiles)),
         "correlations": _correlations(df, column_profiles),
         "sample_size": _sample_size(df, column_profiles),
     }

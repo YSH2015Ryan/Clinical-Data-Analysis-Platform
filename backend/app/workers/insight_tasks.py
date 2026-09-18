@@ -157,6 +157,16 @@ def _summary_lines(
         )
     missing = eda["missing"]
     lines.append(f"完整病例比例 {missing['complete_case_ratio']:.1%}。")
+    # P1-11（§12）：缺失与结局相关 → 必须提示（单一插补可能引入偏倚）
+    missingness = eda.get("missingness") or {}
+    if missingness.get("has_outcome_associated_missingness"):
+        cols = [
+            v["column"] for v in missingness["variables"] if v["mechanism"] == "possible_mnar"
+        ]
+        lines.append(
+            f"⚠ 变量 {'、'.join(cols)} 的缺失与结局显著相关：单一插补可能引入系统性偏倚，"
+            "建议多重插补（MICE）或缺失感知模型，并由研究者确认（§12）。"
+        )
     if recommendation.recommended_tasks:
         lines.append(
             f"推荐任务：{'、'.join(recommendation.recommended_tasks)}"
