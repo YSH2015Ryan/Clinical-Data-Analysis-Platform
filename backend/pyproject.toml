@@ -19,6 +19,7 @@ dependencies = [
     "email-validator~=2.0",  # pydantic EmailStr 依赖（Apache-2.0）
     "python-multipart",
     "httpx~=0.27",
+    "requests~=2.32",  # Ollama Provider HTTP 调用（Apache-2.0）
     # DB / 任务队列 / 存储
     "sqlalchemy~=2.0",
     "alembic~=1.13",
@@ -58,6 +59,9 @@ dependencies = [
     "weasyprint>=68.0",  # PYSEC-2026-2034 修复版；PYSEC-2026-3412 暂无修复，CI 持续监控
     "python-docx~=1.1",
     "matplotlib~=3.9",  # 报告 PNG 渲染（docs/10 §1 依赖清单；ChartAsset JSON 单数据源派生）
+    # LLM
+    "openai~=1.0",  # 云端 LLM 提供商（OpenAI API）
+    "anthropic~=0.40",  # 云端 LLM 提供商（Anthropic Claude API）
     # 日志
     "structlog~=24.4",
 ]
@@ -122,7 +126,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "minio.*", "redbeat.*", "sklearn.*", "simpleeval", "simpleeval.*", "sksurv.*", "lifelines.*", "catboost.*", "torch", "torch.*", "pycox.*", "torchtuples.*", "shap", "shap.*", "pygam", "pygam.*", "weasyprint", "weasyprint.*", "statsmodels", "statsmodels.*", "scipy", "scipy.*", "openai"]
+module = ["celery.*", "minio.*", "redbeat.*", "sklearn.*", "simpleeval", "simpleeval.*", "sksurv.*", "lifelines.*", "catboost.*", "torch", "torch.*", "pycox.*", "torchtuples.*", "shap", "shap.*", "pygam", "pygam.*", "weasyprint", "weasyprint.*", "statsmodels", "statsmodels.*", "scipy", "scipy.*", "openai", "anthropic"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

@@ -28,10 +28,19 @@ class TargetSpec(BaseModel):
 class ValidationSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    strategy: Literal["stratified_kfold", "kfold"]
+    strategy: Literal[
+        "stratified_kfold",
+        "kfold",
+        "group_kfold",
+        "stratified_group_kfold",
+        "time_series_split",
+    ]
     n_splits: int = Field(default=5, ge=2, le=10)
     test_size: float = Field(default=0.2, gt=0.0, lt=0.9)
     seed: int = 42
+    group_col: str | None = None
+    time_col: str | None = None
+    prediction_time_col: str | None = None
 
 
 # ---------- steps（discriminated union，type 枚举与 docs/14 一致） ----------

@@ -17,7 +17,13 @@ from typing import Any, cast
 import numpy as np
 import pandas as pd
 import sklearn
-from sklearn.model_selection import KFold, StratifiedKFold
+from sklearn.model_selection import (
+    GroupKFold,
+    KFold,
+    StratifiedGroupKFold,
+    StratifiedKFold,
+    TimeSeriesSplit,
+)
 from sklearn.pipeline import Pipeline
 
 from app.engines.preprocess_steps import (
@@ -99,12 +105,35 @@ SplitIterator = Iterator[tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]]
 
 
 def iter_cv_splits(df: pd.DataFrame, spec: ValidationSpec, y: pd.Series | None) -> SplitIterator:
-    """按 validation 策略产出 (train_idx, val_idx) 位置索引；seed 固定可复现。"""
+    """按 validation 策略产出位置索引，支持患者组和前向时间隔离。"""
+    groups = df[spec.group_col] if spec.group_col else None
     if spec.strategy == "stratified_kfold":
         if y is None:
             raise ValueError("stratified_kfold 需要 y 以维持类别比例")
         splitter = StratifiedKFold(n_splits=spec.n_splits, shuffle=True, random_state=spec.seed)
         return cast(SplitIterator, splitter.split(df, y))
+    if spec.strategy == "group_kfold":
+        if groups is None:
+            raise ValueError("group_kfold 需要 group_col")
+        return cast(SplitIterator, GroupKFold(n_splits=spec.n_splits).split(df, y, groups))
+    if spec.strategy == "stratified_group_kfold":
+        if y is None or groups is None:
+            raise ValueError("stratified_group_kfold 需要 y 和 group_col")
+        splitter = StratifiedGroupKFold(
+            n_splits=spec.n_splits, shuffle=True, random_state=spec.seed
+        )
+        return cast(SplitIterator, splitter.split(df, y, groups))
+    if spec.strategy == "time_series_split":
+        if spec.time_col and spec.time_col in df.columns:
+            timestamps = pd.to_datetime(df[spec.time_col], errors="coerce")
+            if timestamps.isna().any():
+                raise ValueError(f"time_col {spec.time_col} 包含无法解析的时间值")
+            order = np.argsort(timestamps.to_numpy())
+            ordered = df.iloc[order]
+            split = TimeSeriesSplit(n_splits=spec.n_splits, test_size=None)
+            return ((order[train], order[valid]) for train, valid in split.split(ordered))
+        split = TimeSeriesSplit(n_splits=spec.n_splits, test_size=None)
+        return cast(SplitIterator, split.split(df))
     splitter = KFold(n_splits=spec.n_splits, shuffle=True, random_state=spec.seed)
     return cast(SplitIterator, splitter.split(df))
 

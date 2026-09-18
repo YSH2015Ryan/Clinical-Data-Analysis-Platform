@@ -48,7 +48,15 @@ def detect_perfect_metric_redflag(payload: dict[str, Any]) -> dict[str, Any] | N
     返回键：epv / metric / metric_value / model_key / top_feature /
     limitation（局限性条目）/ warning（结论章警示段）。
     """
-    task_type = str((payload.get("run") or {}).get("task_type") or "")
+    integrity = payload.get("integrity") or {}
+    findings = integrity.get("findings") or []
+    if any(f.get("severity") == "blocker" for f in findings if isinstance(f, dict)):
+        return {
+            "integrity_blocked": True,
+            "warning": "Critical methodological review required. 分析完整性门禁发现阻断级问题，禁止将模型性能解释为可信临床效能。",
+            "findings": findings,
+        }
+
     if task_type not in ("classification", "survival"):
         return None
 

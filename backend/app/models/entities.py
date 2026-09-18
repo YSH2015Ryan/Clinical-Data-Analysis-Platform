@@ -244,6 +244,7 @@ class AnalysisRun(Base):
     selected_models: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     model_params: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     task_detection: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    integrity: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     celery_chain_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(

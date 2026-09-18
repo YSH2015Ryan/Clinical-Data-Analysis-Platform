@@ -37,6 +37,13 @@ router = APIRouter(tags=["admin"])
 
 def _out(cfg: settings_service.LlmRuntimeConfig) -> LlmSettingsOut:
     status = get_llm_service().get_status()
+    
+    # 根据 cloud_provider 确定当前 key
+    if cfg.cloud_provider == "anthropic":
+        current_key = cfg.anthropic_api_key
+    else:
+        current_key = cfg.openai_api_key
+    
     return LlmSettingsOut(
         status=LlmStatus(
             local=LlmProviderStatus(**status["local"]),
@@ -48,9 +55,10 @@ def _out(cfg: settings_service.LlmRuntimeConfig) -> LlmSettingsOut:
             temperature=cfg.temperature,
             ollama_model=cfg.ollama_model,
             cloud_enabled=cfg.cloud_enabled,
-            cloud_has_key=bool(cfg.openai_api_key),
+            cloud_provider=cfg.cloud_provider,
+            cloud_has_key=bool(current_key),
             cloud_key_preview=(
-                settings_service.mask_secret(cfg.openai_api_key) if cfg.openai_api_key else ""
+                settings_service.mask_secret(current_key) if current_key else ""
             ),
             feature_switches=LlmFeatureSwitches(**cfg.feature_switches),
         ),
@@ -77,6 +85,8 @@ async def put_llm_settings(
         temperature=body.temperature,
         ollama_model=body.ollama_model,
         openai_api_key=body.openai_api_key,
+        anthropic_api_key=body.anthropic_api_key,
+        cloud_provider=body.cloud_provider,
         feature_switches=(
             dict(body.feature_switches.model_dump()) if body.feature_switches else None
         ),
@@ -131,24 +141,46 @@ def _test_cloud_sync(cfg: settings_service.LlmRuntimeConfig) -> LlmTestResult:
     started = time.monotonic()
     if not cfg.cloud_enabled:
         return LlmTestResult(ok=False, provider="cloud", latency_ms=0, detail="云端已被部署层禁用")
-    if not cfg.openai_api_key:
-        return LlmTestResult(ok=False, provider="cloud", latency_ms=0, detail="未配置云端 key")
-    try:
-        from app.services.llm_providers.openai_provider import OpenAIProvider
+    
+    # 根据 cloud_provider 选择对应的 key
+    if cfg.cloud_provider == "anthropic":
+        if not cfg.anthropic_api_key:
+            return LlmTestResult(ok=False, provider="cloud", latency_ms=0, detail="未配置 Anthropic key")
+        try:
+            from app.services.llm_providers.anthropic_provider import AnthropicProvider
+            
+            provider = AnthropicProvider(api_key=cfg.anthropic_api_key, model=cfg.anthropic_model)
+            ok = provider.is_available()
+            latency = int((time.monotonic() - started) * 1000)
+            return LlmTestResult(
+                ok=ok, provider="cloud", latency_ms=latency, detail="" if ok else "Anthropic 不可用"
+            )
+        except Exception as exc:
+            return LlmTestResult(
+                ok=False,
+                provider="cloud",
+                latency_ms=int((time.monotonic() - started) * 1000),
+                detail=f"连接失败：{type(exc).__name__}",
+            )
+    else:  # openai
+        if not cfg.openai_api_key:
+            return LlmTestResult(ok=False, provider="cloud", latency_ms=0, detail="未配置 OpenAI key")
+        try:
+            from app.services.llm_providers.openai_provider import OpenAIProvider
 
-        provider = OpenAIProvider(api_key=cfg.openai_api_key, model=cfg.openai_model)
-        ok = provider.is_available()
-        latency = int((time.monotonic() - started) * 1000)
-        return LlmTestResult(
-            ok=ok, provider="cloud", latency_ms=latency, detail="" if ok else "云端不可用"
-        )
-    except Exception as exc:
-        return LlmTestResult(
-            ok=False,
-            provider="cloud",
-            latency_ms=int((time.monotonic() - started) * 1000),
-            detail=f"连接失败：{type(exc).__name__}",
-        )
+            provider = OpenAIProvider(api_key=cfg.openai_api_key, model=cfg.openai_model)
+            ok = provider.is_available()
+            latency = int((time.monotonic() - started) * 1000)
+            return LlmTestResult(
+                ok=ok, provider="cloud", latency_ms=latency, detail="" if ok else "OpenAI 不可用"
+            )
+        except Exception as exc:
+            return LlmTestResult(
+                ok=False,
+                provider="cloud",
+                latency_ms=int((time.monotonic() - started) * 1000),
+                detail=f"连接失败：{type(exc).__name__}",
+            )
 
 
 @router.post("/admin/settings/llm/test", response_model=LlmTestResult)

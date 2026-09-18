@@ -24,6 +24,7 @@ from sklearn.metrics import (
     r2_score,
     recall_score,
     roc_auc_score,
+    confusion_matrix,
 )
 from sksurv.metrics import (
     concordance_index_censored,
@@ -53,6 +54,11 @@ class TestClassificationMetrics:
         assert m["f1"] == pytest.approx(f1_score(y_true, y_pred, zero_division=0), abs=1e-6)
         assert m["brier"] == pytest.approx(brier_score_loss(y_true, y_prob), abs=1e-6)
         assert m["pr_auc"] == pytest.approx(average_precision_score(y_true, y_prob), abs=1e-6)
+        tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
+        assert m["sensitivity"] == pytest.approx(tp / (tp + fn), abs=1e-6)
+        assert m["specificity"] == pytest.approx(tn / (tn + fp), abs=1e-6)
+        assert m["ppv"] == pytest.approx(tp / (tp + fp), abs=1e-6)
+        assert m["npv"] == pytest.approx(tn / (tn + fn), abs=1e-6)
 
     def test_perfect_prediction(self) -> None:
         y_true = np.array([0, 0, 1, 1])

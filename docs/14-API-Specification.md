@@ -926,6 +926,10 @@ components:
         status: {$ref: '#/components/schemas/RunStatus'}
         task_type: {type: string}
         created_at: {type: string, format: date-time}
+        integrity:
+          type: object
+          nullable: true
+          description: P0 方法学完整性门禁、泄漏发现和大数据采样快照
     AnalysisRunDetail:
       allOf:
         - {$ref: '#/components/schemas/AnalysisRun'}
@@ -1022,7 +1026,7 @@ components:
           type: object
           properties:
             local: {type: object, description: "{available, provider, model}"}
-            cloud: {type: object, description: "{available, provider, model}"}
+            cloud: {type: object, description: "{available, provider, model} - provider 可能是 openai/anthropic"}
             default_choice: {type: string, enum: [auto, local, cloud]}
         config:
           type: object
@@ -1030,9 +1034,10 @@ components:
             model_choice: {type: string, enum: [auto, local, cloud]}
             temperature: {type: number}
             ollama_model: {type: string}
+            cloud_provider: {type: string, enum: [openai, anthropic], description: 当前选择的云端提供商}
             cloud_enabled: {type: boolean, description: 部署层是否允许云端（env 锁定）}
-            cloud_has_key: {type: boolean}
-            cloud_key_preview: {type: string, description: "掩码回显，如 sk-****abcd；无 key 为空串"}
+            cloud_has_key: {type: boolean, description: 当前云端提供商是否配置了密钥}
+            cloud_key_preview: {type: string, description: "掩码回显，如 sk-****abcd；无 key 时为空串"}
             feature_switches:
               type: object
               properties:
@@ -1046,7 +1051,9 @@ components:
         model_choice: {type: string, enum: [auto, local, cloud]}
         temperature: {type: number, minimum: 0, maximum: 1}
         ollama_model: {type: string}
+        cloud_provider: {type: string, enum: [openai, anthropic], description: 选择云端提供商}
         openai_api_key: {type: string, description: 只写不读；传空串清除；不传保持原值}
+        anthropic_api_key: {type: string, description: 只写不读；传空串清除；不传保持原值}
         feature_switches:
           type: object
           properties:

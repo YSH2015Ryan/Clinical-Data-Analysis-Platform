@@ -15,6 +15,7 @@ from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
     brier_score_loss,
+    confusion_matrix,
     f1_score,
     mean_absolute_error,
     mean_squared_error,
@@ -44,6 +45,21 @@ def classification_metrics(y_true: Any, y_prob: Any) -> dict[str, float]:
         if not set(np.unique(y_t)) <= {0.0, 1.0}:
             raise ValueError(f"二分类 y_true 仅支持 0/1，当前取值 {np.unique(y_t)!r}")
         y_pred = (p >= 0.5).astype(int)
+        tn, fp, fn, tp = confusion_matrix(y_t, y_pred, labels=[0, 1]).ravel()
+        sensitivity = float(tp / (tp + fn)) if tp + fn else 0.0
+        specificity = float(tn / (tn + fp)) if tn + fp else 0.0
+        ppv = float(tp / (tp + fp)) if tp + fp else 0.0
+        npv = float(tn / (tn + fn)) if tn + fn else 0.0
+        clipped = np.clip(p, 1e-6, 1 - 1e-6)
+        logits = np.log(clipped / (1.0 - clipped)).reshape(-1, 1)
+        calibration_intercept = float("nan")
+        calibration_slope = float("nan")
+        if len(np.unique(y_t)) == 2:
+            from sklearn.linear_model import LogisticRegression
+
+            calibration_model = LogisticRegression(solver="lbfgs").fit(logits, y_t.astype(int))
+            calibration_intercept = float(calibration_model.intercept_[0])
+            calibration_slope = float(calibration_model.coef_[0, 0])
         return {
             "auc": float(roc_auc_score(y_t, p)),
             "accuracy": float(accuracy_score(y_t, y_pred)),
@@ -52,6 +68,12 @@ def classification_metrics(y_true: Any, y_prob: Any) -> dict[str, float]:
             "f1": float(f1_score(y_t, y_pred, zero_division=0)),
             "brier": float(brier_score_loss(y_t, p)),
             "pr_auc": float(average_precision_score(y_t, p)),
+            "sensitivity": sensitivity,
+            "specificity": specificity,
+            "ppv": ppv,
+            "npv": npv,
+            "calibration_intercept": calibration_intercept,
+            "calibration_slope": calibration_slope,
         }
     if p.ndim != 2 or p.shape[0] != y_t.shape[0] or p.shape[1] < 3:
         raise ValueError("多分类 y_prob 须为 shape=(n_samples, n_classes>=3) 的矩阵")

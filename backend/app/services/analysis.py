@@ -67,6 +67,12 @@ def _check_target_data(
     4. 分类 + stratified_kfold 且最小类别样本数 < n_splits（分层抽样必然报错）。
     方法学层面的建议（如低基数回归）不在此拦截，由任务识别推荐层软提示。
     """
+    if task_type == "time_series":
+        raise AppError(
+            "UNSUPPORTED_TASK",
+            400,
+            "time_series 已声明但当前分析引擎尚未提供完整指标与报告链路，请使用分类、回归或生存分析。",
+        )
     target = cfg.target
     if task_type == "survival":
         cols = [c for c in (target.time_col, target.event_col) if c]
@@ -81,6 +87,18 @@ def _check_target_data(
         raise AppError(
             "VALIDATION_ERROR", 400, "数据集文件读取失败，请重新上传或联系管理员"
         ) from exc
+    required_validation_cols = [
+        c for c in (cfg.validation.group_col, cfg.validation.time_col, cfg.validation.prediction_time_col) if c
+    ]
+    missing_validation = [c for c in required_validation_cols if c not in df.columns]
+    if missing_validation:
+        raise AppError(
+            "VALIDATION_ERROR", 400, f"验证配置列不存在：{missing_validation}"
+        )
+    if cfg.validation.strategy in {"group_kfold", "stratified_group_kfold"} and not cfg.validation.group_col:
+        raise AppError("VALIDATION_ERROR", 400, "分组交叉验证必须指定 group_col")
+    if cfg.validation.strategy == "time_series_split" and not cfg.validation.time_col:
+        raise AppError("VALIDATION_ERROR", 400, "时间交叉验证必须指定 time_col")
     missing = [c for c in cols if c not in df.columns]
     if missing:
         raise AppError(

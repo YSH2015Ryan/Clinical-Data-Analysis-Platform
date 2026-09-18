@@ -22,6 +22,7 @@ class AnalysisRunOut(BaseModel):
     status: str
     task_type: str
     created_at: datetime
+    integrity: dict[str, Any] | None = None
 
 
 class AnalysisRunDetail(AnalysisRunOut):

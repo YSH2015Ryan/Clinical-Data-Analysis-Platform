@@ -30,7 +30,7 @@ from sqlalchemy import delete, select
 
 from app.core.logging import get_logger
 from app.engines import parser
-from app.engines.failure import format_model_failure
+from app.engines.leakage import inspect_leakage
 from app.engines.model_registry import ModelRegistry
 from app.engines.pipeline import build_pipeline, iter_cv_splits, run_preprocess
 from app.engines.preprocessing import validate_dsl
@@ -160,10 +160,14 @@ def _aggregate_folds(folds: list[dict[str, float]]) -> dict[str, Any]:
     for metric in folds[0]:
         values = [f[metric] for f in folds if metric in f]
         arr = np.asarray(values, dtype=float)
+        finite = arr[np.isfinite(arr)]
+        if len(finite) == 0:
+            out[metric] = {"mean": None, "std": None, "folds": []}
+            continue
         out[metric] = {
-            "mean": float(arr.mean()),
-            "std": float(arr.std(ddof=1)) if len(arr) > 1 else 0.0,
-            "folds": [float(v) for v in values],
+            "mean": float(finite.mean()),
+            "std": float(finite.std(ddof=1)) if len(finite) > 1 else 0.0,
+            "folds": [float(v) for v in finite],
         }
     return out
 
@@ -290,10 +294,48 @@ def _sanitize_for_jsonb(obj: Any) -> Any:
         return None
 
 
+def _sample_large_dataset(
+    df: pd.DataFrame, *, target_cols: list[str], group_col: str | None, max_rows: int
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Deterministic sampling preserving outcome strata and, where configured, groups."""
+    if len(df) <= max_rows:
+        return df, {"sampled": False, "original_rows": len(df), "sampled_rows": len(df)}
+    rng = np.random.default_rng(42)
+    label = df[target_cols[0]] if target_cols else None
+    if group_col and group_col in df.columns:
+        group_frame = df[[group_col] + target_cols].copy()
+        group_frame["_stratum"] = label.astype(str) if label is not None else "all"
+        group_summary = group_frame.groupby(group_col, sort=False)['_stratum'].first()
+        selected_groups: list[Any] = []
+        for _, group_values in group_summary.groupby(group_summary):
+            groups = group_values.index.to_numpy()
+            take = max(1, round(max_rows * len(groups) / len(group_summary)))
+            selected_groups.extend(rng.choice(groups, size=min(take, len(groups)), replace=False).tolist())
+        sampled = df[df[group_col].isin(selected_groups)]
+        if len(sampled) > max_rows:
+            sampled = sampled.sample(n=max_rows, random_state=42)
+    elif label is not None:
+        parts = []
+        for _, values in df.groupby(label, dropna=False, sort=False):
+            take = max(1, round(max_rows * len(values) / len(df)))
+            parts.append(values.sample(n=min(take, len(values)), random_state=42))
+        sampled = pd.concat(parts).sample(n=max_rows, random_state=42)
+    else:
+        sampled = df.sample(n=max_rows, random_state=42)
+    return sampled.sort_index(), {
+        "sampled": True,
+        "original_rows": len(df),
+        "sampled_rows": len(sampled),
+        "sampling_seed": 42,
+        "group_col": group_col,
+        "target_columns": target_cols,
+    }
+
+
 @celery_app.task(
     name="app.workers.analysis_tasks.preprocess_run",
-    soft_time_limit=600,  # 10分钟软超时
-    time_limit=660,  # 11分钟硬超时
+    soft_time_limit=600,
+    time_limit=660,
 )
 def preprocess_run(run_id: str) -> None:
     factory = get_sync_session_factory()
@@ -339,21 +381,37 @@ def preprocess_run(run_id: str) -> None:
                     max_size_mb=MAX_SIZE_MB,
                 )
 
-            # 智能采样：根据适配性检查建议或行数阈值
-            if len(df) > MAX_ROWS:
-                sample_reason = "数据集过大，自动采样以加速训练和防止内存溢出"
-                logger.warning(
-                    "dataset_auto_sampling",
-                    run_id=run_id,
-                    original_rows=len(df),
-                    sampled_rows=MAX_ROWS,
-                    reason=sample_reason,
-                )
-                # 分层采样（如果有目标列）
-                df = df.sample(n=MAX_ROWS, random_state=42)
-
             cfg = validate_dsl(run.preprocess_config)
+            target_cols = [
+                c for c in (cfg.target.time_col, cfg.target.event_col, cfg.target.label_col) if c
+            ]
+            # 目标列必须先解析，采样策略才能按真实结局分层。
             target, target_cols = _target_frame(df, cfg.target, run.task_type)
+            inspection = inspect_leakage(
+                df,
+                target_col=cfg.target.label_col or cfg.target.event_col or "",
+                group_col=cfg.validation.group_col,
+                prediction_time_col=cfg.validation.prediction_time_col,
+                temporal=run.task_type in {"survival", "time_series"}
+                or cfg.validation.strategy == "time_series_split",
+            )
+            run.integrity = inspection.to_dict()
+            if inspection.has_blocking_issue:
+                raise ValueError(
+                    "分析被方法学完整性门禁阻止："
+                    + "；".join(f.code for f in inspection.findings if f.severity == "blocker")
+                )
+
+            # 智能采样：按结局分层；配置 group_col 时保持患者组完整
+            MAX_ROWS = 100000
+            if len(df) > MAX_ROWS:
+                df, sampling = _sample_large_dataset(
+                    df, target_cols=target_cols, group_col=cfg.validation.group_col, max_rows=MAX_ROWS
+                )
+                run.integrity = {**(run.integrity or {}), "sampling": sampling}
+                logger.warning("dataset_auto_sampling", run_id=run_id, **sampling)
+                target, target_cols = _target_frame(df, cfg.target, run.task_type)
+
             if target.isna().any().any():
                 missing = {str(k): int(v) for k, v in target.isna().sum().items() if int(v)}
                 raise ValueError(f"结局列包含缺失值，不能直接建模：{missing}")
@@ -395,11 +453,15 @@ def preprocess_run(run_id: str) -> None:
             raise  # 终止 chain
         except Exception as exc:
             db.rollback()
-            run.status = "FAILED"
-            run.error = f"preprocess 失败：{exc}"[:2000]
-            db.commit()
+            run = db.get(AnalysisRun, uuid.UUID(run_id))
+            if run is not None:
+                run.status = "FAILED"
+                run.error = f"preprocess 失败：{exc}"[:2000]
+                if "完整性门禁" in str(exc):
+                    run.integrity = run.integrity or {"findings": [], "has_blocking_issue": True}
+                db.commit()
             logger.error("preprocess_failed", run_id=run_id, error=str(exc))
-            raise  # 终止 chain：chord 不再入队（08 §3 PREPROCESSING → FAILED 为终态）
+            raise
 
 
 @celery_app.task(

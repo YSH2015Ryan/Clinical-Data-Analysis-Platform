@@ -949,6 +949,7 @@ export interface LlmSettings {
     temperature: number;
     ollama_model: string;
     cloud_enabled: boolean;
+    cloud_provider: string; // "openai" 或 "anthropic"
     cloud_has_key: boolean;
     cloud_key_preview: string;
     feature_switches: {
@@ -965,6 +966,8 @@ export interface LlmSettingsPatch {
   temperature?: number;
   ollama_model?: string;
   openai_api_key?: string; // 只写不读；空串清除
+  anthropic_api_key?: string; // 只写不读；空串清除
+  cloud_provider?: string; // "openai" 或 "anthropic"
   feature_switches?: {
     research_profile: LlmFeatureSwitch;
     report_interpretation: LlmFeatureSwitch;

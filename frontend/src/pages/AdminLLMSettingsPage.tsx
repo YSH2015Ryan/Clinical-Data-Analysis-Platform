@@ -55,7 +55,8 @@ export default function AdminLLMSettingsPage() {
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [testing, setTesting] = useState<"local" | "cloud" | null>(null);
   const [saving, setSaving] = useState(false);
-  const [newKey, setNewKey] = useState("");
+  const [newOpenAIKey, setNewOpenAIKey] = useState("");
+  const [newAnthropicKey, setNewAnthropicKey] = useState("");
   const [form] = Form.useForm();
 
   const refresh = useCallback(async () => {
@@ -66,6 +67,7 @@ export default function AdminLLMSettingsPage() {
         model_choice: s.config.model_choice,
         temperature: s.config.temperature,
         ollama_model: s.config.ollama_model,
+        cloud_provider: s.config.cloud_provider,
         feature_switches: s.config.feature_switches,
       });
     } catch (e) {
@@ -101,15 +103,18 @@ export default function AdminLLMSettingsPage() {
       model_choice: LlmSettings["config"]["model_choice"];
       temperature: number;
       ollama_model: string;
+      cloud_provider: string;
       feature_switches: LlmSettings["config"]["feature_switches"];
     };
     setSaving(true);
     try {
       await updateLlmSettings({
         ...values,
-        ...(newKey.trim() ? { openai_api_key: newKey.trim() } : {}),
+        ...(newOpenAIKey.trim() ? { openai_api_key: newOpenAIKey.trim() } : {}),
+        ...(newAnthropicKey.trim() ? { anthropic_api_key: newAnthropicKey.trim() } : {}),
       });
-      setNewKey("");
+      setNewOpenAIKey("");
+      setNewAnthropicKey("");
       message.success("已保存并即时生效");
       await refresh();
     } catch (e) {
@@ -119,11 +124,13 @@ export default function AdminLLMSettingsPage() {
     }
   };
 
-  const clearKey = async () => {
+  const clearKey = async (provider: "openai" | "anthropic") => {
     setSaving(true);
     try {
-      await updateLlmSettings({ openai_api_key: "" });
-      message.success("云端 key 已清除");
+      await updateLlmSettings({ 
+        [provider === "openai" ? "openai_api_key" : "anthropic_api_key"]: "" 
+      });
+      message.success(`${provider === "openai" ? "OpenAI" : "Anthropic"} key 已清除`);
       await refresh();
     } catch (e) {
       message.error((e as ApiError).message || "操作失败");
@@ -167,7 +174,9 @@ export default function AdminLLMSettingsPage() {
           <Card size="small" style={{ minWidth: 260 }}>
             <Space direction="vertical" size={4}>
               <Space>
-                <Typography.Text strong>云端（OpenAI）</Typography.Text>
+                <Typography.Text strong>
+                  云端（{config?.cloud_provider === "anthropic" ? "Anthropic" : "OpenAI"}）
+                </Typography.Text>
                 {config && !config.cloud_enabled ? (
                   <Tag color="warning">部署层已禁用</Tag>
                 ) : status?.cloud.available ? (
@@ -253,23 +262,53 @@ export default function AdminLLMSettingsPage() {
             message="合规提示"
             description="开启云端后，平台只会向云端发送聚合统计结果与列元数据，绝不发送行级患者数据（服务端强制校验）。医疗机构采购与数据出境合规要求请自行评估。"
           />
-          <Form.Item
-            label={`云端 API Key（只写不读${config?.cloud_has_key ? `，当前：${config.cloud_key_preview}` : "，当前未配置"}）`}
-          >
-            <Space.Compact style={{ maxWidth: 480, width: "100%" }}>
-              <Input.Password
-                value={newKey}
-                onChange={(e) => setNewKey(e.target.value)}
-                placeholder="sk-..."
-                autoComplete="new-password"
-              />
-              {config?.cloud_has_key && (
-                <Button danger loading={saving} onClick={() => void clearKey()}>
-                  清除
-                </Button>
-              )}
-            </Space.Compact>
+          
+          <Form.Item name="cloud_provider" label="云端提供商">
+            <Radio.Group disabled={!config?.cloud_enabled}>
+              <Radio.Button value="openai">OpenAI</Radio.Button>
+              <Radio.Button value="anthropic">Anthropic Claude</Radio.Button>
+            </Radio.Group>
           </Form.Item>
+
+          {config?.cloud_provider === "openai" && (
+            <Form.Item
+              label={`OpenAI API Key（只写不读${config?.cloud_has_key ? `，当前：${config.cloud_key_preview}` : "，当前未配置"}）`}
+            >
+              <Space.Compact style={{ maxWidth: 480, width: "100%" }}>
+                <Input.Password
+                  value={newOpenAIKey}
+                  onChange={(e) => setNewOpenAIKey(e.target.value)}
+                  placeholder="sk-..."
+                  autoComplete="new-password"
+                />
+                {config?.cloud_has_key && (
+                  <Button danger loading={saving} onClick={() => void clearKey("openai")}>
+                    清除
+                  </Button>
+                )}
+              </Space.Compact>
+            </Form.Item>
+          )}
+
+          {config?.cloud_provider === "anthropic" && (
+            <Form.Item
+              label={`Anthropic API Key（只写不读${config?.cloud_has_key ? `，当前：${config.cloud_key_preview}` : "，当前未配置"}）`}
+            >
+              <Space.Compact style={{ maxWidth: 480, width: "100%" }}>
+                <Input.Password
+                  value={newAnthropicKey}
+                  onChange={(e) => setNewAnthropicKey(e.target.value)}
+                  placeholder="sk-ant-..."
+                  autoComplete="new-password"
+                />
+                {config?.cloud_has_key && (
+                  <Button danger loading={saving} onClick={() => void clearKey("anthropic")}>
+                    清除
+                  </Button>
+                )}
+              </Space.Compact>
+            </Form.Item>
+          )}
 
           <Button type="primary" loading={saving} onClick={() => void save()}>
             保存并生效

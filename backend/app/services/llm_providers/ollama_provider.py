@@ -57,10 +57,14 @@ class OllamaProvider:
             ) from e
 
     def generate(
-        self, facts: dict[str, Any], section_type: str, temperature: float = 0.3, seed: int = 42
+        self,
+        facts: dict[str, Any],
+        section_type: str,
+        temperature: float = 0.3,
+        seed: int = 42,
     ) -> str:
         """
-        生成报告解读文本
+        生成报告解读文本（同步接口，供 CDAP 报告引擎使用）
 
         Args:
             facts: 结构化的统计数据
@@ -75,61 +79,74 @@ class OllamaProvider:
             RuntimeError: Ollama 服务请求失败
         """
         prompt = self._build_prompt(facts, section_type)
+        return self._call_ollama(prompt, temperature, seed, max_tokens=300)
 
-        try:
-            response = requests.post(
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": temperature,
-                        "top_p": 0.9,
-                        "seed": seed,
-                        "num_predict": 300,  # 限制输出长度
-                    },
-                },
-                timeout=self.timeout,
-            )
+    async def complete(
+        self, prompt: str, temperature: float = 0.3, seed: int = 42, max_tokens: int = 300
+    ) -> str:
+        """
+        简单文本生成接口（供测试使用）
 
-            if response.status_code != 200:
-                raise RuntimeError(
-                    f"Ollama API request failed with status {response.status_code}: {response.text}"
-                )
+        Args:
+            prompt: 输入提示词
+            temperature: 生成温度
+            seed: 随机种子
+            max_tokens: 最大生成 token 数
 
-            result = response.json()
-            output = result.get("response", "")
+        Returns:
+            生成的文本
+        """
+        return self._call_ollama(prompt, temperature, seed, max_tokens, clean=False)
 
-            if not output:
-                raise RuntimeError("Ollama returned empty response")
-
-            # 清理输出格式
-            cleaned = self._clean_output(output)
-
-            logger.info(
-                f"Generated {len(cleaned)} chars for {section_type}, "
-                f"took {result.get('total_duration', 0) / 1e9:.2f}s"
-            )
-
-            return cleaned
-
-        except requests.exceptions.Timeout as e:
-            raise RuntimeError(
-                f"Ollama request timed out after {self.timeout}s. "
-                f"Try increasing timeout or use cloud provider."
-            ) from e
-        except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Ollama request failed: {e}") from e
-
-    def complete(
+    async def generate_async(
         self,
-        prompt: str,
+        system: str = "",
+        user: str = "",
         temperature: float = 0.3,
         seed: int = 42,
-        max_tokens: int = 600,
+        max_tokens: int = 300,
     ) -> str:
-        """通用补全（T6.7）：自定义 prompt，返回原始文本（不做段落清理，保留 JSON 等结构）。
+        """
+        通用生成接口（异步，供测试使用）
+
+        Args:
+            system: 系统提示
+            user: 用户消息
+            temperature: 生成温度
+            seed: 随机种子
+            max_tokens: 最大生成 token 数
+
+        Returns:
+            生成的文本
+
+        Raises:
+            ValueError: 缺少 user 参数
+        """
+        if not user:
+            raise ValueError("必须提供 user 参数")
+        
+        if system:
+            prompt = f"系统指令: {system}\n\n用户问题: {user}\n\n回答:"
+        else:
+            prompt = user
+        
+        return self._call_ollama(prompt, temperature, seed, max_tokens, clean=False)
+
+    def _call_ollama(
+        self, prompt: str, temperature: float = 0.3, seed: int = 42, max_tokens: int = 300, clean: bool = True
+    ) -> str:
+        """
+        调用 Ollama API 生成文本（内部辅助方法）
+
+        Args:
+            prompt: 完整提示词
+            temperature: 生成温度
+            seed: 随机种子
+            max_tokens: 最大生成 token 数
+            clean: 是否清理输出格式（报告生成时需要，测试时不需要）
+
+        Returns:
+            生成的文本
 
         Raises:
             RuntimeError: Ollama 服务请求失败
@@ -150,21 +167,56 @@ class OllamaProvider:
                 },
                 timeout=self.timeout,
             )
+
             if response.status_code != 200:
                 raise RuntimeError(
                     f"Ollama API request failed with status {response.status_code}: {response.text}"
                 )
-            output = response.json().get("response", "")
+
+            result = response.json()
+            output = result.get("response", "")
+
             if not output:
                 raise RuntimeError("Ollama returned empty response")
-            return str(output).strip()
+
+            # 清理输出格式（仅用于报告生成）
+            cleaned = self._clean_output(output) if clean else output
+
+            logger.info(
+                f"Generated {len(cleaned)} chars, "
+                f"took {result.get('total_duration', 0) / 1e9:.2f}s"
+            )
+
+            return cleaned
+
         except requests.exceptions.Timeout as e:
             raise RuntimeError(
                 f"Ollama request timed out after {self.timeout}s. "
-                "Try increasing timeout or use cloud provider."
+                f"Try increasing timeout or use cloud provider."
             ) from e
         except requests.exceptions.RequestException as e:
             raise RuntimeError(f"Ollama request failed: {e}") from e
+
+    def generate_report(
+        self, facts: dict[str, Any], section_type: str, temperature: float = 0.3, seed: int = 42
+    ) -> str:
+        """
+        生成报告解读文本（同步接口，供 CDAP 报告引擎使用）
+
+        Args:
+            facts: 结构化的统计数据
+            section_type: 章节类型（model_comparison/clinical_interpretation/performance）
+            temperature: 生成温度
+            seed: 随机种子（确保可复现）
+
+        Returns:
+            生成的解读段落
+
+        Raises:
+            RuntimeError: Ollama 服务请求失败
+        """
+        prompt = self._build_prompt(facts, section_type)
+        return self._call_ollama(prompt, temperature, seed, max_tokens=300)
 
     def _build_prompt(self, facts: dict[str, Any], section_type: str) -> str:
         """
@@ -173,7 +225,9 @@ class OllamaProvider:
         根据医学统计报告的要求，生成结构化的 prompt，
         强调中文输出、禁止序号、控制长度。
         """
-        facts_json = json.dumps(facts, ensure_ascii=False, indent=2)
+        # 转换 NumPy 类型为 Python 原生类型，避免 JSON 序列化错误
+        facts_clean = self._convert_numpy_types(facts)
+        facts_json = json.dumps(facts_clean, ensure_ascii=False, indent=2)
         section_name = self._get_section_name(section_type)
         required_content = self._get_required_content(section_type)
         focus = self._get_focus(section_type)
@@ -193,10 +247,12 @@ class OllamaProvider:
 - 使用被动语态和第三人称
 - 用中文，学术论文风格
 
-【示例格式】（仅供参考，不要照抄）
-配对t检验显示，随机森林的预测误差显著低于Lasso（t=4.23, p=0.002），
-RMSE降低1.18个单位，对应Cohen's d = 1.23（大效应量），表明随机森林
+【示例格式】（仅供参考结构，不要照抄，必须用Facts中的真实数值替换占位符X）
+配对t检验显示，随机森林的预测误差显著低于Lasso（t=X, p=X），
+RMSE降低X个单位，对应Cohen's d = X（大效应量），表明随机森林
 在本数据集上具有明显的预测优势。
+
+【严格要求】只能使用下面Facts中出现的真实数值，不得使用示例中的占位符X或编造任何数字。
 
 现在请根据以下Facts生成「{section_name}」章节的解读段落：
 
@@ -208,6 +264,33 @@ Facts:
 
 直接开始写段落，不要其他内容：
 """
+
+    def _convert_numpy_types(self, obj: Any) -> Any:
+        """
+        递归转换 NumPy 类型为 Python 原生类型
+
+        Args:
+            obj: 可能包含 NumPy 类型的对象
+
+        Returns:
+            转换后的对象（Python 原生类型）
+        """
+        import numpy as np
+
+        if isinstance(obj, dict):
+            return {k: self._convert_numpy_types(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [self._convert_numpy_types(item) for item in obj]
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        else:
+            return obj
 
     def _clean_output(self, text: str) -> str:
         """
@@ -264,6 +347,15 @@ Facts:
             "performance": "模型性能是否达标、假设是否满足、存在的问题",
         }
         return mapping.get(section_type, "全面解读统计结果")
+
+    async def health_check(self) -> bool:
+        """
+        异步健康检查（供测试脚本使用）
+
+        Returns:
+            True if available, False otherwise
+        """
+        return self.is_available()
 
     def is_available(self) -> bool:
         """

@@ -3,10 +3,12 @@ LLM 服务统一接口
 
 提供混合模式的 LLM 服务：
 - 优先使用本地 Ollama（快速、免费、隐私）
-- 本地失败时降级到云端 OpenAI（高质量）
+- 本地失败时降级到云端 OpenAI/Claude（高质量）
 - 强制质量验证（防止幻觉）
 """
 
+import asyncio
+import inspect
 import logging
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -15,6 +17,7 @@ from app.engines.llm_validators import get_validator
 from .llm_privacy import assert_cloud_payload_safe
 from .llm_providers.ollama_provider import OllamaProvider
 from .llm_providers.openai_provider import OpenAIProvider
+from .llm_providers.anthropic_provider import AnthropicProvider
 
 if TYPE_CHECKING:
     from .settings import LlmRuntimeConfig
@@ -34,6 +37,9 @@ class LLMService:
         ollama_model: str = "qwen2.5:7b",
         openai_api_key: str | None = None,
         openai_model: str = "gpt-4o-mini",
+        anthropic_api_key: str | None = None,
+        anthropic_model: str = "claude-3-5-sonnet-20241022",
+        cloud_provider: str = "openai",  # "openai" 或 "anthropic"
         cloud_enabled: bool = True,
     ):
         """
@@ -45,10 +51,14 @@ class LLMService:
             ollama_model: Ollama 模型名称
             openai_api_key: OpenAI API key
             openai_model: OpenAI 模型名称
+            anthropic_api_key: Anthropic API key
+            anthropic_model: Claude 模型名称
+            cloud_provider: 云端提供商选择（openai/anthropic）
             cloud_enabled: 部署层云端总闸（False 时云端路径一律拒绝，T6.6）
         """
         self.default_choice = default_choice
         self.cloud_enabled = cloud_enabled
+        self.cloud_provider = cloud_provider
         self.validator = get_validator()
 
         # 初始化本地 provider
@@ -62,12 +72,22 @@ class LLMService:
 
         # 初始化云端 provider（可选；部署层总闸关闭时跳过）
         self.openai: OpenAIProvider | None = None
-        if cloud_enabled and openai_api_key:
-            try:
-                self.openai = OpenAIProvider(api_key=openai_api_key, model=openai_model)
-                logger.info(f"OpenAI provider initialized: {openai_model}")
-            except Exception as e:
-                logger.warning(f"Failed to initialize OpenAI provider: {e}")
+        self.anthropic: AnthropicProvider | None = None
+        
+        if cloud_enabled:
+            if cloud_provider == "openai" and openai_api_key:
+                try:
+                    self.openai = OpenAIProvider(api_key=openai_api_key, model=openai_model)
+                    logger.info(f"OpenAI provider initialized: {openai_model}")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize OpenAI provider: {e}")
+            
+            elif cloud_provider == "anthropic" and anthropic_api_key:
+                try:
+                    self.anthropic = AnthropicProvider(api_key=anthropic_api_key, model=anthropic_model)
+                    logger.info(f"Anthropic provider initialized: {anthropic_model}")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize Anthropic provider: {e}")
 
     def generate_interpretation(
         self,
@@ -95,7 +115,7 @@ class LLMService:
         """
         choice = model_choice or self.default_choice
 
-        # 优先本地
+        # 优先本地 Ollama
         if choice in ["auto", "local"]:
             if self.ollama:
                 try:
@@ -107,28 +127,27 @@ class LLMService:
                     is_valid, errors = self.validator.validate(output, facts)
 
                     if is_valid:
-                        logger.info(f"Local model success: {section_type}")
+                        logger.info(f"Ollama model success: {section_type}")
                         return output
                     else:
-                        logger.warning(f"Local model validation failed: {errors}")
+                        logger.warning(f"Ollama validation failed: {errors}")
 
                         # local 模式下验证失败直接报错
                         if choice == "local":
-                            raise ValueError(f"Local model output validation failed: {errors}")
-                        # auto 模式下尝试降级
+                            raise ValueError(f"Ollama output validation failed: {errors}")
+                        # auto 模式下尝试降级到云端
 
                 except Exception as e:
-                    logger.error(f"Local model failed: {e}")
+                    logger.error(f"Ollama failed: {e}")
 
                     # local 模式下直接报错
                     if choice == "local":
                         raise
-                    # auto 模式下尝试降级
+                    # auto 模式下尝试降级到云端
             else:
                 logger.warning("Ollama provider not available")
-
                 if choice == "local":
-                    raise RuntimeError("Local model not available")
+                    raise RuntimeError("Local model (Ollama) not available")
 
         # 降级到云端
         if choice in ["auto", "cloud"]:
@@ -139,14 +158,31 @@ class LLMService:
                 )
             # 红线（T6.6）：云端只发聚合统计 facts，行级患者数据禁止出域
             assert_cloud_payload_safe(facts)
-            if not self.openai:
+            
+            # 选择云端提供商
+            cloud_provider = None
+            provider_name = ""
+            if self.cloud_provider == "anthropic" and self.anthropic:
+                cloud_provider = self.anthropic
+                provider_name = "Claude"
+            elif self.cloud_provider == "openai" and self.openai:
+                cloud_provider = self.openai
+                provider_name = "OpenAI"
+            elif self.openai:  # fallback to OpenAI if configured
+                cloud_provider = self.openai
+                provider_name = "OpenAI (fallback)"
+            elif self.anthropic:  # fallback to Anthropic if configured
+                cloud_provider = self.anthropic
+                provider_name = "Claude (fallback)"
+            
+            if not cloud_provider:
                 raise RuntimeError(
-                    "OpenAI provider not configured. "
-                    "Please set OPENAI_API_KEY environment variable."
+                    f"Cloud provider '{self.cloud_provider}' not configured. "
+                    "Please set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable."
                 )
 
             try:
-                output = self.openai.generate(
+                output = cloud_provider.generate(
                     facts=facts, section_type=section_type, temperature=temperature, seed=seed
                 )
 
@@ -154,12 +190,12 @@ class LLMService:
                 is_valid, errors = self.validator.validate(output, facts)
 
                 if is_valid:
-                    logger.info(f"Cloud model success: {section_type}")
+                    logger.info(f"{provider_name} success: {section_type}")
                     return output
                 else:
                     # 云端模型也验证失败，降低标准（只检查致命错误）
                     logger.warning(
-                        f"Cloud model validation failed: {errors}, but accepting output anyway"
+                        f"{provider_name} validation failed: {errors}, but accepting output anyway"
                     )
 
                     # 检查是否有致命错误（幻觉数值）
@@ -167,14 +203,14 @@ class LLMService:
 
                     if has_hallucination:
                         raise ValueError(
-                            f"Cloud model output contains hallucinated numbers: {errors}"
+                            f"{provider_name} output contains hallucinated numbers: {errors}"
                         )
 
                     # 其他错误（长度、格式）可以容忍
                     return output
 
             except Exception as e:
-                logger.error(f"Cloud model failed: {e}")
+                logger.error(f"{provider_name} failed: {e}")
                 raise RuntimeError(f"All available LLM providers failed. Last error: {e}") from e
 
         # 不应该到达这里
@@ -208,19 +244,24 @@ class LLMService:
         choice = model_choice or self.default_choice
 
         if choice in ("auto", "local"):
+            # 优先 Ollama
             if self.ollama:
                 try:
-                    return self.ollama.complete(
+                    result = self.ollama.complete(
                         prompt, temperature=temperature, seed=seed, max_tokens=max_tokens
                     )
+                    if inspect.isawaitable(result):
+                        result = asyncio.run(result)
+                    return str(result)
                 except Exception as e:
-                    logger.error(f"Local model complete failed: {e}")
+                    logger.error(f"Ollama complete failed: {e}")
                     if choice == "local":
-                        raise RuntimeError(f"Local model failed: {e}") from e
+                        raise
+                    # auto 模式下继续到云端降级
             else:
                 logger.warning("Ollama provider not available")
                 if choice == "local":
-                    raise RuntimeError("Local model not available")
+                    raise RuntimeError("Local model (Ollama) not available")
 
         if choice in ("auto", "cloud"):
             if not self.cloud_enabled:
@@ -231,10 +272,23 @@ class LLMService:
             # 红线（T6.6）：云端只发聚合统计 facts，行级患者数据禁止出域
             if facts is not None:
                 assert_cloud_payload_safe(facts)
-            if not self.openai:
-                raise RuntimeError("OpenAI provider not configured.")
+            
+            # 选择云端提供商
+            cloud_provider = None
+            if self.cloud_provider == "anthropic" and self.anthropic:
+                cloud_provider = self.anthropic
+            elif self.cloud_provider == "openai" and self.openai:
+                cloud_provider = self.openai
+            elif self.openai:
+                cloud_provider = self.openai
+            elif self.anthropic:
+                cloud_provider = self.anthropic
+            
+            if not cloud_provider:
+                raise RuntimeError("Cloud provider not configured.")
+            
             try:
-                return self.openai.complete(
+                return cloud_provider.complete(
                     prompt, temperature=temperature, seed=seed, max_tokens=max_tokens
                 )
             except Exception as e:
@@ -243,27 +297,55 @@ class LLMService:
         raise RuntimeError(f"Invalid model choice: {choice}")
 
     def is_local_available(self) -> bool:
-        """检查本地模型是否可用"""
+        """检查本地模型是否可用（Ollama）"""
         return self.ollama is not None and self.ollama.is_available()
 
     def is_cloud_available(self) -> bool:
         """检查云端模型是否可用"""
-        return self.openai is not None and self.openai.is_available()
+        if self.cloud_provider == "anthropic":
+            return self.anthropic is not None and self.anthropic.is_available()
+        else:
+            return self.openai is not None and self.openai.is_available()
 
     def get_status(self) -> dict[str, Any]:
         """获取服务状态"""
+        cloud_info = {}
+        if self.cloud_provider == "anthropic" and self.anthropic:
+            cloud_info = {
+                "available": self.anthropic.is_available() if hasattr(self.anthropic, 'is_available') else True,
+                "provider": "Anthropic",
+                "model": self.anthropic.model,
+                "enabled": self.cloud_enabled,
+            }
+        elif self.openai:
+            cloud_info = {
+                "available": self.is_cloud_available(),
+                "provider": "OpenAI",
+                "model": self.openai.model,
+                "enabled": self.cloud_enabled,
+            }
+        else:
+            cloud_info = {
+                "available": False,
+                "provider": None,
+                "model": None,
+                "enabled": self.cloud_enabled,
+            }
+        
+        local_providers = []
+        if self.ollama:
+            local_providers.append({
+                "name": "Ollama",
+                "model": self.ollama.model,
+                "available": self.ollama.is_available(),
+            })
+        
         return {
             "local": {
                 "available": self.is_local_available(),
-                "provider": "Ollama" if self.ollama else None,
-                "model": self.ollama.model if self.ollama else None,
+                "providers": local_providers,
             },
-            "cloud": {
-                "available": self.is_cloud_available(),
-                "provider": "OpenAI" if self.openai else None,
-                "model": self.openai.model if self.openai else None,
-                "enabled": self.cloud_enabled,
-            },
+            "cloud": cloud_info,
             "default_choice": self.default_choice,
         }
 
@@ -286,6 +368,9 @@ def init_llm_service(
     ollama_model: str = "qwen2.5:7b",
     openai_api_key: str | None = None,
     openai_model: str = "gpt-4o-mini",
+    anthropic_api_key: str | None = None,
+    anthropic_model: str = "claude-3-5-sonnet-20241022",
+    cloud_provider: str = "openai",
     cloud_enabled: bool = True,
 ) -> LLMService:
     """
@@ -300,6 +385,9 @@ def init_llm_service(
         ollama_model=ollama_model,
         openai_api_key=openai_api_key,
         openai_model=openai_model,
+        anthropic_api_key=anthropic_api_key,
+        anthropic_model=anthropic_model,
+        cloud_provider=cloud_provider,
         cloud_enabled=cloud_enabled,
     )
     return _llm_service
@@ -316,5 +404,8 @@ def init_llm_service_from_runtime(cfg: "LlmRuntimeConfig") -> LLMService:
         ollama_model=cfg.ollama_model,
         openai_api_key=cfg.openai_api_key,
         openai_model=cfg.openai_model,
+        anthropic_api_key=cfg.anthropic_api_key,
+        anthropic_model=cfg.anthropic_model,
+        cloud_provider=cfg.cloud_provider,
         cloud_enabled=cfg.cloud_enabled,
     )

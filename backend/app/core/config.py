@@ -54,7 +54,9 @@ class Settings(BaseSettings):
     # LLM 部署层（T6.6，docs/12 §2.1；运行层策略/开关/key 在 DB admin_settings，管理员界面调整）
     ollama_base_url: str = "http://localhost:11434"  # compose 内为 http://ollama:11434
     ollama_model: str = "qwen2.5:7b"
+
     openai_model: str = "gpt-4o-mini"
+    anthropic_model: str = "claude-3-5-sonnet-20241022"
     llm_default_choice: str = "auto"  # auto | local | cloud
     llm_cloud_enabled: bool = False  # 部署层云端总闸：false 时云端功能一律不可用
     # admin_settings 敏感字段 Fernet 密钥；空 = dev 用 JWT_SECRET 派生（prod 必须显式设置）

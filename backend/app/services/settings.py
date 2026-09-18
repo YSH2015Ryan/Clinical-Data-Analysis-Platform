@@ -22,6 +22,8 @@ KEY_MODEL_CHOICE = "llm.model_choice"
 KEY_TEMPERATURE = "llm.temperature"
 KEY_OLLAMA_MODEL = "llm.ollama_model"
 KEY_OPENAI_API_KEY = "llm.openai_api_key"
+KEY_ANTHROPIC_API_KEY = "llm.anthropic_api_key"
+KEY_CLOUD_PROVIDER = "llm.cloud_provider"
 KEY_FEATURE_SWITCHES = "llm.feature_switches"
 
 ModelChoice = Literal["auto", "local", "cloud"]
@@ -96,6 +98,9 @@ class LlmRuntimeConfig:
     ollama_model: str
     openai_model: str  # 仅部署层
     openai_api_key: str | None  # 明文仅在内存，出 API 前必须掩码
+    anthropic_model: str  # 仅部署层
+    anthropic_api_key: str | None  # 明文仅在内存，出 API 前必须掩码
+    cloud_provider: str  # "openai" 或 "anthropic"
     cloud_enabled: bool  # 部署层总闸
     feature_switches: dict[str, FeatureSwitch] = field(
         default_factory=lambda: dict(DEFAULT_FEATURE_SWITCHES)
@@ -108,7 +113,9 @@ def _build_config(
     temperature_raw: str | None,
     switches_raw: str | None,
     ollama_model_raw: str | None,
-    api_key: str | None,
+    openai_api_key: str | None,
+    anthropic_api_key: str | None,
+    cloud_provider_raw: str | None,
 ) -> LlmRuntimeConfig:
     """env 默认值 + DB 覆盖的合并逻辑（async/sync 两个入口共用）。"""
     settings = get_settings()
@@ -128,13 +135,21 @@ def _build_config(
                     switches[name] = stored[name]
         except (TypeError, ValueError):
             pass  # 损坏配置回退默认（不阻断启动）
+    
+    cloud_provider = cloud_provider_raw or "openai"
+    if cloud_provider not in ("openai", "anthropic"):
+        cloud_provider = "openai"
+    
     return LlmRuntimeConfig(
         model_choice=choice,  # type: ignore[arg-type]
         temperature=temperature,
         ollama_base_url=settings.ollama_base_url,
         ollama_model=ollama_model_raw or settings.ollama_model,
         openai_model=settings.openai_model,
-        openai_api_key=api_key,
+        openai_api_key=openai_api_key,
+        anthropic_model=settings.anthropic_model,
+        anthropic_api_key=anthropic_api_key,
+        cloud_provider=cloud_provider,
         cloud_enabled=settings.llm_cloud_enabled,
         feature_switches=switches,
     )
@@ -146,7 +161,9 @@ async def get_llm_config(db: AsyncSession) -> LlmRuntimeConfig:
         temperature_raw=await get_value(db, KEY_TEMPERATURE),
         switches_raw=await get_value(db, KEY_FEATURE_SWITCHES),
         ollama_model_raw=await get_value(db, KEY_OLLAMA_MODEL),
-        api_key=await get_value(db, KEY_OPENAI_API_KEY),
+        openai_api_key=await get_value(db, KEY_OPENAI_API_KEY),
+        anthropic_api_key=await get_value(db, KEY_ANTHROPIC_API_KEY),
+        cloud_provider_raw=await get_value(db, KEY_CLOUD_PROVIDER),
     )
 
 
@@ -157,7 +174,9 @@ def get_llm_config_sync(db: Session) -> LlmRuntimeConfig:
         temperature_raw=_get_value_sync(db, KEY_TEMPERATURE),
         switches_raw=_get_value_sync(db, KEY_FEATURE_SWITCHES),
         ollama_model_raw=_get_value_sync(db, KEY_OLLAMA_MODEL),
-        api_key=_get_value_sync(db, KEY_OPENAI_API_KEY),
+        openai_api_key=_get_value_sync(db, KEY_OPENAI_API_KEY),
+        anthropic_api_key=_get_value_sync(db, KEY_ANTHROPIC_API_KEY),
+        cloud_provider_raw=_get_value_sync(db, KEY_CLOUD_PROVIDER),
     )
 
 
@@ -168,6 +187,8 @@ async def update_llm_config(
     temperature: float | None = None,
     ollama_model: str | None = None,
     openai_api_key: str | None = None,  # None=不动；""=清除；否则覆盖
+    anthropic_api_key: str | None = None,  # None=不动；""=清除；否则覆盖
+    cloud_provider: str | None = None,  # "openai" 或 "anthropic"
     feature_switches: dict[str, FeatureSwitch] | None = None,
 ) -> LlmRuntimeConfig:
     if model_choice is not None:
@@ -183,6 +204,16 @@ async def update_llm_config(
                 await db.delete(row)
         else:
             await set_value(db, KEY_OPENAI_API_KEY, openai_api_key, secret=True)
+    if anthropic_api_key is not None:
+        if anthropic_api_key == "":
+            row = await db.get(AdminSetting, KEY_ANTHROPIC_API_KEY)
+            if row is not None:
+                await db.delete(row)
+        else:
+            await set_value(db, KEY_ANTHROPIC_API_KEY, anthropic_api_key, secret=True)
+    if cloud_provider is not None:
+        if cloud_provider in ("openai", "anthropic"):
+            await set_value(db, KEY_CLOUD_PROVIDER, cloud_provider)
     if feature_switches is not None:
         merged = dict(DEFAULT_FEATURE_SWITCHES)
         merged.update(feature_switches)

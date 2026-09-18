@@ -13,11 +13,13 @@ class LlmFeatureSwitches(BaseModel):
     report_interpretation: FeatureSwitch = "off"
     validation_explain: FeatureSwitch = "off"
     iteration: FeatureSwitch = "off"  # T6.13 对话式迭代（重跑建议）
+    task_recommend: FeatureSwitch = "off"
 
 
 class LlmProviderStatus(BaseModel):
     available: bool
     provider: str | None = None
+    providers: list[dict] | None = None  # 本地多提供商时的详细列表
     model: str | None = None
     enabled: bool | None = None  # 仅 cloud：部署层总闸
 
@@ -35,6 +37,7 @@ class LlmConfigOut(BaseModel):
     temperature: float
     ollama_model: str
     cloud_enabled: bool
+    cloud_provider: Literal["openai", "anthropic"] = "openai"
     cloud_has_key: bool
     cloud_key_preview: str = ""
     feature_switches: LlmFeatureSwitches
@@ -51,6 +54,12 @@ class LlmSettingsUpdate(BaseModel):
     ollama_model: str | None = Field(default=None, min_length=1, max_length=100)
     openai_api_key: str | None = Field(
         default=None, max_length=200, description="只写不读；空串清除；不传保持原值"
+    )
+    anthropic_api_key: str | None = Field(
+        default=None, max_length=200, description="只写不读；空串清除；不传保持原值"
+    )
+    cloud_provider: Literal["openai", "anthropic"] | None = Field(
+        default=None, description="云端提供商：openai 或 anthropic"
     )
     feature_switches: LlmFeatureSwitches | None = None
 

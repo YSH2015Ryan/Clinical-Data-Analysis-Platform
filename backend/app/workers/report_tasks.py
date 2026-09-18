@@ -412,6 +412,8 @@ def _interpretation_facts(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def _llm_interpretations(db: Any, payload: dict[str, Any]) -> dict[str, str] | None:
     """T6.7：报告解读段落（分功能开关门控；关闭/失败 → None，context 模板拼句兜底）。"""
+    from app.workers.analysis_tasks import _sanitize_for_jsonb
+    
     cfg = get_llm_config_sync(db)
     switch = cfg.feature_switches.get("report_interpretation", "off")
     if switch == "off":
@@ -419,6 +421,8 @@ def _llm_interpretations(db: Any, payload: dict[str, Any]) -> dict[str, str] | N
     facts = _interpretation_facts(payload)
     if not facts:
         return None
+    # 清理 numpy 类型，确保可 JSON 序列化
+    facts = _sanitize_for_jsonb(facts)
     service = init_llm_service_from_runtime(cfg)
     paragraphs = llm_tasks.generate_report_interpretations(service, facts, switch, cfg.temperature)
     return paragraphs or None
@@ -463,6 +467,7 @@ def assemble_report_payload(db: Any, run: AnalysisRun) -> dict[str, Any]:
         "target_summary": _target_summary(storage, run.id, run.task_type),
         "validation": (run.preprocess_config or {}).get("validation"),
         "task_detection": run.task_detection,
+        "integrity": run.integrity,
         "quality_report": (
             {
                 "status": quality.status,
