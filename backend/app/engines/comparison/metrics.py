@@ -17,6 +17,7 @@ from sklearn.metrics import (
     brier_score_loss,
     confusion_matrix,
     f1_score,
+    matthews_corrcoef,
     mean_absolute_error,
     mean_squared_error,
     precision_score,
@@ -72,6 +73,7 @@ def classification_metrics(y_true: Any, y_prob: Any) -> dict[str, float]:
             "specificity": specificity,
             "ppv": ppv,
             "npv": npv,
+            "mcc": float(matthews_corrcoef(y_t.astype(int), y_pred)),
             "calibration_intercept": calibration_intercept,
             "calibration_slope": calibration_slope,
         }

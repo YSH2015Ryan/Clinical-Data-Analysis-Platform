@@ -18,6 +18,7 @@ from sklearn.metrics import (
     average_precision_score,
     brier_score_loss,
     f1_score,
+    matthews_corrcoef,
     mean_absolute_error,
     mean_squared_error,
     precision_score,
@@ -59,6 +60,8 @@ class TestClassificationMetrics:
         assert m["specificity"] == pytest.approx(tn / (tn + fp), abs=1e-6)
         assert m["ppv"] == pytest.approx(tp / (tp + fp), abs=1e-6)
         assert m["npv"] == pytest.approx(tn / (tn + fn), abs=1e-6)
+        # P0-09（updateplan §38）：MCC 与 sklearn 官方实现对拍
+        assert m["mcc"] == pytest.approx(matthews_corrcoef(y_true, y_pred), abs=1e-6)
 
     def test_perfect_prediction(self) -> None:
         y_true = np.array([0, 0, 1, 1])
