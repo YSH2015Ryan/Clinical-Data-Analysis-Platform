@@ -57,6 +57,7 @@ def detect_perfect_metric_redflag(payload: dict[str, Any]) -> dict[str, Any] | N
             "findings": findings,
         }
 
+    task_type = (payload.get("run") or {}).get("task_type")
     if task_type not in ("classification", "survival"):
         return None
 
