@@ -37,7 +37,7 @@ class ValidationConfig:
 @dataclass
 class Issue:
     rule_id: str
-    severity: str  # blocker / warning / info
+    severity: str  # blocker / critical / warning / info（updateplan §15 四级；critical=须人工复核但暂不阻断）
     message: str
     column: str | None = None
     suggestion: str = ""
@@ -70,6 +70,7 @@ class ValidationReport:
     status: str  # PASSED / PASSED_WITH_WARNINGS / FAILED（14 章枚举）
     blockers: int
     warnings: int
+    criticals: int = 0  # updateplan §15 CRITICAL 档计数
     issues: list[Issue] = field(default_factory=list)
     column_profiles: list[dict[str, Any]] = field(default_factory=list)
     summary: dict[str, int] = field(default_factory=dict)
@@ -79,6 +80,7 @@ class ValidationReport:
             "status": self.status,
             "blockers": self.blockers,
             "warnings": self.warnings,
+            "criticals": self.criticals,
             "issues": [i.to_dict() for i in self.issues],
             "column_profiles": self.column_profiles,
             "summary": self.summary,
@@ -599,7 +601,9 @@ def validate(
                     issues.append(
                         Issue(
                             "RV502",
-                            "warning",
+                            # updateplan §16（P0-04）：临床不合理范围（如 age=598）
+                            # 不是普通统计异常值，须人工复核 → critical 档
+                            "critical",
                             f"{name} 存在 {len(out)} 个值超出合理范围（{low}–{high} {unit}），"
                             f"最小值 {_native(out.min())}",
                             column=name,
@@ -697,8 +701,10 @@ def validate(
                 )
 
     blockers = sum(1 for i in issues if i.severity == "blocker")
+    criticals = sum(1 for i in issues if i.severity == "critical")
     warnings = sum(1 for i in issues if i.severity == "warning")
-    status = "FAILED" if blockers else ("PASSED_WITH_WARNINGS" if warnings else "PASSED")
+    # critical 不阻断（阻断仍属 blocker），但计入警示状态（updateplan §15-16）
+    status = "FAILED" if blockers else ("PASSED_WITH_WARNINGS" if (warnings or criticals) else "PASSED")
     # T6.1:统一补富文案指引与受影响行号(docs/05 §3,tasks/phase6 T6.1)
     _enrich_issues(
         issues,
@@ -716,7 +722,14 @@ def validate(
         status=status,
         blockers=blockers,
         warnings=warnings,
+        criticals=criticals,
         issues=issues,
         column_profiles=profiles,
-        summary={"rows": n_rows, "columns": n_cols, "blockers": blockers, "warnings": warnings},
+        summary={
+            "rows": n_rows,
+            "columns": n_cols,
+            "blockers": blockers,
+            "warnings": warnings,
+            "criticals": criticals,
+        },
     )

@@ -184,8 +184,19 @@ class TestRV502ClinicalRange:
         # 取值需 >10 个唯一值才推断为连续列（RV502 只作用于连续列）
         df["血钾"] = [3.5 + (i % 20) * 0.1 for i in range(99)] + [0.2]
         issue = _rules(validate(df), "RV502")[0]
-        assert issue.severity == "warning"
+        # P0-04（updateplan §15-16）：临床不合理范围升为 critical 档
+        assert issue.severity == "critical"
         assert "血钾" in issue.message
+
+    def test_critical_counted_but_not_failed(self) -> None:
+        """critical 计入报告但不等同于 blocker：status 仍为 PASSED_WITH_WARNINGS。"""
+        df = _clean_df()
+        df.loc[df.index[0], "age"] = 598  # updateplan §3.4 实据场景
+        rep = validate(df)
+        assert rep.criticals >= 1
+        assert rep.blockers == 0
+        assert rep.status == "PASSED_WITH_WARNINGS"
+        assert rep.to_dict()["criticals"] == rep.criticals
 
     def test_age_out_of_range(self) -> None:
         df = _clean_df()

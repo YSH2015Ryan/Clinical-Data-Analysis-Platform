@@ -22,7 +22,8 @@ class DatasetDetail(BaseModel):
 
 class Issue(BaseModel):
     rule_id: str
-    severity: Literal["blocker", "warning", "info"]
+    # P0-04（updateplan §15）：severity 升四级，新增 critical（须人工复核但不阻断）
+    severity: Literal["blocker", "critical", "warning", "info"]
     column: str | None = None
     message: str
     detail: str | None = None
@@ -41,6 +42,8 @@ class QualityReport(BaseModel):
     status: Literal["PASSED", "PASSED_WITH_WARNINGS", "FAILED"]
     blockers: int
     warnings: int
+    # P0-04（updateplan §15）：CRITICAL 档计数，缺省 0 兼容旧报告
+    criticals: int = 0
     issues: list[Issue]
     column_profiles: list[dict[str, Any]]
 

@@ -23,6 +23,7 @@
 - CI 没有 Redis/MinIO/Celery chord、前端 build、Playwright、Schemathesis 和 golden dataset 门禁。
 - coverage 配置与升级计划要求不一致，核心 workers/plugins 的覆盖不足。
 - 报告下载一次性读入 bytes，生产大报告会增加内存压力。
+- **pandas 3.0 升级风险**（2026-09-18 发现）：pandas 3.x 字符串列 dtype 由 `object` 变为 `str`，`validation.py` 中 RV301/RV302 的 `s.dtype == object` 判定会静默失效；当前钉扎 `pandas~=2.2` 安全，未来升 3.x 前须先改 dtype 判定并回归 test_validation.py。
 
 ## Resolution Policy
 债务不得通过删除功能或静默放宽校验解决。P0 优先完成方法学安全边界，再处理可运维性和契约自动化。任何新 gate 必须提供：finding、severity、evidence、recommended_action、override/confirmation 语义和测试。

@@ -664,13 +664,14 @@ components:
         status: {type: string, enum: [PASSED, PASSED_WITH_WARNINGS, FAILED]}
         blockers: {type: integer}
         warnings: {type: integer}
+        criticals: {type: integer, description: CRITICAL 档问题计数(P0-04;须人工复核但不阻断,缺省 0 兼容旧报告)}
         issues:
           type: array
           items:
             type: object
             properties:
               rule_id: {type: string}
-              severity: {type: string, enum: [blocker, warning, info]}
+              severity: {type: string, enum: [blocker, critical, warning, info]}
               column: {type: string, nullable: true}
               message: {type: string}
               affected_rows: {type: integer}
@@ -1150,3 +1151,4 @@ components:
 | 2026-09-07 | `Issue` 新增可选 `fix_guidance`（结构化修复指引：problem/impact/methods[]，methods 项含 label/description/action/risk，action 与 quickfix 动作契约一致） | 非破坏（新增可选字段） | P2-3 缺陷修复指导结构化闭环：校验问题从「一段文本建议」升级为「问题→影响→修法（可一键执行）」结构，前端修法按钮直接绑定 quickfix 动作，修复后自动重校验形成闭环；受影响消费方：前端 DatasetDetailPage 问题清单修复指引弹窗 |
 | 2026-09-07 | `ChartAsset.kind` 枚举新增 `pr_curve`；补录漏登的 `prediction_scatter`（回归任务散点图，引擎自 T5 起已产出） | 非破坏（扩展枚举 + 补录） | P3 报告科研图表补齐：PR 曲线由 ROC 产物 + 全量阳性率精确推导（不均衡结局评估必需）；prediction_scatter 补录纠正契约与实现漂移；受影响消费方：前端结果比较页 chartOptions、报告 PNG 渲染 |
 | 2026-09-09 | DatasetInsight payload 新增 `supplement_plan`（数据缺口清单，项含 deficit_type/current/target/gap/suggestion/basis：EPV 缺口折算补充样本量、类别不均衡、生存事件不足、变量角色缺失、组间把握度） | 非破坏（新增字段） | T6.14 数据缺口建议：确定性规则引擎计算 + 模板文案（红线 8，数值全部真实计算；LLM 润色为后续子项，facts-only + 幻觉校验 + 模板兜底）；受影响消费方：前端 DatasetDetailPage 体检卡、worker auto_dataset_insight、报告动态局限性数据源 |
+| 2026-09-18 | `Issue.severity` 枚举新增 `critical`（四级：blocker/critical/warning/info）；`QualityReport` 新增 `criticals` 计数（缺省 0 兼容旧报告）；RV502 临床不合理范围由 warning 升为 critical | 非破坏（扩展枚举 + 新增可选字段） | updateplan §15-16（P0-04）质量门四级分级：临床不合理值（如 age=598）不是普通统计异常值，须人工复核醒目呈现但不等同阻断；受影响消费方：前端 DatasetDetailPage 严重档徽标/统计卡、校验 worker |

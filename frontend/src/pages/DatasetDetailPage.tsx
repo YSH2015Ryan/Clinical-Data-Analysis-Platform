@@ -38,21 +38,24 @@ import DatasetInsightCard from "./DatasetInsightCard";
 
 const SEVERITY_COLOR: Record<Issue["severity"], string> = {
   blocker: "error",
+  critical: "volcano",
   warning: "warning",
   info: "blue",
 };
 
 const SEVERITY_LABEL: Record<Issue["severity"], string> = {
   blocker: "阻塞",
+  critical: "严重",
   warning: "警告",
   info: "信息",
 };
 
-/** 优先级：阻塞 > 警告 > 信息（分组排序用） */
+/** 优先级：阻塞 > 严重 > 警告 > 信息（分组排序用） */
 const SEVERITY_RANK: Record<Issue["severity"], number> = {
   blocker: 0,
-  warning: 1,
-  info: 2,
+  critical: 1,
+  warning: 2,
+  info: 3,
 };
 
 /** 规则类型中文名（与 engines/validation.py 对应；未知规则回退显示规则号） */
@@ -662,6 +665,11 @@ export default function DatasetDetailPage() {
             <Space size="large">
               <Statistic title="校验结果" value={REPORT_LABEL[report.status]} />
               <Statistic title="阻塞" value={report.blockers} valueStyle={{ color: "#cf1322" }} />
+              <Statistic
+                title="严重"
+                value={report.criticals ?? 0}
+                valueStyle={{ color: "#d4380d" }}
+              />
               <Statistic title="警告" value={report.warnings} valueStyle={{ color: "#d48806" }} />
             </Space>
           </Card>

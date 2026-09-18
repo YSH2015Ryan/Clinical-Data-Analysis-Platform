@@ -156,7 +156,8 @@ export interface ColumnProfile {
 
 export interface Issue {
   rule_id: string;
-  severity: "blocker" | "warning" | "info";
+  // P0-04（updateplan §15）：新增 critical 档（须人工复核但不阻断）
+  severity: "blocker" | "critical" | "warning" | "info";
   column: string | null;
   message: string;
   detail?: string | null;
@@ -186,6 +187,8 @@ export interface QualityReport {
   status: "PASSED" | "PASSED_WITH_WARNINGS" | "FAILED";
   blockers: number;
   warnings: number;
+  /** P0-04（updateplan §15）：CRITICAL 档计数，旧报告缺省 0 */
+  criticals?: number;
   issues: Issue[];
   column_profiles: ColumnProfile[];
 }
