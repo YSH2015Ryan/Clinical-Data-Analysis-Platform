@@ -121,6 +121,8 @@ class UnivariateScreenRequest(BaseModel):
     event_col: str | None = None
     features: list[str] | None = None  # 空 → 自动取除结局外全部列（上限 50）
     alpha: float = 0.05
+    # P1-13（§30）：多重比较校正方法，默认 BH(FDR)；none 时响应附 correction_warning
+    correction: Literal["bh", "bonferroni", "none"] = "bh"
 
 
 class UnivariateScreenRow(BaseModel):
@@ -129,8 +131,9 @@ class UnivariateScreenRow(BaseModel):
     statistic: float | None = None
     effect: float | None = None
     p_value: float
+    p_adjusted: float | None = None  # P1-13：校正后 p 值（§30 raw/adjusted 并列）
     n_used: int
-    selected: bool
+    selected: bool  # 基于校正后 p 值判定
 
 
 class UnivariateScreenResult(BaseModel):
@@ -138,6 +141,10 @@ class UnivariateScreenResult(BaseModel):
     alpha: float
     rows: list[UnivariateScreenRow]
     selected_features: list[str]
+    correction: str = "bh"
+    correction_label: str = "Benjamini–Hochberg(FDR)"
+    n_tests: int = 0
+    correction_warning: str | None = None  # correction=none 时固定警告文案
 
 
 class SubgroupAnalysisRequest(BaseModel):
@@ -149,6 +156,8 @@ class SubgroupAnalysisRequest(BaseModel):
     label_col: str | None = None
     time_col: str | None = None
     event_col: str | None = None
+    # P1-13（§30）：跨亚组变量的交互检验批量校正
+    correction: Literal["bh", "bonferroni", "none"] = "bh"
 
 
 class SubgroupLevelEffect(BaseModel):
@@ -164,12 +173,17 @@ class SubgroupResult(BaseModel):
     variable: str
     levels: list[SubgroupLevelEffect]
     interaction_p: float | None = None
+    interaction_p_adjusted: float | None = None  # P1-13：校正后交互 p
 
 
 class SubgroupAnalysisResult(BaseModel):
     task_type: str
     exposure: str
     subgroups: list[SubgroupResult]
+    correction: str = "bh"
+    correction_label: str = "Benjamini–Hochberg(FDR)"
+    n_tests: int = 0
+    correction_warning: str | None = None
 
 
 class QuickFixAction(BaseModel):

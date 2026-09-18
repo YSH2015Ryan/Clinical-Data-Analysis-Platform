@@ -637,12 +637,17 @@ export async function getResearchTemplates(
 
 // ---- 单因素筛选 + 亚组分析（T6.10；docs/14 §3） ----
 
+/** P1-13（§30）：多重比较校正方法（bh 默认 / bonferroni / none 须警告）。 */
+export type CorrectionMethod = "bh" | "bonferroni" | "none";
+
 export interface UnivariateScreenRow {
   feature: string;
   test: string;
   statistic: number | null;
   effect: number | null;
   p_value: number;
+  /** P1-13：校正后 p 值；入选判定基于此值 */
+  p_adjusted: number | null;
   n_used: number;
   selected: boolean;
 }
@@ -652,6 +657,11 @@ export interface UnivariateScreenResult {
   alpha: number;
   rows: UnivariateScreenRow[];
   selected_features: string[];
+  correction: CorrectionMethod;
+  correction_label: string;
+  n_tests: number;
+  /** correction=none 时的固定警告文案 */
+  correction_warning: string | null;
 }
 
 export interface UnivariateScreenRequest {
@@ -661,6 +671,7 @@ export interface UnivariateScreenRequest {
   event_col?: string;
   features?: string[];
   alpha?: number;
+  correction?: CorrectionMethod;
 }
 
 export async function univariateScreen(
@@ -686,12 +697,18 @@ export interface SubgroupResult {
   variable: string;
   levels: SubgroupLevelEffect[];
   interaction_p: number | null;
+  /** P1-13：跨亚组变量批量校正后的交互 p */
+  interaction_p_adjusted: number | null;
 }
 
 export interface SubgroupAnalysisResult {
   task_type: TaskType;
   exposure: string;
   subgroups: SubgroupResult[];
+  correction: CorrectionMethod;
+  correction_label: string;
+  n_tests: number;
+  correction_warning: string | null;
 }
 
 export interface SubgroupAnalysisRequest {
@@ -701,6 +718,7 @@ export interface SubgroupAnalysisRequest {
   label_col?: string;
   time_col?: string;
   event_col?: string;
+  correction?: CorrectionMethod;
 }
 
 export async function subgroupAnalysis(

@@ -17,6 +17,13 @@ import pandas as pd
 from numpy.typing import NDArray
 from scipy import stats
 
+from app.engines.multiple_testing import (
+    CORRECTION_METHODS,
+    NO_CORRECTION_WARNING,
+    adjust_pvalues,
+    correction_label,
+)
+
 _MAX_FEATURES = 50  # 单次筛选特征上限（运行时间保护）
 _MAX_SUBGROUP_LEVELS = 6  # 亚组变量水平数上限
 _MIN_LEVEL_N = 10  # 亚组每层最小样本量（不足则该层效应不可估计）
@@ -177,12 +184,18 @@ def univariate_screen(
     event_col: str | None = None,
     features: list[str] | None = None,
     alpha: float = 0.05,
+    correction: str = "bh",
 ) -> dict[str, Any]:
     """单因素筛选：逐特征关联检验，p<alpha 入选（供多因素建模）。
 
+    P1-13（updateplan §30）：批量检验默认 BH(FDR) 校正，raw 与 adjusted p 并列；
+    显著性判定（selected）基于校正后 p 值；correction="none" 时附固定警告。
+
     Raises:
-        ValueError: 结局列缺失或不在数据集中。
+        ValueError: 结局列缺失或不在数据集中；校正方法非法。
     """
+    if correction not in CORRECTION_METHODS:
+        raise ValueError(f"未知校正方法 {correction}，可选：{'/'.join(CORRECTION_METHODS)}")
     outcome_cols: list[str]
     t_col: str | None = None
     e_col: str | None = None
@@ -217,13 +230,22 @@ def univariate_screen(
         else:
             row = _screen_regression(df, feature, pd.to_numeric(df[label_col], errors="coerce"))
         if row is not None:
-            row["selected"] = bool(row["p_value"] < alpha)
             rows.append(row)
+
+    # P1-13：多重比较校正（§30）——raw/adjusted 并列，入选判定用校正后 p 值
+    adjusted = adjust_pvalues([r["p_value"] for r in rows], method=correction)
+    for row, p_adj in zip(rows, adjusted, strict=True):
+        row["p_adjusted"] = p_adj
+        row["selected"] = bool(p_adj is not None and p_adj < alpha)
 
     rows.sort(key=lambda r: r["p_value"])
     return {
         "task_type": task_type,
         "alpha": alpha,
+        "correction": correction,
+        "correction_label": correction_label(correction),
+        "n_tests": len(rows),
+        "correction_warning": NO_CORRECTION_WARNING if correction == "none" else None,
         "rows": rows,
         "selected_features": [r["feature"] for r in rows if r["selected"]],
     }
@@ -387,12 +409,18 @@ def subgroup_analysis(
     label_col: str | None = None,
     time_col: str | None = None,
     event_col: str | None = None,
+    correction: str = "bh",
 ) -> dict[str, Any]:
     """亚组分析：分层暴露效应（OR/HR/β + 95%CI）+ 暴露×亚组交互 LRT p。
 
+    P1-13（updateplan §30）：多个亚组变量的交互检验构成批量检验，
+    默认 BH 校正（interaction_p_adjusted 并列展示）。
+
     Raises:
-        ValueError: 暴露/亚组/结局列缺失，或亚组变量水平数非法。
+        ValueError: 暴露/亚组/结局列缺失，或亚组变量水平数非法；校正方法非法。
     """
+    if correction not in CORRECTION_METHODS:
+        raise ValueError(f"未知校正方法 {correction}，可选：{'/'.join(CORRECTION_METHODS)}")
     if exposure not in df.columns:
         raise ValueError(f"暴露变量 {exposure} 不在数据集中")
     outcome_cols = [time_col, event_col] if task_type == "survival" else [label_col]
@@ -452,4 +480,22 @@ def subgroup_analysis(
 
         results.append({"variable": var, "levels": levels, "interaction_p": interaction_p})
 
-    return {"task_type": task_type, "exposure": exposure, "subgroups": results}
+    # P1-13：跨亚组变量的交互检验为批量检验 → 默认 BH 校正（§30）
+    adjusted = adjust_pvalues(
+        [r["interaction_p"] for r in results], method=correction
+    )
+    n_tests = 0
+    for res, p_adj in zip(results, adjusted, strict=True):
+        res["interaction_p_adjusted"] = p_adj
+        if res["interaction_p"] is not None:
+            n_tests += 1
+
+    return {
+        "task_type": task_type,
+        "exposure": exposure,
+        "correction": correction,
+        "correction_label": correction_label(correction),
+        "n_tests": n_tests,
+        "correction_warning": NO_CORRECTION_WARNING if correction == "none" else None,
+        "subgroups": results,
+    }

@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from app.engines.multiple_testing import adjust_pvalues, correction_label
+
 
 def generate_baseline_table(
     df: pd.DataFrame,
@@ -78,11 +80,26 @@ def generate_baseline_table(
         category_rows = _summarize_categorical(df, col, stratify_by, test_difference)
         rows.extend(category_rows)
 
+    # P1-13（updateplan §30）：分层组间检验构成批量检验 → 默认 BH(FDR) 校正，
+    # raw/adjusted 并列展示，显著性描述以校正后 p 值为准
+    n_tests = 0
+    if test_difference and stratify_by:
+        adjusted = adjust_pvalues([r.get("p_value") for r in rows], method="bh")
+        for r, p_adj in zip(rows, adjusted, strict=True):
+            r["p_adjusted"] = p_adj
+            if p_adj is not None:
+                r["p_adjusted_text"] = _format_pvalue(p_adj)
+                n_tests += 1
+            else:
+                r["p_adjusted_text"] = "—" if r.get("p_value_text") == "—" else ""
+
     return {
         "rows": rows,
         "total_n": total_n,
         "strata": strata_info,
-        "note": _generate_table_note(test_difference),
+        "correction": "bh" if n_tests else None,
+        "n_tests": n_tests,
+        "note": _generate_table_note(test_difference, n_tests),
     }
 
 
@@ -332,7 +349,7 @@ def _format_pvalue(p_value: float | None) -> str:
         return f"{p_value:.3f}"
 
 
-def _generate_table_note(test_difference: bool) -> str:
+def _generate_table_note(test_difference: bool, n_tests: int = 0) -> str:
     """生成表格说明"""
     note = "连续变量以 mean ± SD 或 median (Q1, Q3) 表示；分类变量以 n (%) 表示。"
 
@@ -341,6 +358,11 @@ def _generate_table_note(test_difference: bool) -> str:
             " p 值：连续变量使用 t 检验或 Mann-Whitney U 检验；"
             "分类变量使用 χ² 检验或 Fisher 精确检验。"
         )
+        if n_tests:
+            note += (
+                f" 多重比较采用{correction_label('bh')}校正（共 {n_tests} 项检验），"
+                "显著性判定以校正后 p 值为准。"
+            )
 
     return note
 
@@ -374,6 +396,7 @@ def format_baseline_table_html(table_data: dict[str, Any]) -> str:
 
     if len(strata) > 1:
         html.append("<th>p 值</th>")
+        html.append("<th>校正后 p 值</th>")
 
     html.append("</tr></thead>")
 
@@ -395,6 +418,7 @@ def format_baseline_table_html(table_data: dict[str, Any]) -> str:
 
             if len(strata) > 1:
                 html.append(f"<td>{row.get('p_value_text', '')}</td>")
+                html.append(f"<td>{row.get('p_adjusted_text', '')}</td>")
 
             html.append("</tr>")
 

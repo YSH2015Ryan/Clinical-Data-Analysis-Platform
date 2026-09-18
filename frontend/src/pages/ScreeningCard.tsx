@@ -5,12 +5,13 @@
  * + 95%CI）+ 交互作用 p。所有数值由后端真实计算。
  */
 
-import { Button, Card, Form, InputNumber, Select, Space, Table, Tag, Typography, message } from "antd";
+import { Alert, Button, Card, Form, InputNumber, Select, Space, Table, Tag, Typography, message } from "antd";
 import { useState } from "react";
 import {
   subgroupAnalysis,
   univariateScreen,
   type ApiError,
+  type CorrectionMethod,
   type SubgroupAnalysisResult,
   type TaskType,
   type UnivariateScreenResult,
@@ -21,6 +22,16 @@ const TASK_LABEL: Record<TaskType, string> = {
   classification: "分类",
   regression: "回归",
 };
+
+/** P1-13（§30）：多重比较校正选项。 */
+const CORRECTION_OPTIONS: { value: CorrectionMethod; label: string }[] = [
+  { value: "bh", label: "BH(FDR) 校正" },
+  { value: "bonferroni", label: "Bonferroni 校正" },
+  { value: "none", label: "不校正（有假阳性风险）" },
+];
+
+const fmtP = (v: number | null | undefined) =>
+  v == null ? "—" : v < 0.001 ? "<0.001" : v.toFixed(4);
 
 export default function ScreeningCard({
   datasetId,
@@ -117,14 +128,26 @@ export default function ScreeningCard({
         <Form.Item name="alpha" label="α" initialValue={0.05}>
           <InputNumber min={0.0001} max={0.2} step={0.01} style={{ width: 90 }} />
         </Form.Item>
+        <Form.Item name="correction" label="多重比较" initialValue="bh">
+          <Select style={{ width: 190 }} options={CORRECTION_OPTIONS} />
+        </Form.Item>
         <Button type="primary" loading={screening} onClick={() => void runScreen()}>
           开始筛选
         </Button>
       </Form>
       {screenResult && (
         <>
+          {screenResult.correction_warning && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 8 }}
+              message={screenResult.correction_warning}
+            />
+          )}
           <Typography.Paragraph type="secondary">
-            入选特征（p &lt; {screenResult.alpha}）：
+            入选特征（{screenResult.correction_label}校正后 p &lt; {screenResult.alpha}，共{" "}
+            {screenResult.n_tests} 项检验）：
             {screenResult.selected_features.length > 0
               ? screenResult.selected_features.join("、")
               : "无"}
@@ -144,9 +167,14 @@ export default function ScreeningCard({
                 render: (v: number | null) => v ?? "—",
               },
               {
-                title: "p 值",
+                title: "p 值（原始）",
                 dataIndex: "p_value",
-                render: (v: number) => (v < 0.001 ? "<0.001" : v.toFixed(4)),
+                render: fmtP,
+              },
+              {
+                title: "校正后 p 值",
+                dataIndex: "p_adjusted",
+                render: fmtP,
               },
               { title: "n", dataIndex: "n_used", width: 70 },
               {
@@ -197,19 +225,40 @@ export default function ScreeningCard({
             style={{ minWidth: 200 }}
           />
         </Form.Item>
+        <Form.Item name="correction" label="多重比较" initialValue="bh">
+          <Select style={{ width: 190 }} options={CORRECTION_OPTIONS} />
+        </Form.Item>
         <Button type="primary" loading={subgrouping} onClick={() => void runSubgroup()}>
           开始分析
         </Button>
       </Form>
+      {subgroupResult?.correction_warning && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 8 }}
+          message={subgroupResult.correction_warning}
+        />
+      )}
+      {subgroupResult && subgroupResult.n_tests > 0 && (
+        <Typography.Paragraph type="secondary">
+          交互作用显著性基于{subgroupResult.correction_label}校正后 p 值（共{" "}
+          {subgroupResult.n_tests} 项检验）。
+        </Typography.Paragraph>
+      )}
       {subgroupResult &&
         subgroupResult.subgroups.map((sub) => (
           <div key={sub.variable} style={{ marginBottom: 16 }}>
             <Typography.Text strong>
               {sub.variable} 亚组
               {sub.interaction_p != null &&
-                `（交互 p = ${
-                  sub.interaction_p < 0.001 ? "<0.001" : sub.interaction_p.toFixed(4)
-                }${sub.interaction_p < 0.05 ? "，存在效应修饰" : "，未见显著效应修饰"}）`}
+                `（交互 p = ${fmtP(sub.interaction_p)}，校正后 p = ${fmtP(
+                  sub.interaction_p_adjusted,
+                )}${
+                  (sub.interaction_p_adjusted ?? sub.interaction_p) < 0.05
+                    ? "，存在效应修饰"
+                    : "，未见显著效应修饰"
+                }）`}
             </Typography.Text>
             <Table
               rowKey="level"

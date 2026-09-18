@@ -332,6 +332,7 @@ async def post_univariate_screen(
                 event_col=body.event_col,
                 features=body.features,
                 alpha=body.alpha,
+                correction=body.correction,
             )
         )
     except ValueError as exc:
@@ -358,6 +359,7 @@ async def post_subgroup_analysis(
                 label_col=body.label_col,
                 time_col=body.time_col,
                 event_col=body.event_col,
+                correction=body.correction,
             )
         )
     except ValueError as exc:

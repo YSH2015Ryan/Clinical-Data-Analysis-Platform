@@ -159,16 +159,16 @@
 {% call tbl("基线特征表") %}
   <tr><th>特征</th><th>总体 (N={{ bt.total_n }})</th>
     {% for st in bt.strata %}{% if st.name != "Total" %}<th>{{ st.name }} (N={{ st.n }})</th>{% endif %}{% endfor %}
-    {% if bt.strata | length > 1 %}<th>p 值</th>{% endif %}</tr>
+    {% if bt.strata | length > 1 %}<th>p 值</th><th>校正后 p 值</th>{% endif %}</tr>
   {% for r in bt.rows %}
   {% if r.type == "categorical_header" %}
   <tr><td><strong>{{ r.variable }}</strong></td><td></td>
     {% for st in bt.strata %}{% if st.name != "Total" %}<td></td>{% endif %}{% endfor %}
-    {% if bt.strata | length > 1 %}<td></td>{% endif %}</tr>
+    {% if bt.strata | length > 1 %}<td></td><td></td>{% endif %}</tr>
   {% else %}
   <tr><td>{{ r.variable }}</td><td>{{ r.total or "—" }}</td>
     {% for st in bt.strata %}{% if st.name != "Total" %}<td>{{ r["stratum_" ~ st.name] or "—" }}</td>{% endif %}{% endfor %}
-    {% if bt.strata | length > 1 %}<td>{{ r.p_value_text or "" }}</td>{% endif %}</tr>
+    {% if bt.strata | length > 1 %}<td>{{ r.p_value_text or "" }}</td><td>{{ r.p_adjusted_text or "" }}</td>{% endif %}</tr>
   {% endif %}
   {% endfor %}
 {% endcall %}
@@ -181,15 +181,18 @@
 {% if s.data.screening %}
 {% set sc = s.data.screening %}
 {% call tbl("单因素筛选（按 p 值升序" ~ ("，前 " ~ (sc.rows | length) ~ "/" ~ sc.n_total_tested ~ " 项" if sc.n_total_tested and sc.n_total_tested > (sc.rows | length) else "") ~ "）") %}
-  <tr><th>变量</th><th>检验</th><th>效应量</th><th>p 值</th><th>入选</th></tr>
+  <tr><th>变量</th><th>检验</th><th>效应量</th><th>p 值</th><th>校正后 p 值</th><th>入选</th></tr>
   {% for r in sc.rows %}
   <tr><td>{{ r.feature }}</td><td>{{ r.test }}</td>
       <td>{{ r.effect | fmt_num('.4g') }}</td>
       <td>{{ r.p_value | fmt_num }}</td>
+      <td>{{ (r.p_adjusted if r.p_adjusted is not none else r.p_value) | fmt_num }}</td>
       <td>{{ "是" if r.selected else "否" }}</td></tr>
   {% endfor %}
 {% endcall %}
-<p class="meta">单因素筛选阈值 α={{ sc.alpha }}：p&lt;α 的变量入选（{{ sc.selected_features | length }} 个），供多因素建模参考；单因素显著性不构成因果结论。</p>
+{# §30：显著性结论必须基于校正后 p 值并注明校正方法与检验总数 #}
+<p class="meta">单因素筛选阈值 α={{ sc.alpha }}：入选判定基于{{ sc.correction_label or "Benjamini–Hochberg(FDR)" }}校正后 p 值（共 {{ sc.n_tests or (sc.rows | length) }} 项检验），{{ sc.selected_features | length }} 个变量入选，供多因素建模参考；单因素显著性不构成因果结论。</p>
+{% if sc.correction_warning %}<p class="meta" style="color:#b3001b;font-weight:bold;">⚠ {{ sc.correction_warning }}</p>{% endif %}
 {% endif %}
 
 {% elif s.key == "quality" %}
