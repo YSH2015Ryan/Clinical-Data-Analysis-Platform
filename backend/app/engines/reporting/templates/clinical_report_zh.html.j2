@@ -58,6 +58,18 @@
   .guide p { margin: 4px 0; }
   .disclaimer { border-top: 1.5px solid #333; border-bottom: 1.5px solid #333; padding: 10px 4px;
                 font-weight: bold; margin-top: 20px; text-align: center; }
+  /* P0-10/P0-12（updateplan §69/§70）：状态灯横幅；RED 时首页醒目展示固定 Scope of Use */
+  .status-banner { padding: 10px 14px; margin: 14px 0 4px; line-height: 1.7; text-align: left;
+                   border: 1px solid #ccc; font-size: 12.5px; }
+  .status-banner ul { margin: 6px 0 0; padding-left: 20px; }
+  .status-banner .scope { font-size: 11.5px; font-weight: normal; margin: 8px 0 0;
+                          border-top: 1px dashed #b3001b; padding-top: 8px; }
+  .status-red { border: 2.5px solid #b3001b; background: #fdf3f4; color: #7a0012;
+                font-weight: bold; }
+  .status-yellow { border: 2px solid #d48806; background: #fffbe6; color: #613400;
+                   font-weight: bold; }
+  .status-green { border: 1px solid #389e0d; background: #f6ffed; color: #135200;
+                  font-weight: bold; }
   img.chart { max-width: 100%; display: block; margin: 12px auto 0; }
   .fig-caption { font-size: 11px; color: #444; line-height: 1.6;
                  margin: 4px 0 18px; text-align: justify; }
@@ -86,6 +98,23 @@
   数据集：{{ dataset.name or "—" }} ｜ 任务类型：{{ task_label or run.task_type or "—" }} ｜
   运行时间：{{ run.created_at or "—" }}
 </p>
+
+{# P0-10/P0-12（updateplan §69/§70）：状态灯由规则系统判定；RED 时首页醒目横幅含固定 Scope of Use 声明（非 LLM 生成，不得改写） #}
+{% if analysis_status %}
+<div class="status-banner status-{{ analysis_status.level | lower }}">
+  分析状态：{{ analysis_status.level }} —— {{ analysis_status.label }}
+  {% if analysis_status.reasons %}
+  <ul>
+    {% for reason in analysis_status.reasons %}
+    <li>{{ reason }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if analysis_status.scope_banner %}
+  <p class="scope">{{ analysis_status.scope_of_use }}</p>
+  {% endif %}
+</div>
+{% endif %}
 
 {% if abstract %}
 <div class="abstract">

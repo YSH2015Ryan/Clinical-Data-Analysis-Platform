@@ -8,6 +8,7 @@
 import json
 from typing import Any
 
+from app.engines.reporting.analysis_status import compute_analysis_status
 from app.engines.reporting.captions import caption_for
 from app.engines.reporting.checklist import build_reporting_checklist
 from app.engines.reporting.limitations import build_limitations
@@ -326,6 +327,8 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
         "run": run,
         "dataset": payload.get("dataset") or {},
         "task_label": TASK_LABELS.get(str(run.get("task_type") or ""), ""),
+        # P0-10（updateplan §69）：状态灯由确定性规则系统判定，不由 LLM 决定
+        "analysis_status": compute_analysis_status(payload),
         "abstract": _build_abstract(payload, run, target_summary, comparison, conclusion_text),
         "sections": sections,
         "appendix": {
