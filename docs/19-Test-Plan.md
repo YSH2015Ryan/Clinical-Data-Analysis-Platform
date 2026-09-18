@@ -21,6 +21,7 @@
 | engines/task_detection | 4 任务类型 × 词典内列名；歧义列（time 无 event）；失败回退 |
 | engines/modeling | 适配器协议符合性（hypothesis 契约）；统一 metrics 与官方库对拍（C-index vs sksurv、AUC vs sklearn，±1e-6） |
 | engines/comparison | 排名规则（构造指标断言顺序）；推荐理由快照测试（不虚构数值） |
+| engines/ground_truth（updateplan §87，P1-15） | Dataset I 已知真实效应量模拟：OR/HR/β 收敛到真值且 95%CI 覆盖；与参考实现 statsmodels/lifelines 对拍相对误差 <1%；AUC 手算对拍（0.75/1.0/0.5）、校准斜率收敛到已知真值 0.5；§86 Dataset A–J 骨架性质冒烟（不平衡率/重复数/泄漏列/EPV） |
 | engines/reporting | 模板渲染（缺章节「不适用」）；免责声明强制存在 |
 | services | RBAC 过滤、存储抽象双实现一致性 |
 
