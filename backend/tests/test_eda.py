@@ -139,6 +139,31 @@ class TestSampleSize:
         ss = eda["sample_size"]
         assert ss["n_events"] is None and ss["epv"] is None
 
+    def test_epv_level_three_tiers(self) -> None:
+        """P0-11（updateplan §19）：EPV ≥10 ok / 5–10 warning / <5 critical。"""
+        profiles = [
+            {"name": "death", "inferred_type": "continuous", "semantic": "Event",
+             "semantic_confidence": 0.9, "missing_rate": 0.0, "unique": 2},
+        ] + [
+            {"name": f"x{i}", "inferred_type": "continuous", "semantic": None,
+             "semantic_confidence": 0.0, "missing_rate": 0.0, "unique": 100}
+            for i in range(4)
+        ]
+        # n_features=4：事件数 40 → EPV=10(ok)；28 → 7(warning)；12 → 3(critical)
+        for n_events, expected in ((40, "ok"), (28, "warning"), (12, "critical")):
+            n = 200
+            death = np.array([1] * n_events + [0] * (n - n_events))
+            df = pd.DataFrame({"death": death, **{f"x{i}": np.arange(n) for i in range(4)}})
+            ss = compute_eda(df, profiles)["sample_size"]
+            assert ss["epv"] == round(n_events / 4, 2)
+            assert ss["epv_level"] == expected
+
+    def test_epv_level_none_without_event_column(self) -> None:
+        df = _df().drop(columns=["death"])
+        profiles = [p for p in _PROFILES if p["name"] != "death"]
+        ss = compute_eda(df, profiles)["sample_size"]
+        assert ss["epv_level"] is None
+
 
 class TestRobustness:
     def test_empty_df(self) -> None:

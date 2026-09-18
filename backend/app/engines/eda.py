@@ -169,12 +169,17 @@ def _sample_size(df: pd.DataFrame, profiles: list[dict[str, Any]]) -> dict[str, 
         s = pd.to_numeric(df[event_col], errors="coerce")
         n_events = int((s == 1).sum())
         epv = round(n_events / n_features, 2)
+    # updateplan §19（P0-11）三档：≥10 ok / 5–10 warning / <5 critical
+    epv_level: str | None = None
+    if epv is not None:
+        epv_level = "ok" if epv >= 10 else ("warning" if epv >= 5 else "critical")
     return {
         "n_rows": len(df),
         "n_features": n_features,
         "event_column": event_col,
         "n_events": n_events,
         "epv": epv,
+        "epv_level": epv_level,
         "epv_adequate": (epv is not None and epv >= 10) or None,
     }
 

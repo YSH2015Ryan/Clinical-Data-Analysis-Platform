@@ -145,13 +145,15 @@ def _summary_lines(
     if report.blockers:
         lines.append(f"仍有 {report.blockers} 项阻塞级问题需人工处理后方可建模。")
     if ss.get("n_events") is not None:
+        # updateplan §19 三档分级文案（epv_level 由 eda 确定性计算）
+        level_text = {
+            "ok": "（≥10，满足常规建模要求）",
+            "warning": "（5–10，偏低：建议精简候选特征或扩充样本，结果按探索性解读）",
+            "critical": "（<5，严重不足：模型系数不稳定、性能指标易虚高，本次分析仅宜作探索性用途）",
+        }
         lines.append(
             f"结局事件列 {ss['event_column']}：事件数 {ss['n_events']}，EPV={ss['epv']}"
-            + (
-                "（≥10，满足常规建模要求）"
-                if ss.get("epv_adequate")
-                else "（<10，建议精简特征数或扩充样本）"
-            )
+            + level_text.get(ss.get("epv_level") or "", "")
         )
     missing = eda["missing"]
     lines.append(f"完整病例比例 {missing['complete_case_ratio']:.1%}。")
