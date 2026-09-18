@@ -392,6 +392,7 @@ def preprocess_run(run_id: str) -> None:
                 target_col=cfg.target.label_col or cfg.target.event_col or "",
                 group_col=cfg.validation.group_col,
                 prediction_time_col=cfg.validation.prediction_time_col,
+                feature_time_columns=cfg.validation.feature_time_columns,
                 temporal=run.task_type in {"survival", "time_series"}
                 or cfg.validation.strategy == "time_series_split",
             )

@@ -53,6 +53,13 @@
 
 前端向导在步骤 5（确认页）基于 `column_profile` 镜像规则 1–3（存在性 + `inferred_type` 粗判），违反即禁用提交并给出 Alert；规则 4 需精确类别计数，以后端 400 文案为准（前端 toast 原样展示）。规则 2 中「可转数值 ≥90%」与 `engines/columns.py` 的 `_NUMERIC_PARSE_RATIO` 同口径，避免把字符串型数值误判为文本。
 
+**预测时点字段（2026-09-18 补充，updateplan §26 / P0-03）**：`validation` 段新增两个可选字段，供泄漏检测引擎在建模前拦截「预测时点之后才可获得」的未来变量：
+
+- `prediction_time_col`：逐行预测时点列名（如入院日期、术前日期）；声明 `time_series_split` 或生存/时间类任务时缺失即触发 `PREDICTION_TIME_UNDEFINED`（blocker）；
+- `feature_time_columns`：`{列名: ISO 日期时间}` 映射，声明某特征在该绝对时点之后才可获得（如出院诊断编码在出院日之后生成）；引擎逐行比较，晚于 `prediction_time_col` 的记录触发 `FUTURE_FEATURE`（blocker）。
+
+引擎不做自由文本日期猜测（`engines/leakage.py` 契约：只接受已解析的时点），未声明的变量不做时点推断。
+
 ## 3. 步骤实现映射（复用优先）
 
 | 步骤 | 实现 | 复用来源 |

@@ -130,3 +130,22 @@ class TestInvalidDsl:
         }
         with pytest.raises(ValidationError):
             validate_dsl(bad)
+
+    def test_feature_time_columns_accepted(self) -> None:
+        """P0-03（updateplan §26）：validation 段可声明特征可用时点，供泄漏检测。"""
+        cfg = validate_dsl(
+            {
+                **VALID_DSL,
+                "validation": {
+                    "strategy": "time_series_split",
+                    "n_splits": 3,
+                    "seed": 42,
+                    "time_col": "observed_at",
+                    "prediction_time_col": "admission_date",
+                    "feature_time_columns": {"discharge_diagnosis": "2024-01-05"},
+                },
+            }
+        )
+        assert cfg.validation.feature_time_columns == {"discharge_diagnosis": "2024-01-05"}
+        # 序列化回字典可再次校验（幂等）
+        validate_dsl(cfg.model_dump(mode="json"))

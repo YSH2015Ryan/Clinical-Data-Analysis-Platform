@@ -41,6 +41,9 @@ class ValidationSpec(BaseModel):
     group_col: str | None = None
     time_col: str | None = None
     prediction_time_col: str | None = None
+    # updateplan §26（P0-03）：特征可用时点 {列名: ISO 日期时间}，声明该列在此
+    # 时间之后才可获得；引擎据此在 prediction_time_col 之前拦截未来变量。
+    feature_time_columns: dict[str, str] | None = None
 
 
 # ---------- steps（discriminated union，type 枚举与 docs/14 一致） ----------
