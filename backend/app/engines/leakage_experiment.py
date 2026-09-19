@@ -132,7 +132,9 @@ def _design_matrix(df: pd.DataFrame, features: list[str]) -> np.ndarray[Any, Any
     return pd.concat(parts, axis=1).to_numpy(dtype=float)
 
 
-def _cv_fold_indices(n: int, n_splits: int) -> list[tuple[np.ndarray, np.ndarray]]:
+def _cv_fold_indices(
+    n: int, n_splits: int
+) -> list[tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]]:
     """确定性顺序 K 折索引（数据已抽样打乱；seed 纪律见 run_leakage_experiment）。"""
     idx = np.arange(n)
     folds = np.array_split(idx, n_splits)
@@ -309,7 +311,7 @@ def run_leakage_experiment(
         else (
             sub[target].to_numpy(dtype=float)
             if task_type == "regression"
-            else sub[event_col].to_numpy(dtype=float)  # type: ignore[index]
+            else sub[event_col].to_numpy(dtype=float)
         )
     )
 

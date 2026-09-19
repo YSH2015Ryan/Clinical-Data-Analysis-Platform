@@ -401,14 +401,18 @@ def preprocess_run(run_id: str) -> None:
             )
             run.integrity = inspection.to_dict()
             # updateplan §72 Critical Issue Gate：blocker 或 critical 级发现均触发人工门；
-            # 用户确认「继续探索性分析」（exploratory_mode）后放行，报告强制 RED 并附固定声明
+            # 用户确认「继续探索性分析」（exploratory_mode）后放行，报告强制 RED 并附固定声明。
+            # 门禁是预期的用户流程状态而非崩溃：落 FAILED 后直接 return，不抛出——
+            # 否则 eager 模式异常穿透 chain 使创建端点误判 503 TASK_DISPATCH_FAILED；
+            # chain 后续 run_model / compare_run 以 FAILED 守卫空转（保留门禁 error 文案）。
             if inspection.has_gate_issue and not run.exploratory_mode:
-                raise ValueError(
-                    "分析被方法学完整性门禁阻止："
-                    + "；".join(
-                        f.code for f in inspection.findings if f.severity in ("blocker", "critical")
-                    )
+                run.status = "FAILED"
+                run.error = "分析被方法学完整性门禁阻止：" + "；".join(
+                    f.code for f in inspection.findings if f.severity in ("blocker", "critical")
                 )
+                db.commit()
+                logger.warning("integrity_gate_blocked", run_id=run_id, error=run.error)
+                return
 
             # 智能采样：按结局分层；配置 group_col 时保持患者组完整
             MAX_ROWS = 100000
@@ -468,8 +472,6 @@ def preprocess_run(run_id: str) -> None:
             if run is not None:
                 run.status = "FAILED"
                 run.error = f"preprocess 失败：{exc}"[:2000]
-                if "完整性门禁" in str(exc):
-                    run.integrity = run.integrity or {"findings": [], "has_blocking_issue": True}
                 db.commit()
             logger.error("preprocess_failed", run_id=run_id, error=str(exc))
             raise
@@ -484,7 +486,8 @@ def run_model(run_id: str, model_key: str) -> None:
     factory = get_sync_session_factory()
     with factory() as db:
         run = db.get(AnalysisRun, uuid.UUID(run_id))
-        if run is None or run.status == "CANCELED":
+        # FAILED（如 §72 门禁拦截、预处理失败）时 chain 空转，不再建模
+        if run is None or run.status in ("CANCELED", "FAILED"):
             return
         row = db.execute(
             select(ModelResult).where(
@@ -738,7 +741,8 @@ def compare_run(results: Any, run_id: str) -> None:
     factory = get_sync_session_factory()
     with factory() as db:
         run = db.get(AnalysisRun, uuid.UUID(run_id))
-        if run is None or run.status == "CANCELED":
+        # FAILED（如 §72 门禁拦截、预处理失败）时不覆盖原始 error（如门禁文案），直接空转
+        if run is None or run.status in ("CANCELED", "FAILED"):
             return
         rows = db.execute(select(ModelResult).where(ModelResult.run_id == run.id)).scalars().all()
         succeeded = [r for r in rows if r.status == "SUCCESS"]

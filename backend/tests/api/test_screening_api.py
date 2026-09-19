@@ -72,7 +72,19 @@ class TestUnivariateScreenAPI:
         )
         assert response.status_code == 200
         body = response.json()
-        assert set(body) == {"task_type", "alpha", "rows", "selected_features"}
+        # P1-13（§30）：响应含多重比较校正字段（docs/14 changelog 2026-09-18）
+        assert set(body) == {
+            "task_type",
+            "alpha",
+            "rows",
+            "selected_features",
+            "correction",
+            "correction_label",
+            "n_tests",
+            "correction_warning",
+        }
+        assert body["correction"] == "bh"
+        assert body["n_tests"] == len(body["rows"])
         assert "age" in body["selected_features"]
         features = [r["feature"] for r in body["rows"]]
         assert "outcome" not in features
@@ -115,7 +127,17 @@ class TestSubgroupAnalysisAPI:
         )
         assert response.status_code == 200
         body = response.json()
-        assert set(body) == {"task_type", "exposure", "subgroups"}
+        # P1-13（§30）：响应含跨亚组交互检验的批量校正字段
+        assert set(body) == {
+            "task_type",
+            "exposure",
+            "subgroups",
+            "correction",
+            "correction_label",
+            "n_tests",
+            "correction_warning",
+        }
+        assert body["correction"] == "bh"
         sub = body["subgroups"][0]
         assert sub["variable"] == "sex"
         assert len(sub["levels"]) == 2

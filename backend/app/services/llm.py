@@ -162,7 +162,7 @@ class LLMService:
             assert_cloud_payload_safe(facts)
 
             # 选择云端提供商
-            cloud_provider = None
+            cloud_provider: AnthropicProvider | OpenAIProvider | None = None
             provider_name = ""
             if self.cloud_provider == "anthropic" and self.anthropic:
                 cloud_provider = self.anthropic
@@ -252,9 +252,8 @@ class LLMService:
                     result = self.ollama.complete(
                         prompt, temperature=temperature, seed=seed, max_tokens=max_tokens
                     )
-                    if inspect.isawaitable(result):
-                        result = asyncio.run(result)
-                    return str(result)
+                    text = asyncio.run(result) if inspect.isawaitable(result) else result
+                    return str(text)
                 except Exception as e:
                     logger.error(f"Ollama complete failed: {e}")
                     if choice == "local":
@@ -276,7 +275,7 @@ class LLMService:
                 assert_cloud_payload_safe(facts)
 
             # 选择云端提供商
-            cloud_provider = None
+            cloud_provider: AnthropicProvider | OpenAIProvider | None = None
             if self.cloud_provider == "anthropic" and self.anthropic:
                 cloud_provider = self.anthropic
             elif (self.cloud_provider == "openai" and self.openai) or self.openai:

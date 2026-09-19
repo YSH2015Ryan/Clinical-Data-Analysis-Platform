@@ -167,8 +167,8 @@ def _test_cloud_sync(cfg: settings_service.LlmRuntimeConfig) -> LlmTestResult:
         try:
             from app.services.llm_providers.openai_provider import OpenAIProvider
 
-            provider = OpenAIProvider(api_key=cfg.openai_api_key, model=cfg.openai_model)
-            ok = provider.is_available()
+            openai_provider = OpenAIProvider(api_key=cfg.openai_api_key, model=cfg.openai_model)
+            ok = openai_provider.is_available()
             latency = int((time.monotonic() - started) * 1000)
             return LlmTestResult(
                 ok=ok, provider="cloud", latency_ms=latency, detail="" if ok else "OpenAI 不可用"

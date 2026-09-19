@@ -1,6 +1,6 @@
 """LLM 设置 schema（docs/14 /admin/settings/llm*；T6.6）。"""
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -19,7 +19,7 @@ class LlmFeatureSwitches(BaseModel):
 class LlmProviderStatus(BaseModel):
     available: bool
     provider: str | None = None
-    providers: list[dict] | None = None  # 本地多提供商时的详细列表
+    providers: list[dict[str, Any]] | None = None  # 本地多提供商时的详细列表
     model: str | None = None
     enabled: bool | None = None  # 仅 cloud：部署层总闸
 

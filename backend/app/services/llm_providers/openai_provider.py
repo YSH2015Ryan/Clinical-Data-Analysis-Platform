@@ -83,9 +83,10 @@ class OpenAIProvider:
             if not output:
                 raise RuntimeError("OpenAI returned empty response")
 
+            usage = response.usage
             logger.info(
                 f"Generated {len(output)} chars for {section_type} using {self.model}, "
-                f"tokens: {response.usage.total_tokens}"
+                f"tokens: {usage.total_tokens if usage is not None else 'n/a'}"
             )
 
             return str(output).strip()

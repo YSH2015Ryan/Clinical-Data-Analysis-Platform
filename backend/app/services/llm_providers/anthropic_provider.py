@@ -83,8 +83,8 @@ class AnthropicProvider:
                 ],
             )
 
-            # Claude API 返回 content 数组
-            output = response.content[0].text if response.content else ""
+            # Claude API 返回 content 数组（首块预期为 TextBlock；getattr 规避 SDK 联合类型漂移）
+            output = getattr(response.content[0], "text", "") if response.content else ""
 
             if not output:
                 raise RuntimeError("Anthropic returned empty response")
@@ -122,7 +122,7 @@ class AnthropicProvider:
                 ],
             )
 
-            output = response.content[0].text if response.content else ""
+            output = getattr(response.content[0], "text", "") if response.content else ""
 
             if not output:
                 raise RuntimeError("Anthropic returned empty response")

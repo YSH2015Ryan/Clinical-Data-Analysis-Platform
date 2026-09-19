@@ -16,6 +16,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from numpy.typing import NDArray
 
 _MAX_DUMMY_LEVELS = 10  # 分类混杂水平数上限（超出视为高基数，拒绝入模）
 
@@ -38,7 +39,9 @@ def _confounder_matrix(df: pd.DataFrame, confounders: list[str]) -> pd.DataFrame
     return pd.concat(parts, axis=1) if parts else pd.DataFrame(index=df.index)
 
 
-def _fit_glm(kind: str, y: np.ndarray, x: pd.DataFrame) -> tuple[float, float, float, float]:
+def _fit_glm(
+    kind: str, y: NDArray[np.float64], x: pd.DataFrame
+) -> tuple[float, float, float, float]:
     """Logit/OLS 拟合暴露主效应 → (effect, ci_lower, ci_upper, p)；OR/β 尺度。"""
     import statsmodels.api as sm
 
@@ -100,9 +103,9 @@ def adjusted_association(
             raise ValueError(f"混杂变量 {col} 不在数据集中")
 
     outcome_cols = [time_col, event_col] if task_type == "survival" else [label_col]
-    for col in outcome_cols:
-        if not col or col not in df.columns:
-            raise ValueError(f"结局列 {col} 缺失或不在数据集中")
+    for oc in outcome_cols:
+        if not oc or oc not in df.columns:
+            raise ValueError(f"结局列 {oc} 缺失或不在数据集中")
 
     keep = [exposure, *confounders, *[c for c in outcome_cols if c]]
     sub = df[keep].dropna().copy()
