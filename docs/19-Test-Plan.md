@@ -25,6 +25,7 @@
 | engines/reporting/statistical_reviewer（updateplan §51，P2-02） | 七维度规则正反例：EPV<10→Major、RV401 重复→Major、筛选未校正→Major、红旗→Major；小样本/高缺失/单模型/少折→Minor；外部验证恒问、缺失机制/时序 CV/诊断缺失→条件问题；空 payload 不崩；双跑逐位相等 |
 | engines/reporting/ml_reviewer（updateplan §52，P2-03） | 六维度规则正反例：泄漏 blocker→Major/warning→Minor、折间变异系数>0.10→Minor、验证配置缺失→Major、HL p<0.05/校准斜率偏离→Minor、不均衡→Minor/极端→Major、单特征主导→Minor+代理问题；空 payload 不崩；双跑逐位相等 |
 | engines/manifest（updateplan §78，P3-05） | §78 契约字段齐全（dataset_hash/seed/validation/target/excluded_variables/model_parameters）；excluded_variables=drop_columns∪quickfix drop_column 排序去重；未传参模型 parameters={} 不编造；无 comparison/validation → None 缺省；双跑逐位相等 |
+| engines/hypotheses（updateplan §81，P2-06） | 五类清单契约齐全 + Hypothesis-generating 横幅；禁用措辞（Novel Finding/首次发现等）不出现；条目 text/basis 非空且 basis 引用真实 r 值；亚组候选 2-6 水平分类列且排除结局语义列；无连续列时相关类清单为空不崩；最小 df 不崩；双跑逐位相等 |
 | engines/reporting | 模板渲染（缺章节「不适用」）；免责声明强制存在 |
 | services | RBAC 过滤、存储抽象双实现一致性 |
 

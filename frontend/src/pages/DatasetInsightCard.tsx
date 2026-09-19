@@ -11,6 +11,8 @@ import {
   type ApiError,
   type DatasetInsight,
   type EdaDistribution,
+  type ResearchOpportunities,
+  type ResearchOpportunityItem,
 } from "../api";
 import ChartPanel from "../components/ChartPanel";
 
@@ -45,6 +47,68 @@ const DEFICIT_LABEL: Record<string, string> = {
 
 function fmt(v: number | null | undefined, digits = 2): string {
   return v == null ? "—" : v.toFixed(digits);
+}
+
+/** P2-06/§81：五类研究机会渲染（Hypothesis-generating，依据串随条展示） */
+function OpportunityList({
+  title,
+  items,
+}: {
+  title: string;
+  items: ResearchOpportunityItem[];
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <Typography.Text strong>{title}</Typography.Text>
+      <ul style={{ margin: "4px 0", paddingLeft: 20 }}>
+        {items.map((it, i) => (
+          <li key={i} style={{ marginBottom: 4 }}>
+            {it.text}
+            <br />
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              依据：{it.basis}
+            </Typography.Text>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ResearchOpportunitiesBlock({ ro }: { ro: ResearchOpportunities }) {
+  const total =
+    ro.observed_patterns.length +
+    ro.unexpected_associations.length +
+    ro.potential_subgroup_differences.length +
+    ro.potential_prediction_tasks.length +
+    ro.potential_hypotheses.length;
+  return (
+    <Collapse
+      style={{ marginBottom: 16 }}
+      items={[
+        {
+          key: "ro",
+          label: `研究机会与假设生成（${total} 条）——Hypothesis-generating`,
+          children: (
+            <>
+              <Alert type="info" message={ro.notice} style={{ marginBottom: 12 }} />
+              <OpportunityList title="观察到的模式" items={ro.observed_patterns} />
+              <OpportunityList title="意外关联（需核实同源测量/泄漏）" items={ro.unexpected_associations} />
+              <OpportunityList title="潜在亚组差异" items={ro.potential_subgroup_differences} />
+              <OpportunityList title="潜在预测任务" items={ro.potential_prediction_tasks} />
+              <OpportunityList title="潜在可检验假设" items={ro.potential_hypotheses} />
+              {total === 0 && (
+                <Typography.Text type="secondary">
+                  当前数据未触发任何研究机会规则。
+                </Typography.Text>
+              )}
+            </>
+          ),
+        },
+      ]}
+    />
+  );
 }
 
 /** 单列分布小图：连续→直方图，分类→Top 计数条形图 */
@@ -142,6 +206,7 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
   const { eda, task_recommendation: rec, research_profile: rp, auto_fix_log: fixLog, summary } =
     insight.payload;
   const supplement = insight.payload.supplement_plan;
+  const opportunities = insight.payload.research_opportunities;
   const ss = eda.sample_size;
   const topMissing = eda.missing.columns.filter((c) => c.missing > 0).slice(0, 10);
   const contPairs = eda.correlations.continuous.top_pairs;
@@ -203,6 +268,9 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
           style={{ marginBottom: 16 }}
         />
       )}
+
+      {/* P2-06/§81 研究机会与假设生成（规则引擎真实计算，Hypothesis-generating） */}
+      {opportunities && <ResearchOpportunitiesBlock ro={opportunities} />}
 
       {/* 核心统计 */}
       <Row gutter={16} style={{ marginBottom: 16 }}>

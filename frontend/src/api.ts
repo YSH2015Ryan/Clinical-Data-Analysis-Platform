@@ -398,6 +398,23 @@ export interface SupplementPlan {
   overall: string;
 }
 
+/** P2-06/§81 研究机会与假设生成（Hypothesis-generating，全部条目附真实数值依据） */
+export interface ResearchOpportunityItem {
+  text: string;
+  basis: string;
+}
+
+export interface ResearchOpportunities {
+  hypothesis_generating: boolean;
+  notice: string;
+  observed_patterns: ResearchOpportunityItem[];
+  unexpected_associations: ResearchOpportunityItem[];
+  potential_subgroup_differences: (ResearchOpportunityItem & { variable?: string })[];
+  potential_prediction_tasks: ResearchOpportunityItem[];
+  potential_hypotheses: ResearchOpportunityItem[];
+  llm_summary: string | null;
+}
+
 export interface DatasetInsightPayload {
   eda: EdaResult;
   task_recommendation: {
@@ -419,6 +436,8 @@ export interface DatasetInsightPayload {
   summary: string[];
   /** T6.14 数据缺口建议（docs/14 §5 变更记录 2026-09-09）；旧体检记录可能缺失 */
   supplement_plan?: SupplementPlan;
+  /** P2-06/§81 研究机会与假设生成；旧体检记录可能缺失 */
+  research_opportunities?: ResearchOpportunities;
 }
 
 export interface DatasetInsight {

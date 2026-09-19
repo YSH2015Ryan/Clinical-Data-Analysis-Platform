@@ -26,6 +26,7 @@ from sqlalchemy import delete, func, select
 from app.core.logging import get_logger
 from app.engines import parser, quickfix, validation
 from app.engines.eda import compute_eda
+from app.engines.hypotheses import generate_research_opportunities
 from app.engines.intelligent_task_advisor import IntelligentTaskAdvisor
 from app.engines.research_profiler import detect_research_direction
 from app.engines.supplement_advisor import advise_supplements
@@ -234,13 +235,16 @@ def auto_dataset_insight(dataset_id: str) -> None:
                 warnings=report.warnings,
             )
 
-        # 2-4. EDA + 任务推荐（规则）+ 研究画像 + 数据缺口建议(T6.14,确定性规则)
+        # 2-4. EDA + 任务推荐（规则）+ 研究画像 + 数据缺口建议(T6.14) + 研究机会(P2-06/§81,均确定性规则)
         eda = compute_eda(df, report.column_profiles)
         recommendation = IntelligentTaskAdvisor().analyze_dataset(
             df, report.column_profiles, switch="off"
         )
         research = detect_research_direction(df)
         supplement_plan = advise_supplements(df, eda, report.column_profiles, research)
+        research_opportunities = generate_research_opportunities(
+            df, eda, report.column_profiles, research, supplement_plan
+        )
 
         # 5. 落库（替换旧 insight，幂等）
         summary = _summary_lines(eda, recommendation, research, auto_fix_log, report)
@@ -253,6 +257,7 @@ def auto_dataset_insight(dataset_id: str) -> None:
             "auto_fix_log": auto_fix_log,
             "summary": summary,
             "supplement_plan": supplement_plan,
+            "research_opportunities": research_opportunities,
         }
         db.execute(delete(DatasetInsight).where(DatasetInsight.dataset_id == dataset.id))
         db.add(
