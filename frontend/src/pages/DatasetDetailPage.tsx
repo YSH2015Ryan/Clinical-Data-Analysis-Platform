@@ -650,6 +650,13 @@ export default function DatasetDetailPage() {
         <Descriptions.Item label="编码">{dataset.encoding ?? "—"}</Descriptions.Item>
         <Descriptions.Item label="总行数">
           {dataset.preview?.total_rows ?? "—"}
+          {/* §74 Large Dataset Mode：>100k 行进入优化模式（分析时自动分层采样） */}
+          {(dataset.preview?.total_rows ?? 0) > 100000 && (
+            <Tag color="blue" style={{ marginLeft: 8 }}>
+              Large Dataset Mode：{dataset.preview?.total_rows?.toLocaleString()} rows
+              detected，分析将采用 optimized mode（分层采样至 100,000 行）
+            </Tag>
+          )}
         </Descriptions.Item>
       </Descriptions>
 

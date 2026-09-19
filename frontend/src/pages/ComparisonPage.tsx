@@ -412,6 +412,17 @@ export default function ComparisonPage() {
         />
       )}
 
+      {/* §73-74：大数据集优化模式（结果页同步提示，采样口径影响指标解读） */}
+      {run?.integrity?.sampling?.sampled && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Large Dataset Mode（优化模式）"
+          description={`本次分析基于分层采样数据（${run.integrity.sampling.original_rows.toLocaleString()} → ${run.integrity.sampling.sampled_rows.toLocaleString()} 行，seed=42）；下列指标为采样口径，论文中应如实声明。`}
+        />
+      )}
+
       {cmp ? (
         <Tabs
           items={[

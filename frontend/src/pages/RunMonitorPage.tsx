@@ -213,6 +213,17 @@ export default function RunMonitorPage() {
         />
       )}
 
+      {/* §73-74：大数据集优化模式（分层采样真实记录） */}
+      {run?.integrity?.sampling?.sampled && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Large Dataset Mode（优化模式）"
+          description={`检测到 ${run.integrity.sampling.original_rows.toLocaleString()} 行，超过 100,000 行阈值；本次分析按结局分层采样至 ${run.integrity.sampling.sampled_rows.toLocaleString()} 行（seed=42，确定性可复现）。性能指标基于采样数据，全量数据的指标可能略有差异。`}
+        />
+      )}
+
       <Card>
         {progress ? <RunProgressBoard progress={progress} /> : "加载中…"}
         {failedModels.length > 0 && (

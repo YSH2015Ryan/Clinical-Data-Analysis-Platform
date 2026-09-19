@@ -870,6 +870,12 @@ export interface AnalysisRun {
     }>;
     has_blocking_issue?: boolean;
     has_gate_issue?: boolean;
+    /** §73-74 大数据集优化模式：行数 >100k 时按结局分层采样（seed=42）的真实记录 */
+    sampling?: {
+      sampled: boolean;
+      original_rows: number;
+      sampled_rows: number;
+    };
   } | null;
   /** §72：用户确认在 critical 级方法学问题下继续 → 探索性模式（报告强制 RED） */
   exploratory_mode?: boolean;
