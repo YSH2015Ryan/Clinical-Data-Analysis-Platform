@@ -324,6 +324,33 @@ function scatterOption(data: Record<string, unknown>): EChartsOption {
   };
 }
 
+/** P1-14（updateplan §44）：残差图（residual vs fitted）+ y=0 参考线。 */
+function residualOption(data: Record<string, unknown>): EChartsOption {
+  const series = seriesOf(data);
+  const lines: SeriesOption[] = series.map(
+    (s) =>
+      ({
+        name: s.model_key,
+        type: "scatter",
+        data: numArr(s.fitted).map((f, i) => [f, numArr(s.residuals)[i]]),
+      }) as SeriesOption,
+  );
+  const fittedAll = series.flatMap((s) => numArr(s.fitted));
+  const lo = fittedAll.length ? Math.min(...fittedAll) : 0;
+  const hi = fittedAll.length ? Math.max(...fittedAll) : 1;
+  lines.push(
+    lineSeries("零参考线", [lo, hi], [0, 0], { lineStyle: { type: "dashed" } }),
+  );
+  return {
+    tooltip: { trigger: "item" },
+    legend: {},
+    toolbox: TOOLBOX,
+    xAxis: { type: "value", name: "拟合值" },
+    yAxis: { type: "value", name: "残差" },
+    series: lines,
+  };
+}
+
 /** ChartAsset → 面板列表（多数 kind 单面板；混淆矩阵/HR 森林按模型拆分）。 */
 export function buildPanels(chart: ChartAsset): Panel[] {
   const d = chart.data;
@@ -348,6 +375,8 @@ export function buildPanels(chart: ChartAsset): Panel[] {
       return [{ title: chart.title, option: featureImportanceOption(d), height: 420 }];
     case "prediction_scatter":
       return [{ title: chart.title, option: scatterOption(d) }];
+    case "residual_plot":
+      return [{ title: chart.title, option: residualOption(d) }];
     default:
       return [];
   }

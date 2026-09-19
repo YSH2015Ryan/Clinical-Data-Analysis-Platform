@@ -234,7 +234,12 @@ class TestRegressionCharts:
             }
         ]
         charts = build_comparison_charts("regression", rows)
-        assert {c["kind"] for c in charts} == {"prediction_scatter", "feature_importance"}
+        # P1-14（§44）：回归图表 = 散点 + 残差图 + 特征重要性
+        assert {c["kind"] for c in charts} == {
+            "prediction_scatter",
+            "residual_plot",
+            "feature_importance",
+        }
         scatter = next(c for c in charts if c["kind"] == "prediction_scatter")
         assert scatter["data"]["series"][0]["rmse"] == 2.5
 

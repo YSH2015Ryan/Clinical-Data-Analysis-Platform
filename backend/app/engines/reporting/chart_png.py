@@ -34,6 +34,7 @@ _KIND_TITLES = {
     "hr_forest": "Hazard Ratio Forest Plot",
     "feature_importance": "Feature Importance (normalized)",
     "prediction_scatter": "Predicted vs Observed",
+    "residual_plot": "Residual vs Fitted",
 }
 
 
@@ -235,6 +236,22 @@ def _scatter(data: dict[str, Any]) -> bytes | None:
     return _fig_to_png(fig)
 
 
+def _residual(data: dict[str, Any]) -> bytes | None:
+    """P1-14（§44）：残差图（residual vs fitted）+ y=0 参考线。"""
+    series = _series(data)
+    if not series:
+        return None
+    fig, ax = plt.subplots(figsize=(5.5, 4.5))
+    for s in series:
+        ax.scatter(s["fitted"], s["residuals"], s=12, alpha=0.7, label=str(s["model_key"]))
+    ax.axhline(0.0, linestyle="--", color="gray")
+    ax.set_xlabel("Fitted")
+    ax.set_ylabel("Residual")
+    ax.set_title(_KIND_TITLES["residual_plot"])
+    ax.legend(fontsize=8)
+    return _fig_to_png(fig)
+
+
 def chart_to_png(chart: dict[str, Any]) -> bytes | None:
     """ChartAsset → PNG 字节；未知 kind 或无数据 → None（模板降级为占位文本）。"""
     kind = chart.get("kind")
@@ -254,6 +271,8 @@ def chart_to_png(chart: dict[str, Any]) -> bytes | None:
             return _feature_importance(data)
         if kind == "prediction_scatter":
             return _scatter(data)
+        if kind == "residual_plot":
+            return _residual(data)
     except Exception:
         return None  # 单图失败不阻断报告（docs/10 §5 缺数据显示不适用）
     return None

@@ -312,6 +312,35 @@ def _scatter_chart(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     }
 
 
+_RESIDUAL = "residual_plot"
+
+
+def _residual_chart(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """P1-14（updateplan §44）：残差图（residual vs fitted），由 prediction_scatter 派生。
+
+    fitted = y_pred，residual = y_true - y_pred；与散点图共用抽稀。
+    """
+    series = []
+    for row in rows:
+        scatter = row["artifacts"].get("prediction_scatter")
+        if not scatter:
+            continue
+        y_true, ys = _thin(list(scatter["y_true"]), [list(scatter["y_pred"])])
+        fitted = ys[0]
+        residuals = [float(t) - float(p) for t, p in zip(y_true, fitted, strict=True)]
+        series.append(
+            {"model_key": row["model_key"], "fitted": fitted, "residuals": residuals}
+        )
+    if not series:
+        return None
+    return {
+        "kind": _RESIDUAL,
+        "title": "残差图（Residual vs Fitted）",
+        "data": {"series": series},
+        "image_uri": None,
+    }
+
+
 def build_comparison_charts(
     task_type: str,
     rows: list[dict[str, Any]],
@@ -340,6 +369,6 @@ def build_comparison_charts(
             _hr_forest_chart(rows),
             _feature_importance_chart(rows),
         ]
-    else:  # regression
-        charts = [_scatter_chart(rows), _feature_importance_chart(rows)]
+    else:  # regression（P1-14 §44：散点 + 残差图）
+        charts = [_scatter_chart(rows), _residual_chart(rows), _feature_importance_chart(rows)]
     return [c for c in charts if c is not None]

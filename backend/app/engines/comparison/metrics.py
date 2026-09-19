@@ -19,6 +19,7 @@ from sklearn.metrics import (
     f1_score,
     matthews_corrcoef,
     mean_absolute_error,
+    mean_absolute_percentage_error,
     mean_squared_error,
     precision_score,
     r2_score,
@@ -92,16 +93,43 @@ def classification_metrics(y_true: Any, y_prob: Any) -> dict[str, float]:
     }
 
 
-def regression_metrics(y_true: Any, y_pred: Any) -> dict[str, float]:
-    """回归指标：RMSE（主）、MAE、R²。"""
+def regression_metrics(
+    y_true: Any, y_pred: Any, n_features: int | None = None
+) -> dict[str, float]:
+    """回归指标：RMSE（主）、MAE、R²。
+
+    P1-14（updateplan §44）连续结局评价补齐：
+    - adjusted_r2：须传 n_features（预测变量数）；n<=p+1 或未传时 NaN（不虚构）；
+    - mape：y_true 含 0 时 NaN（§44「适用时」）；
+    - mean_bias：回归版 calibration-in-the-large（mean(y_pred-y_true)，系统性偏倚）；
+    - calibration_slope：observed ~ predicted OLS 斜率；预测无变异时 NaN。
+    """
     y_t = _as_float_array(y_true, "y_true")
     y_p = _as_float_array(y_pred, "y_pred")
     if y_t.shape[0] != y_p.shape[0]:
         raise ValueError(f"y_true 与 y_pred 长度不一致：{y_t.shape[0]} vs {y_p.shape[0]}")
+    n = y_t.shape[0]
+    r2 = float(r2_score(y_t, y_p))
+    adjusted_r2 = float("nan")
+    if n_features is not None and n - n_features - 1 > 0:
+        adjusted_r2 = float(1.0 - (1.0 - r2) * (n - 1) / (n - n_features - 1))
+    mape = (
+        float(mean_absolute_percentage_error(y_t, y_p))
+        if not (y_t == 0).any()
+        else float("nan")
+    )
+    var_p = float(np.var(y_p))
+    calibration_slope = (
+        float(np.cov(y_p, y_t, ddof=0)[0, 1] / var_p) if var_p > 0 else float("nan")
+    )
     return {
         "rmse": float(np.sqrt(mean_squared_error(y_t, y_p))),
         "mae": float(mean_absolute_error(y_t, y_p)),
-        "r2": float(r2_score(y_t, y_p)),
+        "r2": r2,
+        "adjusted_r2": adjusted_r2,
+        "mape": mape,
+        "mean_bias": float(np.mean(y_p - y_t)),
+        "calibration_slope": calibration_slope,
     }
 
 
