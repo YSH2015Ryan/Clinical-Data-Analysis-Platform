@@ -5,9 +5,7 @@ generate_report(report_id)：DB 装配 payload → build_report_context →
 reports/{id}/report.{format} → Report READY；异常 → FAILED（不抛出，幂等重入）。
 """
 
-import importlib.metadata
 import io
-import platform
 import uuid
 from typing import Any
 
@@ -15,6 +13,7 @@ import pandas as pd
 from sqlalchemy import select
 
 from app.core.logging import get_logger
+from app.core.versions import software_versions
 from app.engines.comparison.statistics import (
     add_pvalues_to_performance_table,
     add_statistical_significance_note,
@@ -57,18 +56,6 @@ from app.workers.db import get_sync_session_factory
 
 logger = get_logger(__name__)
 
-_SOFTWARE_PACKAGES = [
-    "scikit-learn",
-    "lifelines",
-    "scikit-survival",
-    "numpy",
-    "pandas",
-    "matplotlib",
-    "jinja2",
-    "weasyprint",
-    "python-docx",
-]
-
 # 报告产物 Content-Type（docs/10 §4）：预览 iframe 依赖浏览器按 MIME 渲染
 _CONTENT_TYPES = {
     "html": "text/html; charset=utf-8",
@@ -79,13 +66,8 @@ _CONTENT_TYPES = {
 
 
 def _software_versions() -> dict[str, str]:
-    versions = {"python": platform.python_version()}
-    for pkg in _SOFTWARE_PACKAGES:
-        try:
-            versions[pkg] = importlib.metadata.version(pkg)
-        except importlib.metadata.PackageNotFoundError:
-            continue
-    return versions
+    """委托 core.versions（§77/§78 单一事实源）；保留私有名以兼容既有调用点。"""
+    return software_versions()
 
 
 def _read_parquet(storage: Any, key: str) -> pd.DataFrame | None:

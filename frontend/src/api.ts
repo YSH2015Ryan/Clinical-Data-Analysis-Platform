@@ -1001,6 +1001,25 @@ export async function getComparison(runId: string): Promise<ComparisonResult> {
   return apiFetch<ComparisonResult>(`/analysis-runs/${runId}/comparison`);
 }
 
+/** §78 Analysis Manifest（P3-05）：下载可复现 JSON 工件。 */
+export async function downloadRunManifest(runId: string): Promise<void> {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const resp = await fetch(`${BASE}/analysis-runs/${runId}/manifest`, {
+    headers,
+    credentials: "include",
+  });
+  if (!resp.ok) throw await parseError(resp);
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `manifest-${runId.slice(0, 8)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ---- 报告（docs/14 /reports；docs/10 §4 预览与下载） ----
 
 export type ReportFormat = "pdf" | "html" | "markdown" | "docx";

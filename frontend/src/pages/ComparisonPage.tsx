@@ -22,6 +22,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
+  downloadRunManifest,
   getComparison,
   getRun,
   iterateRun,
@@ -371,6 +372,17 @@ export default function ComparisonPage() {
           结果比较 {run && <RunStatusTag status={run.status} />}
         </Typography.Title>
         <Space>
+          <Button
+            disabled={!id}
+            onClick={() =>
+              id &&
+              void downloadRunManifest(id).catch((e) =>
+                message.error((e as ApiError).message || "Manifest 下载失败"),
+              )
+            }
+          >
+            下载 Manifest
+          </Button>
           <Button
             type="primary"
             disabled={run?.status !== "COMPLETED"}

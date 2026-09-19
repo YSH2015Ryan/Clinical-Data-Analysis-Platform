@@ -17,6 +17,7 @@ from app.api.v1 import settings as settings_api
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
+from app.core.versions import APP_VERSION
 from app.db import dispose_engine, get_engine, get_session_factory
 from app.engines.model_registry import ModelRegistry
 from app.middleware import UploadAuthenticationMiddleware
@@ -59,7 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="CDAP API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="CDAP API", version=APP_VERSION, lifespan=lifespan)
     register_exception_handlers(app)
     app.add_middleware(UploadAuthenticationMiddleware)
 

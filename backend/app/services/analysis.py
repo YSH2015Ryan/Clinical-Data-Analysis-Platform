@@ -13,7 +13,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, forbidden, not_found
+from app.core.versions import software_versions
 from app.engines import parser
+from app.engines.manifest import build_manifest
 from app.engines.model_registry import ModelRegistry
 from app.engines.preprocessing import PreprocessConfig, validate_dsl
 from app.engines.task_detection import detect_task_from_profile
@@ -24,6 +26,7 @@ from app.models.entities import (
     DatasetVersion,
     ModelPlugin,
     ModelResult,
+    PreprocessSnapshot,
     Project,
 )
 from app.schemas.analysis import AnalysisRunCreate
@@ -338,6 +341,52 @@ async def get_comparison(db: AsyncSession, user: CurrentUser, run_id: uuid.UUID)
         "recommendation": dict(comparison.recommendation) if comparison else {},
         "charts": list(comparison.comparison_charts) if comparison else [],
     }
+
+
+async def get_manifest(db: AsyncSession, user: CurrentUser, run_id: uuid.UUID) -> dict[str, Any]:
+    """§78 Analysis Manifest（P3-05）：按 run 实时装配，字段全部来自 DB 真实记录。"""
+    run = await get_run(db, user, run_id)
+    version = await db.get(DatasetVersion, run.dataset_version_id)
+    dataset = await db.get(Dataset, version.dataset_id) if version is not None else None
+    snapshot = (
+        await db.execute(select(PreprocessSnapshot).where(PreprocessSnapshot.run_id == run.id))
+    ).scalar_one_or_none()
+    results = (
+        (await db.execute(select(ModelResult).where(ModelResult.run_id == run.id))).scalars().all()
+    )
+    comparison = (
+        await db.execute(select(Comparison).where(Comparison.run_id == run.id))
+    ).scalar_one_or_none()
+    return build_manifest(
+        run={
+            "id": str(run.id),
+            "task_type": run.task_type,
+            "status": run.status,
+            "exploratory_mode": run.exploratory_mode,
+            "created_at": str(run.created_at),
+            "finished_at": str(run.finished_at) if run.finished_at else None,
+            "preprocess_config": run.preprocess_config or {},
+            "model_params": run.model_params or {},
+        },
+        dataset={
+            "name": dataset.name if dataset else None,
+            "id": str(dataset.id) if dataset else None,
+            "version_no": version.version_no if version else None,
+        },
+        input_hash=snapshot.input_hash if snapshot else None,
+        preprocess_steps=list(snapshot.steps) if snapshot else None,
+        transform_log=list(version.transform_log) if version else [],
+        results=[
+            {"model_key": r.model_key, "status": r.status, "duration_ms": r.duration_ms}
+            for r in results
+        ],
+        comparison=(
+            {"ranking": comparison.ranking, "recommendation": comparison.recommendation}
+            if comparison
+            else None
+        ),
+        software=software_versions(),
+    )
 
 
 async def run_progress(db: AsyncSession, user: CurrentUser, run_id: uuid.UUID) -> dict[str, Any]:
