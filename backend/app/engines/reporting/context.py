@@ -313,9 +313,11 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
             "limitations",
             True,
             {
+                # integrity_blocked 形态的红旗无 limitation 键（警示经 conclusion.red_flag 呈现），
+                # 直接索引会 KeyError 致报告 FAILED——仅完美指标形态才置顶局限性条目
                 "items": (
                     [red_flag["limitation"], *build_limitations(payload)]
-                    if red_flag
+                    if red_flag and red_flag.get("limitation")
                     else build_limitations(payload)
                 ),
                 "review": review_methodology(payload),

@@ -15,7 +15,8 @@ def _csv_bytes() -> bytes:
     rng = np.random.default_rng(42)
     n = 120
     age = rng.normal(60, 10, n)
-    logit = -6 + 0.1 * age
+    # 信号须足够强以通过 P1-13（§30）BH 校正后的入选判定（p_adjusted < alpha）
+    logit = -12 + 0.2 * age
     y = (rng.uniform(0, 1, n) < 1 / (1 + np.exp(-logit))).astype(int)
     treated = rng.integers(0, 2, n)
     sex = rng.integers(0, 2, n)

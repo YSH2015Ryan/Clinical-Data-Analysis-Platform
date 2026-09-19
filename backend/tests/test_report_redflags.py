@@ -126,6 +126,30 @@ class TestRedFlagInContext:
         limitations = next(s for s in ctx["sections"] if s["key"] == "limitations")
         assert not any("过拟合/数据泄漏" in item for item in limitations["data"]["items"])
 
+    def test_integrity_blocked_redflag_no_crash(self) -> None:
+        """§72 门禁拦截的探索性模式报告：integrity_blocked 形态红旗无 limitation 键，
+        构建上下文不得 KeyError（此前报告因此 FAILED），警示经结论章呈现。"""
+        payload = _payload()
+        payload["integrity"] = {
+            "findings": [
+                {
+                    "code": "TARGET_PROXY",
+                    "severity": "blocker",
+                    "message": "检测到与目标完全相同或近乎完全相关的候选预测变量",
+                    "columns": ["label_copy"],
+                    "evidence": {},
+                    "recommended_action": "",
+                }
+            ],
+            "has_blocking_issue": True,
+            "has_gate_issue": True,
+        }
+        ctx = build_report_context(payload)
+        limitations = next(s for s in ctx["sections"] if s["key"] == "limitations")
+        assert limitations["data"]["items"]  # 静态局限性条目仍在
+        conclusion = next(s for s in ctx["sections"] if s["key"] == "conclusion")
+        assert "完整性门禁" in (conclusion["data"].get("red_flag") or "")
+
 
 class TestRedFlagRendered:
     def test_warning_rendered_prominently(self) -> None:
