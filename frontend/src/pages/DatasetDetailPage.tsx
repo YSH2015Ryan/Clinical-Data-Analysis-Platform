@@ -744,7 +744,7 @@ export default function DatasetDetailPage() {
             )}
           </Card>
 
-          <Card title="列画像" style={{ marginBottom: 16 }}>
+          <Card title="变量字典（列画像）" style={{ marginBottom: 16 }}>
             <Table<ColumnProfile>
               rowKey="name"
               size="small"
@@ -777,6 +777,32 @@ export default function DatasetDetailPage() {
                   ),
                 },
                 {
+                  title: "单位",
+                  dataIndex: "unit",
+                  render: (v?: string | null) => v ?? "—",
+                },
+                {
+                  title: "临床角色",
+                  dataIndex: "clinical_role",
+                  render: (v?: string) =>
+                    v ? (
+                      <Tag color={v === "outcome" ? "volcano" : undefined}>
+                        {(
+                          {
+                            outcome: "结局",
+                            time: "时间/随访",
+                            baseline: "基线",
+                            covariate: "协变量",
+                            identifier: "标识",
+                          } as Record<string, string>
+                        )[v] ?? v}
+                      </Tag>
+                    ) : (
+                      "—"
+                    ),
+                },
+                { title: "时点", dataIndex: "timepoint", render: (v?: string) => v ?? "—" },
+                {
                   title: "缺失率",
                   dataIndex: "missing_rate",
                   render: (v: number) => `${(v * 100).toFixed(1)}%`,
@@ -786,6 +812,53 @@ export default function DatasetDetailPage() {
                 {
                   title: "范围",
                   render: (_, r) => (r.min != null ? `${r.min} ~ ${r.max}` : "—"),
+                },
+                {
+                  title: "参考范围（来源）",
+                  render: (_, r) =>
+                    r.reference_range ? (
+                      <Space size={4}>
+                        {`${r.reference_range.low} ~ ${r.reference_range.high}${
+                          r.reference_range.unit ? ` ${r.reference_range.unit}` : ""
+                        }`}
+                        <Tag
+                          color={
+                            (
+                              {
+                                domain_knowledge: "blue",
+                                dataset_inferred: "default",
+                                user_defined: "green",
+                              } as Record<string, string>
+                            )[r.reference_range.source]
+                          }
+                        >
+                          {(
+                            {
+                              domain_knowledge: "领域知识",
+                              dataset_inferred: "数据推断",
+                              user_defined: "用户定义",
+                            } as Record<string, string>
+                          )[r.reference_range.source] ?? r.reference_range.source}
+                        </Tag>
+                      </Space>
+                    ) : (
+                      "—"
+                    ),
+                },
+                {
+                  title: "警告",
+                  render: (_, r) =>
+                    r.warnings && r.warnings.length > 0 ? (
+                      <Space size={4} wrap>
+                        {r.warnings.map((w) => (
+                          <Tag key={w} color="orange">
+                            {w}
+                          </Tag>
+                        ))}
+                      </Space>
+                    ) : (
+                      "无"
+                    ),
                 },
               ]}
             />

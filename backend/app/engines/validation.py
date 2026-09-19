@@ -170,6 +170,59 @@ def _match_clinical_range(name: str) -> tuple[float, float, str] | None:
     return None
 
 
+# ---------- P1-01 变量字典字段（updateplan §11） ----------
+# 参考范围只允许确定性来源：domain_knowledge（内置词典）/ dataset_inferred
+# （观测范围，非医学参考）/ user_defined（用户定义）；禁止 LLM 凭空生成。
+
+_CLINICAL_ROLE_BY_SEMANTIC = {
+    "Event": "outcome",
+    "Label": "outcome",
+    "FollowUp": "time",
+    "Age": "baseline",
+    "Gender": "baseline",
+    "Diagnosis": "baseline",
+}
+
+
+def _clinical_role(semantic: str | None, dtype: str) -> str:
+    """语义/类型 → 临床角色（identifier/outcome/time/baseline/covariate）。"""
+    if dtype == "id":
+        return "identifier"
+    return _CLINICAL_ROLE_BY_SEMANTIC.get(semantic or "", "covariate")
+
+
+def _timepoint(semantic: str | None) -> str:
+    """语义 → 采集时点启发式：结局=T1，随访=T1+，其余=T0（基线）。"""
+    if semantic in ("Event", "Label"):
+        return "T1"
+    if semantic == "FollowUp":
+        return "T1+"
+    return "T0"
+
+
+def _reference_range(
+    name: str, semantic: str | None, dtype: str, s_num: pd.Series
+) -> dict[str, Any] | None:
+    """连续列参考范围：内置临床词典/年龄 → domain_knowledge；否则观测范围 → dataset_inferred。"""
+    if dtype != "continuous":
+        return None
+    rng = _match_clinical_range(name)
+    if rng is None and semantic == "Age":
+        rng = (*_AGE_RANGE, "岁")
+    if rng is not None:
+        low, high, unit = rng
+        return {"low": low, "high": high, "unit": unit, "source": "domain_knowledge"}
+    non_null = s_num.dropna()
+    if not len(non_null):
+        return None
+    return {
+        "low": _native(non_null.min()),
+        "high": _native(non_null.max()),
+        "unit": None,
+        "source": "dataset_inferred",
+    }
+
+
 def _native(v: Any) -> Any:
     return v.item() if hasattr(v, "item") else v
 
@@ -398,7 +451,15 @@ def validate(
             "missing_rate": round(missing / n_rows, 4) if n_rows else 0.0,
             "unique": int(s.nunique()),
             "outliers": outlier_count,
+            # P1-01 变量字典（updateplan §11）
+            "clinical_role": _clinical_role(sem.semantic, dtype),
+            "timepoint": _timepoint(sem.semantic),
+            "reference_range": _reference_range(name, sem.semantic, dtype, s_num),
+            "warnings": [],  # 规则执行完毕后回填（见函数末尾）
         }
+        # 单位仅来自确定性来源（内置临床词典）；无命中留空待用户定义（§11 禁 LLM 生成）
+        rr = profile["reference_range"]
+        profile["unit"] = rr["unit"] if rr and rr["source"] == "domain_knowledge" else None
         if dtype == "continuous":
             non_null = s_num.dropna()
             if len(non_null):
@@ -718,6 +779,9 @@ def validate(
             "unit_examples": unit_examples,
         },
     )
+    # P1-01（§11）：规则执行完毕后回填每列 warnings（命中的 rule_id 列表）
+    for p in profiles:
+        p["warnings"] = [i.rule_id for i in issues if i.column == p["name"]]
     return ValidationReport(
         status=status,
         blockers=blockers,

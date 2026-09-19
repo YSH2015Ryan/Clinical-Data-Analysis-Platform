@@ -142,6 +142,14 @@ export interface DatasetPage {
   next_cursor: string | null;
 }
 
+/** P1-01（updateplan §11）：参考范围来源枚举闭合——禁止 LLM 生成医学参考范围 */
+export interface ReferenceRange {
+  low: number;
+  high: number;
+  unit: string | null;
+  source: "domain_knowledge" | "dataset_inferred" | "user_defined";
+}
+
 export interface ColumnProfile {
   name: string;
   inferred_type: string;
@@ -152,6 +160,15 @@ export interface ColumnProfile {
   outliers?: number;
   min?: number;
   max?: number;
+  /** P1-01 变量字典：单位（仅确定性来源；无命中为 null 待用户定义） */
+  unit?: string | null;
+  /** P1-01：临床角色 identifier/outcome/time/baseline/covariate */
+  clinical_role?: string;
+  /** P1-01：采集时点启发式 T0（基线）/ T1（结局）/ T1+（随访） */
+  timepoint?: string;
+  reference_range?: ReferenceRange | null;
+  /** P1-01：该列命中的校验规则 rule_id 列表 */
+  warnings?: string[];
 }
 
 export interface Issue {
