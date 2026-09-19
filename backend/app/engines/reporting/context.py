@@ -19,6 +19,7 @@ from app.engines.reporting.narratives import (
     build_performance_guides,
 )
 from app.engines.reporting.redflags import detect_perfect_metric_redflag
+from app.engines.reporting.statistical_reviewer import review_methodology
 
 DISCLAIMER = "本报告由 CDAP 自动生成，仅供科研参考，不构成临床诊断建议。"
 NOT_APPLICABLE = "本次分析不适用"
@@ -304,6 +305,7 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
         ),
         # P3：动态局限性（payload 真实统计触发）+ 静态基础条目
         # T6.15②：完美指标红旗触发时置顶局限性条目
+        # P2-02（§51）：统计审查三段式（Major/Minor/Questions）附于局限性章末
         _section(
             "limitations",
             True,
@@ -312,7 +314,8 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
                     [red_flag["limitation"], *build_limitations(payload)]
                     if red_flag
                     else build_limitations(payload)
-                )
+                ),
+                "review": review_methodology(payload),
             },
         ),
         # T6.11：TRIPOD/STROBE 自查（条目状态与依据全部由 payload 真实字段推导）

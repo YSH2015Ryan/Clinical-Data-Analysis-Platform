@@ -186,7 +186,7 @@
   <tr><td>{{ r.feature }}</td><td>{{ r.test }}</td>
       <td>{{ r.effect | fmt_num('.4g') }}</td>
       <td>{{ r.p_value | fmt_num }}</td>
-      <td>{{ (r.p_adjusted if r.p_adjusted is not none else r.p_value) | fmt_num }}</td>
+      <td>{{ (r.get('p_adjusted') if r.get('p_adjusted') is not none else r.p_value) | fmt_num }}</td>
       <td>{{ "是" if r.selected else "否" }}</td></tr>
   {% endfor %}
 {% endcall %}
@@ -387,6 +387,22 @@
 
 {% elif s.key == "limitations" %}
 <ul>{% for item in s.data["items"] %}<li>{{ item }}</li>{% endfor %}</ul>
+{% if s.data.review %}
+<h3>统计审查（Statistical Review，§51）</h3>
+<p class="meta">以下为系统按确定性规则对本次分析方法学的自动审查意见（数值全部来自真实计算），供投稿前自查；审查不能替代专业统计咨询。</p>
+{% if s.data.review.major_concerns %}
+<p><strong>Major Concerns（须在投稿前解决）</strong></p>
+<ul>{% for c in s.data.review.major_concerns %}<li><strong>[{{ c.id }}]</strong> {{ c.text }}<br/><span class="meta">依据：{{ c.basis }}</span></li>{% endfor %}</ul>
+{% endif %}
+{% if s.data.review.minor_concerns %}
+<p><strong>Minor Concerns（建议声明的局限）</strong></p>
+<ul>{% for c in s.data.review.minor_concerns %}<li><strong>[{{ c.id }}]</strong> {{ c.text }}<br/><span class="meta">依据：{{ c.basis }}</span></li>{% endfor %}</ul>
+{% endif %}
+{% if s.data.review.questions %}
+<p><strong>Questions for Researchers（需研究者回答）</strong></p>
+<ul>{% for q in s.data.review.questions %}<li><strong>[{{ q.id }}]</strong> {{ q.text }}</li>{% endfor %}</ul>
+{% endif %}
+{% endif %}
 
 {% elif s.key == "checklist" %}
 <p class="meta">{{ s.data.standard }} —— 满足 {{ s.data.met }}/{{ s.data.total }} 项</p>
