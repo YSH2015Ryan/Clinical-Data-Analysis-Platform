@@ -33,8 +33,8 @@ def make_binary_ground_truth(
     rng = np.random.default_rng(seed)
     age = rng.normal(60.0, 10.0, n)
     treatment = rng.binomial(1, 0.5, n)
-    logit = BINARY_INTERCEPT + np.log(BINARY_TRUE_OR) * treatment + BINARY_TRUE_BETA_AGE * (
-        age - 60.0
+    logit = (
+        BINARY_INTERCEPT + np.log(BINARY_TRUE_OR) * treatment + BINARY_TRUE_BETA_AGE * (age - 60.0)
     )
     y = (rng.uniform(0.0, 1.0, n) < 1.0 / (1.0 + np.exp(-logit))).astype(int)
     df = pd.DataFrame({"age": age, "treatment": treatment, "outcome": y})

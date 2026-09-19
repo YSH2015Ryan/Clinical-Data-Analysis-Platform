@@ -1,7 +1,6 @@
 """P0 leakage engine regression tests."""
 
 import pandas as pd
-
 from app.engines.leakage import inspect_leakage
 
 

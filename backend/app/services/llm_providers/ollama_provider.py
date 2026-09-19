@@ -124,16 +124,18 @@ class OllamaProvider:
         """
         if not user:
             raise ValueError("必须提供 user 参数")
-        
-        if system:
-            prompt = f"系统指令: {system}\n\n用户问题: {user}\n\n回答:"
-        else:
-            prompt = user
-        
+
+        prompt = f"系统指令: {system}\n\n用户问题: {user}\n\n回答:" if system else user
+
         return self._call_ollama(prompt, temperature, seed, max_tokens, clean=False)
 
     def _call_ollama(
-        self, prompt: str, temperature: float = 0.3, seed: int = 42, max_tokens: int = 300, clean: bool = True
+        self,
+        prompt: str,
+        temperature: float = 0.3,
+        seed: int = 42,
+        max_tokens: int = 300,
+        clean: bool = True,
     ) -> str:
         """
         调用 Ollama API 生成文本（内部辅助方法）
@@ -183,8 +185,7 @@ class OllamaProvider:
             cleaned = self._clean_output(output) if clean else output
 
             logger.info(
-                f"Generated {len(cleaned)} chars, "
-                f"took {result.get('total_duration', 0) / 1e9:.2f}s"
+                f"Generated {len(cleaned)} chars, took {result.get('total_duration', 0) / 1e9:.2f}s"
             )
 
             return cleaned

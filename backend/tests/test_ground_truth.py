@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 from app.engines.adjustment import adjusted_association
 from app.engines.screening import _or_2x2
+
 from tests.fixtures.ground_truth import (
     make_binary_ground_truth,
     make_miscalibrated_probabilities,
@@ -160,9 +161,7 @@ class TestReferenceAgreement:
             .to_numpy()
         )
         x = sm.add_constant(
-            np.column_stack(
-                [df["treatment"].to_numpy(float), df["age"].to_numpy(float), dummies]
-            )
+            np.column_stack([df["treatment"].to_numpy(float), df["age"].to_numpy(float), dummies])
         )
         fit = sm.Logit(df["outcome"].to_numpy(dtype=float), x).fit(disp=0)
         or_ref = float(np.exp(fit.params[1]))
@@ -216,9 +215,7 @@ class TestMetricGroundTruth:
         y = rng.binomial(1, 0.3, 5000)
         p = np.clip(0.3 + 0.2 * y + rng.normal(0, 0.15, 5000), 1e-4, 1 - 1e-4)
         metrics = _classification_metrics()(y, p)
-        assert metrics["auc"] == pytest.approx(
-            float(roc_auc_score(y, p)), abs=1e-6
-        )
+        assert metrics["auc"] == pytest.approx(float(roc_auc_score(y, p)), abs=1e-6)
 
     def test_calibration_slope_recovers_truth(self) -> None:
         """预测 logit 放大 2 倍 → 校准斜率真值 0.5、截距真值 0。"""

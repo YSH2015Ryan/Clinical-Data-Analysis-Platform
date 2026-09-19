@@ -481,9 +481,7 @@ def subgroup_analysis(
         results.append({"variable": var, "levels": levels, "interaction_p": interaction_p})
 
     # P1-13：跨亚组变量的交互检验为批量检验 → 默认 BH 校正（§30）
-    adjusted = adjust_pvalues(
-        [r["interaction_p"] for r in results], method=correction
-    )
+    adjusted = adjust_pvalues([r["interaction_p"] for r in results], method=correction)
     n_tests = 0
     for res, p_adj in zip(results, adjusted, strict=True):
         res["interaction_p_adjusted"] = p_adj

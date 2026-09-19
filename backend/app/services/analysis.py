@@ -74,7 +74,8 @@ def _check_target_data(
         raise AppError(
             "UNSUPPORTED_TASK",
             400,
-            "time_series 已声明但当前分析引擎尚未提供完整指标与报告链路，请使用分类、回归或生存分析。",
+            "time_series 已声明但当前分析引擎尚未提供完整指标与报告链路，"
+            "请使用分类、回归或生存分析。",
         )
     target = cfg.target
     if task_type == "survival":
@@ -91,14 +92,21 @@ def _check_target_data(
             "VALIDATION_ERROR", 400, "数据集文件读取失败，请重新上传或联系管理员"
         ) from exc
     required_validation_cols = [
-        c for c in (cfg.validation.group_col, cfg.validation.time_col, cfg.validation.prediction_time_col) if c
+        c
+        for c in (
+            cfg.validation.group_col,
+            cfg.validation.time_col,
+            cfg.validation.prediction_time_col,
+        )
+        if c
     ]
     missing_validation = [c for c in required_validation_cols if c not in df.columns]
     if missing_validation:
-        raise AppError(
-            "VALIDATION_ERROR", 400, f"验证配置列不存在：{missing_validation}"
-        )
-    if cfg.validation.strategy in {"group_kfold", "stratified_group_kfold"} and not cfg.validation.group_col:
+        raise AppError("VALIDATION_ERROR", 400, f"验证配置列不存在：{missing_validation}")
+    if (
+        cfg.validation.strategy in {"group_kfold", "stratified_group_kfold"}
+        and not cfg.validation.group_col
+    ):
         raise AppError("VALIDATION_ERROR", 400, "分组交叉验证必须指定 group_col")
     if cfg.validation.strategy == "time_series_split" and not cfg.validation.time_col:
         raise AppError("VALIDATION_ERROR", 400, "时间交叉验证必须指定 time_col")

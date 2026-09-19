@@ -8,7 +8,6 @@ D=仅基线临床变量（确定性启发式：非可疑/非日期/非近 ID 的
 
 import numpy as np
 import pandas as pd
-import pytest
 from app.engines.leakage import inspect_leakage
 from app.engines.leakage_experiment import plan_variable_sets, run_leakage_experiment
 
@@ -36,9 +35,7 @@ class TestPlanVariableSets:
     def test_four_sets_membership(self) -> None:
         df = _leaky_df()
         inspection = inspect_leakage(df, target_col="outcome")
-        sets = plan_variable_sets(
-            df, target_col="outcome", inspection=inspection
-        )
+        sets = plan_variable_sets(df, target_col="outcome", inspection=inspection)
         a = sets["A_all"]["features"]
         assert {"age", "bmi", "admission_date", "leak_copy"} <= set(a)
         assert "outcome" not in a and "patient_id" not in a  # 结局/ID 不入特征池

@@ -37,7 +37,7 @@ class ValidationConfig:
 @dataclass
 class Issue:
     rule_id: str
-    severity: str  # blocker / critical / warning / info（updateplan §15 四级；critical=须人工复核但暂不阻断）
+    severity: str  # blocker / critical / warning / info（§15 四级；critical=须人工复核但暂不阻断）
     message: str
     column: str | None = None
     suggestion: str = ""
@@ -765,7 +765,9 @@ def validate(
     criticals = sum(1 for i in issues if i.severity == "critical")
     warnings = sum(1 for i in issues if i.severity == "warning")
     # critical 不阻断（阻断仍属 blocker），但计入警示状态（updateplan §15-16）
-    status = "FAILED" if blockers else ("PASSED_WITH_WARNINGS" if (warnings or criticals) else "PASSED")
+    status = (
+        "FAILED" if blockers else ("PASSED_WITH_WARNINGS" if (warnings or criticals) else "PASSED")
+    )
     # T6.1:统一补富文案指引与受影响行号(docs/05 §3,tasks/phase6 T6.1)
     _enrich_issues(
         issues,

@@ -60,7 +60,9 @@ class _BaseRegressor:
 
     def evaluate(self, X_val: Any, y_val: Any) -> dict[str, Any]:
         # P1-14（§44）：n_features 供 Adjusted R² 计算
-        return regression_metrics(y_val, self._predict(X_val), n_features=int(np.asarray(X_val).shape[1]))
+        return regression_metrics(
+            y_val, self._predict(X_val), n_features=int(np.asarray(X_val).shape[1])
+        )
 
     def _explain_shap_or_builtin(self, X_val: Any) -> dict[str, Any]:
         """树模型 SHAP 摘要；SHAP 计算失败回退内置重要性（docs/07 §6）。"""

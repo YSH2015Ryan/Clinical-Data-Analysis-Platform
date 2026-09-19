@@ -88,7 +88,11 @@ class TestLeakage:
     def test_blocker_finding_major(self) -> None:
         integrity = {
             "findings": [
-                {"severity": "blocker", "rule": "TARGET_PROXY", "message": "leak_copy 与结局 corr=1.0"}
+                {
+                    "severity": "blocker",
+                    "rule": "TARGET_PROXY",
+                    "message": "leak_copy 与结局 corr=1.0",
+                }
             ]
         }
         result = review_ml(_payload(integrity=integrity))
@@ -145,8 +149,10 @@ class TestCalibration:
         table = [
             {
                 "model_key": "xgboost",
-                "metrics": {"auc": {"mean": 0.85, "std": 0.02},
-                            "calibration_slope": {"mean": 0.5, "std": 0.05}},
+                "metrics": {
+                    "auc": {"mean": 0.85, "std": 0.02},
+                    "calibration_slope": {"mean": 0.5, "std": 0.05},
+                },
             },
             {"model_key": "logistic", "metrics": {"auc": {"mean": 0.8, "std": 0.03}}},
         ]
@@ -157,11 +163,17 @@ class TestCalibration:
     def test_regression_skips_calibration(self) -> None:
         result = review_ml(
             _payload(
-                run={"task_type": "regression", "selected_models": ["ridge", "lasso"],
-                     "exploratory_mode": False},
+                run={
+                    "task_type": "regression",
+                    "selected_models": ["ridge", "lasso"],
+                    "exploratory_mode": False,
+                },
                 calibration=None,
-                comparison={"ranking": ["ridge"], "recommendation": {"primary_metric": "rmse"},
-                            "charts": []},
+                comparison={
+                    "ranking": ["ridge"],
+                    "recommendation": {"primary_metric": "rmse"},
+                    "charts": [],
+                },
                 table=[{"model_key": "ridge", "metrics": {"rmse": {"mean": 3.0, "std": 0.1}}}],
             )
         )
@@ -172,16 +184,28 @@ class TestCalibration:
 class TestClassImbalance:
     def test_imbalance_minor(self) -> None:
         result = review_ml(
-            _payload(target_summary={"n_samples": 1000, "n_features": 8,
-                                     "prevalence": 0.08, "positives": 80})
+            _payload(
+                target_summary={
+                    "n_samples": 1000,
+                    "n_features": 8,
+                    "prevalence": 0.08,
+                    "positives": 80,
+                }
+            )
         )
         item = [c for c in result["minor_concerns"] if c["id"] == "MLR-IMBALANCE"]
         assert item and item[0]["dimension"] == "class_imbalance" and "8.0%" in item[0]["basis"]
 
     def test_extreme_imbalance_major(self) -> None:
         result = review_ml(
-            _payload(target_summary={"n_samples": 10000, "n_features": 5,
-                                     "prevalence": 0.02, "positives": 200})
+            _payload(
+                target_summary={
+                    "n_samples": 10000,
+                    "n_features": 5,
+                    "prevalence": 0.02,
+                    "positives": 200,
+                }
+            )
         )
         assert "MLR-IMBALANCE-EXTREME" in _ids(result["major_concerns"])
 
@@ -194,8 +218,13 @@ class TestClassImbalance:
 class TestFeatureImportance:
     def test_no_explainability_minor(self) -> None:
         result = review_ml(
-            _payload(comparison={"ranking": ["xgboost"],
-                                 "recommendation": {"primary_metric": "auc"}, "charts": []})
+            _payload(
+                comparison={
+                    "ranking": ["xgboost"],
+                    "recommendation": {"primary_metric": "auc"},
+                    "charts": [],
+                }
+            )
         )
         assert "MLR-NO-EXPLAIN" in _ids(result["minor_concerns"])
 
@@ -214,8 +243,13 @@ class TestFeatureImportance:
             }
         ]
         result = review_ml(
-            _payload(comparison={"ranking": ["xgboost"],
-                                 "recommendation": {"primary_metric": "auc"}, "charts": charts})
+            _payload(
+                comparison={
+                    "ranking": ["xgboost"],
+                    "recommendation": {"primary_metric": "auc"},
+                    "charts": charts,
+                }
+            )
         )
         item = [c for c in result["minor_concerns"] if c["id"] == "MLR-DOMINANT-FEATURE"]
         assert item and "discharge_note" in item[0]["basis"]

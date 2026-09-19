@@ -87,7 +87,16 @@ _DATE_FEATURE_TOKENS = (
 
 
 _NAME_GENERIC_TOKENS = {
-    "status", "result", "group", "final", "flag", "type", "code", "class", "level", "value",
+    "status",
+    "result",
+    "group",
+    "final",
+    "flag",
+    "type",
+    "code",
+    "class",
+    "level",
+    "value",
 }
 
 
@@ -240,7 +249,9 @@ def inspect_leakage(
                     {
                         "group_col": group_col,
                         "duplicate_rows": duplicate_groups,
-                        "duplicate_groups": int(df.loc[df[group_col].duplicated(keep=False), group_col].nunique()),
+                        "duplicate_groups": int(
+                            df.loc[df[group_col].duplicated(keep=False), group_col].nunique()
+                        ),
                     },
                     "使用 group-aware validation，并确认重复记录代表独立时间点还是重复录入。",
                 )
@@ -294,7 +305,10 @@ def inspect_leakage(
     # did not explicitly configure group_col; it never silently becomes a group key.
     for col in df.columns:
         norm = _normalized(str(col))
-        if norm in {"patientid", "subjectid", "personid", "患者id", "患者编号"} and col != group_col:
+        if (
+            norm in {"patientid", "subjectid", "personid", "患者id", "患者编号"}
+            and col != group_col
+        ):
             repeated = int(df[col].duplicated(keep=False).sum())
             if repeated:
                 findings.append(

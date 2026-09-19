@@ -15,9 +15,9 @@ from typing import TYPE_CHECKING, Any, Literal
 from app.engines.llm_validators import get_validator
 
 from .llm_privacy import assert_cloud_payload_safe
+from .llm_providers.anthropic_provider import AnthropicProvider
 from .llm_providers.ollama_provider import OllamaProvider
 from .llm_providers.openai_provider import OpenAIProvider
-from .llm_providers.anthropic_provider import AnthropicProvider
 
 if TYPE_CHECKING:
     from .settings import LlmRuntimeConfig
@@ -73,7 +73,7 @@ class LLMService:
         # 初始化云端 provider（可选；部署层总闸关闭时跳过）
         self.openai: OpenAIProvider | None = None
         self.anthropic: AnthropicProvider | None = None
-        
+
         if cloud_enabled:
             if cloud_provider == "openai" and openai_api_key:
                 try:
@@ -81,10 +81,12 @@ class LLMService:
                     logger.info(f"OpenAI provider initialized: {openai_model}")
                 except Exception as e:
                     logger.warning(f"Failed to initialize OpenAI provider: {e}")
-            
+
             elif cloud_provider == "anthropic" and anthropic_api_key:
                 try:
-                    self.anthropic = AnthropicProvider(api_key=anthropic_api_key, model=anthropic_model)
+                    self.anthropic = AnthropicProvider(
+                        api_key=anthropic_api_key, model=anthropic_model
+                    )
                     logger.info(f"Anthropic provider initialized: {anthropic_model}")
                 except Exception as e:
                     logger.warning(f"Failed to initialize Anthropic provider: {e}")
@@ -158,7 +160,7 @@ class LLMService:
                 )
             # 红线（T6.6）：云端只发聚合统计 facts，行级患者数据禁止出域
             assert_cloud_payload_safe(facts)
-            
+
             # 选择云端提供商
             cloud_provider = None
             provider_name = ""
@@ -174,7 +176,7 @@ class LLMService:
             elif self.anthropic:  # fallback to Anthropic if configured
                 cloud_provider = self.anthropic
                 provider_name = "Claude (fallback)"
-            
+
             if not cloud_provider:
                 raise RuntimeError(
                     f"Cloud provider '{self.cloud_provider}' not configured. "
@@ -272,21 +274,19 @@ class LLMService:
             # 红线（T6.6）：云端只发聚合统计 facts，行级患者数据禁止出域
             if facts is not None:
                 assert_cloud_payload_safe(facts)
-            
+
             # 选择云端提供商
             cloud_provider = None
             if self.cloud_provider == "anthropic" and self.anthropic:
                 cloud_provider = self.anthropic
-            elif self.cloud_provider == "openai" and self.openai:
-                cloud_provider = self.openai
-            elif self.openai:
+            elif (self.cloud_provider == "openai" and self.openai) or self.openai:
                 cloud_provider = self.openai
             elif self.anthropic:
                 cloud_provider = self.anthropic
-            
+
             if not cloud_provider:
                 raise RuntimeError("Cloud provider not configured.")
-            
+
             try:
                 return cloud_provider.complete(
                     prompt, temperature=temperature, seed=seed, max_tokens=max_tokens
@@ -312,7 +312,9 @@ class LLMService:
         cloud_info = {}
         if self.cloud_provider == "anthropic" and self.anthropic:
             cloud_info = {
-                "available": self.anthropic.is_available() if hasattr(self.anthropic, 'is_available') else True,
+                "available": self.anthropic.is_available()
+                if hasattr(self.anthropic, "is_available")
+                else True,
                 "provider": "Anthropic",
                 "model": self.anthropic.model,
                 "enabled": self.cloud_enabled,
@@ -331,15 +333,17 @@ class LLMService:
                 "model": None,
                 "enabled": self.cloud_enabled,
             }
-        
+
         local_providers = []
         if self.ollama:
-            local_providers.append({
-                "name": "Ollama",
-                "model": self.ollama.model,
-                "available": self.ollama.is_available(),
-            })
-        
+            local_providers.append(
+                {
+                    "name": "Ollama",
+                    "model": self.ollama.model,
+                    "available": self.ollama.is_available(),
+                }
+            )
+
         return {
             "local": {
                 "available": self.is_local_available(),

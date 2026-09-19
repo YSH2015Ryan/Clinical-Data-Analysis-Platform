@@ -20,13 +20,13 @@ from app.core.config import get_settings
 from app.core.errors import AppError, not_found
 from app.db import get_db
 from app.engines import parser
+from app.engines.adjustment import adjusted_association
+from app.engines.leakage_experiment import run_leakage_experiment
 from app.engines.model_tiers import tier_of
 from app.engines.preprocessing import validate_dsl
 from app.engines.quickfix import QuickFixAction
 from app.engines.research_profiler import detect_research_direction
 from app.engines.research_templates import evaluate_templates
-from app.engines.adjustment import adjusted_association
-from app.engines.leakage_experiment import run_leakage_experiment
 from app.engines.screening import subgroup_analysis, univariate_screen
 from app.engines.task_detection import detect_task_from_profile
 from app.schemas.auth import CurrentUser
@@ -202,9 +202,7 @@ async def get_analysis_draft(
         )
     det = detect_task_from_profile(dataset.column_profile)
     task_type = det.recommended_task
-    config = await dataset_service.recommended_preprocess_dsl(
-        db, dataset, storage_from_settings()
-    )
+    config = await dataset_service.recommended_preprocess_dsl(db, dataset, storage_from_settings())
     # 旧画像/推荐路径可能返回缺少 target 的 DSL；只用检测候选补齐空字段，
     # 不覆盖已有用户/推荐配置，也不把无成对随访+事件列的数据硬判为 survival。
     if task_type is not None:

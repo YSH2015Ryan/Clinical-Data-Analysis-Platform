@@ -53,7 +53,10 @@ def detect_perfect_metric_redflag(payload: dict[str, Any]) -> dict[str, Any] | N
     if any(f.get("severity") == "blocker" for f in findings if isinstance(f, dict)):
         return {
             "integrity_blocked": True,
-            "warning": "Critical methodological review required. 分析完整性门禁发现阻断级问题，禁止将模型性能解释为可信临床效能。",
+            "warning": (
+                "Critical methodological review required. "
+                "分析完整性门禁发现阻断级问题，禁止将模型性能解释为可信临床效能。"
+            ),
             "findings": findings,
         }
 

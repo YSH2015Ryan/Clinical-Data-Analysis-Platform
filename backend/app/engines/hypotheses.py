@@ -19,8 +19,6 @@ Principle 6 纪律：全部条目标记 Hypothesis-generating，固定声明探�
 
 from typing import Any
 
-import pandas as pd
-
 _NOTICE = (
     "以下内容为 Hypothesis-generating（假设生成）性质：所有条目由确定性规则从本数据集的"
     "真实统计事实推导，仅供形成研究假设参考；探索性发现不等于确认性结论，"
@@ -118,7 +116,8 @@ def _subgroup_candidates(profiles: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "text": f"「{p.get('name')}」（{int(unique)} 个水平）可作为亚组变量，"
                 "检验暴露-结局关联是否存在效应修饰。",
                 "basis": f"column_profiles：{p.get('name')} inferred_type=categorical，"
-                f"unique={unique}（{int(unique)}∈[{_SUBGROUP_MIN_LVL},{_SUBGROUP_MAX_LVL}] 真实值）",
+                f"unique={unique}（{int(unique)}∈[{_SUBGROUP_MIN_LVL},"
+                f"{_SUBGROUP_MAX_LVL}] 真实值）",
             }
         )
     return items[:_TOP_N]
@@ -199,7 +198,9 @@ def generate_research_opportunities(
         "observed_patterns": _observed_patterns(eda, profiles),
         "unexpected_associations": _unexpected_associations(eda),
         "potential_subgroup_differences": _subgroup_candidates(profiles),
-        "potential_prediction_tasks": _prediction_tasks(research_profile, eda.get("sample_size") or {}),
+        "potential_prediction_tasks": _prediction_tasks(
+            research_profile, eda.get("sample_size") or {}
+        ),
         "potential_hypotheses": _hypotheses(eda, profiles),
         # LLM 表达增强槽位（规则保底；接线时由 services/llm_tasks 幻觉校验兜底）
         "llm_summary": None,

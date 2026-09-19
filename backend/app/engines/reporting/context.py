@@ -13,6 +13,7 @@ from app.engines.reporting.analysis_status import compute_analysis_status
 from app.engines.reporting.captions import caption_for
 from app.engines.reporting.checklist import build_reporting_checklist
 from app.engines.reporting.limitations import build_limitations
+from app.engines.reporting.ml_reviewer import review_ml
 from app.engines.reporting.narratives import (
     build_clinical_guides,
     build_comparison_guide,
@@ -20,7 +21,6 @@ from app.engines.reporting.narratives import (
     build_performance_guides,
 )
 from app.engines.reporting.redflags import detect_perfect_metric_redflag
-from app.engines.reporting.ml_reviewer import review_ml
 from app.engines.reporting.statistical_reviewer import review_methodology
 
 DISCLAIMER = "本报告由 CDAP 自动生成，仅供科研参考，不构成临床诊断建议。"
@@ -346,7 +346,7 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
             "validation": payload.get("validation"),
             "software": payload.get("software") or {},
             # P2-07（§55）：证据索引——报告/LLM 结论可引用的结构化证据注册表
-            #（全部来自 payload 真实计算值；claim 引用不存在或不符的证据即拦截）
+            # （全部来自 payload 真实计算值；claim 引用不存在或不符的证据即拦截）
             "evidence_registry": build_evidence_registry(payload),
             "disclaimer": DISCLAIMER,
         },

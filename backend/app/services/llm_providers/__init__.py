@@ -11,4 +11,4 @@ from .anthropic_provider import AnthropicProvider
 from .ollama_provider import OllamaProvider
 from .openai_provider import OpenAIProvider
 
-__all__ = ["OllamaProvider", "OpenAIProvider", "AnthropicProvider"]
+__all__ = ["AnthropicProvider", "OllamaProvider", "OpenAIProvider"]

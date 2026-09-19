@@ -328,9 +328,7 @@ def _residual_chart(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
         y_true, ys = _thin(list(scatter["y_true"]), [list(scatter["y_pred"])])
         fitted = ys[0]
         residuals = [float(t) - float(p) for t, p in zip(y_true, fitted, strict=True)]
-        series.append(
-            {"model_key": row["model_key"], "fitted": fitted, "residuals": residuals}
-        )
+        series.append({"model_key": row["model_key"], "fitted": fitted, "residuals": residuals})
     if not series:
         return None
     return {

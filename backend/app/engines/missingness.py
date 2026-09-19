@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
 import pandas as pd
 from scipy import stats
 
@@ -34,7 +33,9 @@ OUTCOME_MISSINGNESS_WARNING = (
 _IMPUTATION_ADVICE = {
     "likely_mcar": "简单插补（均值/中位数/众数）风险较低。",
     "likely_mar": "建议多重插补（MICE）或基于其他变量的回归插补。",
-    "possible_mnar": "任何插补都可能引入系统性偏倚，必须谨慎；建议多重插补或缺失感知模型，并由研究者确认。",
+    "possible_mnar": (
+        "任何插补都可能引入系统性偏倚，必须谨慎；建议多重插补或缺失感知模型，并由研究者确认。"
+    ),
     "undetermined": "缺失例数过少，机制无法判断；插补前建议人工核查缺失原因。",
 }
 
@@ -99,22 +100,14 @@ def analyze_missingness(
             continue
 
         # 3. 与结局的关联（任一结局显著即 MNAR 线索）
-        outcome_ps = [
-            p for p in (_assoc_p(indicator, df[o]) for o in outcomes) if p is not None
-        ]
+        outcome_ps = [p for p in (_assoc_p(indicator, df[o]) for o in outcomes) if p is not None]
         outcome_p = min(outcome_ps) if outcome_ps else None
         entry["outcome_association_p"] = outcome_p
 
         # 2. 与其他已观测变量的关联
-        others = [
-            c for c in df.columns if c != col and c not in outcomes
-        ][:_MAX_ASSOC_VARS]
+        others = [c for c in df.columns if c != col and c not in outcomes][:_MAX_ASSOC_VARS]
         assoc = sorted(
-            (
-                (c, p)
-                for c in others
-                if (p := _assoc_p(indicator, df[c])) is not None and p < alpha
-            ),
+            ((c, p) for c in others if (p := _assoc_p(indicator, df[c])) is not None and p < alpha),
             key=lambda t: t[1],
         )
         entry["associated_variables"] = [c for c, _ in assoc]

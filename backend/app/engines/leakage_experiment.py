@@ -79,9 +79,7 @@ def plan_variable_sets(
     suspicious = _suspicious_columns(inspection, target_col)
 
     pool = _feature_pool(df, outcome)
-    dates = [
-        c for c in pool if infer_dtype(df[c]) == "datetime" or _has_date_hint(c)
-    ]
+    dates = [c for c in pool if infer_dtype(df[c]) == "datetime" or _has_date_hint(c)]
     baseline = [
         c
         for c in pool
@@ -179,9 +177,14 @@ def _oof_predictions(
     return oof
 
 
-def _metrics_for(task_type: str, y: np.ndarray[Any, Any], oof: np.ndarray[Any, Any],
-                 df: pd.DataFrame, time_col: str | None, event_col: str | None
-                 ) -> dict[str, float]:
+def _metrics_for(
+    task_type: str,
+    y: np.ndarray[Any, Any],
+    oof: np.ndarray[Any, Any],
+    df: pd.DataFrame,
+    time_col: str | None,
+    event_col: str | None,
+) -> dict[str, float]:
     """§25 指标清单：分类=AUC/PR-AUC/Sens/Spec/校准斜率；回归=RMSE/R²；生存=C-index。"""
     if task_type == "classification":
         from sklearn.linear_model import LogisticRegression
@@ -315,22 +318,29 @@ def run_leakage_experiment(
         entry = sets[key]
         features = entry["features"]
         if not features:
-            results.append({**entry, "n_features": 0, "metrics": None,
-                            "note": "该集合无可用变量，跳过实验"})
+            results.append(
+                {**entry, "n_features": 0, "metrics": None, "note": "该集合无可用变量，跳过实验"}
+            )
             continue
         x = _design_matrix(sub, features)
         if x.shape[1] == 0:
-            results.append({**entry, "n_features": 0, "metrics": None,
-                            "note": "该集合变量均不可数值化，跳过实验"})
+            results.append(
+                {
+                    **entry,
+                    "n_features": 0,
+                    "metrics": None,
+                    "note": "该集合变量均不可数值化，跳过实验",
+                }
+            )
             continue
         try:
             oof = _oof_predictions(x, y, task_type, sub, time_col, event_col)
             metrics = _metrics_for(task_type, y, oof, sub, time_col, event_col)
-            results.append({**entry, "n_features": len(features), "metrics": metrics,
-                            "note": None})
+            results.append({**entry, "n_features": len(features), "metrics": metrics, "note": None})
         except Exception as exc:
-            results.append({**entry, "n_features": len(features), "metrics": None,
-                            "note": f"拟合失败：{exc}"})
+            results.append(
+                {**entry, "n_features": len(features), "metrics": None, "note": f"拟合失败：{exc}"}
+            )
 
     return {
         "task_type": task_type,

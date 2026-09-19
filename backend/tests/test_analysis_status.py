@@ -43,8 +43,14 @@ class TestStatusRules:
 
     def test_red_on_quality_criticals(self) -> None:
         payload = _payload()
-        payload["quality"] = {"status": "PASSED_WITH_WARNINGS", "blockers": 0, "warnings": 0,
-                              "criticals": 1, "issues": [], "column_profiles": []}
+        payload["quality"] = {
+            "status": "PASSED_WITH_WARNINGS",
+            "blockers": 0,
+            "warnings": 0,
+            "criticals": 1,
+            "issues": [],
+            "column_profiles": [],
+        }
         assert compute_analysis_status(payload)["level"] == "RED"
 
     def test_red_on_perfect_metric_redflag(self) -> None:

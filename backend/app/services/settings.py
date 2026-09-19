@@ -135,11 +135,11 @@ def _build_config(
                     switches[name] = stored[name]
         except (TypeError, ValueError):
             pass  # 损坏配置回退默认（不阻断启动）
-    
+
     cloud_provider = cloud_provider_raw or "openai"
     if cloud_provider not in ("openai", "anthropic"):
         cloud_provider = "openai"
-    
+
     return LlmRuntimeConfig(
         model_choice=choice,  # type: ignore[arg-type]
         temperature=temperature,
@@ -211,9 +211,8 @@ async def update_llm_config(
                 await db.delete(row)
         else:
             await set_value(db, KEY_ANTHROPIC_API_KEY, anthropic_api_key, secret=True)
-    if cloud_provider is not None:
-        if cloud_provider in ("openai", "anthropic"):
-            await set_value(db, KEY_CLOUD_PROVIDER, cloud_provider)
+    if cloud_provider is not None and cloud_provider in ("openai", "anthropic"):
+        await set_value(db, KEY_CLOUD_PROVIDER, cloud_provider)
     if feature_switches is not None:
         merged = dict(DEFAULT_FEATURE_SWITCHES)
         merged.update(feature_switches)

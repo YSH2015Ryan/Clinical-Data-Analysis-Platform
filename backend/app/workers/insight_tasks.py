@@ -150,7 +150,9 @@ def _summary_lines(
         level_text = {
             "ok": "（≥10，满足常规建模要求）",
             "warning": "（5–10，偏低：建议精简候选特征或扩充样本，结果按探索性解读）",
-            "critical": "（<5，严重不足：模型系数不稳定、性能指标易虚高，本次分析仅宜作探索性用途）",
+            "critical": (
+                "（<5，严重不足：模型系数不稳定、性能指标易虚高，本次分析仅宜作探索性用途）"
+            ),
         }
         lines.append(
             f"结局事件列 {ss['event_column']}：事件数 {ss['n_events']}，EPV={ss['epv']}"
@@ -161,9 +163,7 @@ def _summary_lines(
     # P1-11（§12）：缺失与结局相关 → 必须提示（单一插补可能引入偏倚）
     missingness = eda.get("missingness") or {}
     if missingness.get("has_outcome_associated_missingness"):
-        cols = [
-            v["column"] for v in missingness["variables"] if v["mechanism"] == "possible_mnar"
-        ]
+        cols = [v["column"] for v in missingness["variables"] if v["mechanism"] == "possible_mnar"]
         lines.append(
             f"⚠ 变量 {'、'.join(cols)} 的缺失与结局显著相关：单一插补可能引入系统性偏倚，"
             "建议多重插补（MICE）或缺失感知模型，并由研究者确认（§12）。"
@@ -235,7 +235,8 @@ def auto_dataset_insight(dataset_id: str) -> None:
                 warnings=report.warnings,
             )
 
-        # 2-4. EDA + 任务推荐（规则）+ 研究画像 + 数据缺口建议(T6.14) + 研究机会(P2-06/§81,均确定性规则)
+        # 2-4. EDA + 任务推荐（规则）+ 研究画像 + 数据缺口建议(T6.14)
+        #      + 研究机会(P2-06/§81，均确定性规则)
         eda = compute_eda(df, report.column_profiles)
         recommendation = IntelligentTaskAdvisor().analyze_dataset(
             df, report.column_profiles, switch="off"

@@ -395,7 +395,7 @@ def _interpretation_facts(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def _llm_interpretations(db: Any, payload: dict[str, Any]) -> dict[str, str] | None:
     """T6.7：报告解读段落（分功能开关门控；关闭/失败 → None，context 模板拼句兜底）。"""
     from app.workers.analysis_tasks import _sanitize_for_jsonb
-    
+
     cfg = get_llm_config_sync(db)
     switch = cfg.feature_switches.get("report_interpretation", "off")
     if switch == "off":

@@ -38,9 +38,7 @@ def _confounder_matrix(df: pd.DataFrame, confounders: list[str]) -> pd.DataFrame
     return pd.concat(parts, axis=1) if parts else pd.DataFrame(index=df.index)
 
 
-def _fit_glm(
-    kind: str, y: np.ndarray, x: pd.DataFrame
-) -> tuple[float, float, float, float]:
+def _fit_glm(kind: str, y: np.ndarray, x: pd.DataFrame) -> tuple[float, float, float, float]:
     """Logit/OLS 拟合暴露主效应 → (effect, ci_lower, ci_upper, p)；OR/β 尺度。"""
     import statsmodels.api as sm
 

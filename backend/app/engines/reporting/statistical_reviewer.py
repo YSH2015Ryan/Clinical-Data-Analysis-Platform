@@ -106,7 +106,9 @@ def _review_sample_size(
     minor: list[dict[str, Any]],
 ) -> None:
     if task_type in ("classification", "survival") and n_features:
-        events = summary.get("positives") if task_type == "classification" else summary.get("events")
+        events = (
+            summary.get("positives") if task_type == "classification" else summary.get("events")
+        )
         if events is not None:
             epv = events / n_features
             if epv < _EPV_MIN:

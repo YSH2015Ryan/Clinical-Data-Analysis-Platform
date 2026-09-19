@@ -30,6 +30,7 @@ from sqlalchemy import delete, select
 
 from app.core.logging import get_logger
 from app.engines import parser
+from app.engines.failure import format_model_failure
 from app.engines.leakage import inspect_leakage
 from app.engines.model_registry import ModelRegistry
 from app.engines.pipeline import build_pipeline, iter_cv_splits, run_preprocess
@@ -303,14 +304,16 @@ def _sample_large_dataset(
     rng = np.random.default_rng(42)
     label = df[target_cols[0]] if target_cols else None
     if group_col and group_col in df.columns:
-        group_frame = df[[group_col] + target_cols].copy()
+        group_frame = df[[group_col, *target_cols]].copy()
         group_frame["_stratum"] = label.astype(str) if label is not None else "all"
-        group_summary = group_frame.groupby(group_col, sort=False)['_stratum'].first()
+        group_summary = group_frame.groupby(group_col, sort=False)["_stratum"].first()
         selected_groups: list[Any] = []
         for _, group_values in group_summary.groupby(group_summary):
             groups = group_values.index.to_numpy()
             take = max(1, round(max_rows * len(groups) / len(group_summary)))
-            selected_groups.extend(rng.choice(groups, size=min(take, len(groups)), replace=False).tolist())
+            selected_groups.extend(
+                rng.choice(groups, size=min(take, len(groups)), replace=False).tolist()
+            )
         sampled = df[df[group_col].isin(selected_groups)]
         if len(sampled) > max_rows:
             sampled = sampled.sample(n=max_rows, random_state=42)
@@ -403,9 +406,7 @@ def preprocess_run(run_id: str) -> None:
                 raise ValueError(
                     "分析被方法学完整性门禁阻止："
                     + "；".join(
-                        f.code
-                        for f in inspection.findings
-                        if f.severity in ("blocker", "critical")
+                        f.code for f in inspection.findings if f.severity in ("blocker", "critical")
                     )
                 )
 
@@ -413,7 +414,10 @@ def preprocess_run(run_id: str) -> None:
             MAX_ROWS = 100000
             if len(df) > MAX_ROWS:
                 df, sampling = _sample_large_dataset(
-                    df, target_cols=target_cols, group_col=cfg.validation.group_col, max_rows=MAX_ROWS
+                    df,
+                    target_cols=target_cols,
+                    group_col=cfg.validation.group_col,
+                    max_rows=MAX_ROWS,
                 )
                 run.integrity = {**(run.integrity or {}), "sampling": sampling}
                 logger.warning("dataset_auto_sampling", run_id=run_id, **sampling)

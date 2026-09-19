@@ -74,13 +74,17 @@ def _imbalanced_csv() -> bytes:
 def _survival_csv() -> bytes:
     rng = np.random.default_rng(21)
     n = 60
-    return pd.DataFrame(
-        {
-            "age": rng.normal(60, 10, n),
-            "os_months": np.arange(1, n + 1, dtype=float),
-            "death": np.tile([0, 1], n // 2),
-        }
-    ).to_csv(index=False).encode()
+    return (
+        pd.DataFrame(
+            {
+                "age": rng.normal(60, 10, n),
+                "os_months": np.arange(1, n + 1, dtype=float),
+                "death": np.tile([0, 1], n // 2),
+            }
+        )
+        .to_csv(index=False)
+        .encode()
+    )
 
 
 def _cfg(target: dict[str, str], strategy: str = "stratified_kfold") -> dict[str, object]:
@@ -671,9 +675,7 @@ def _proxy_csv() -> bytes:
     age = rng.normal(60, 10, n)
     label = (age > 60).astype(int)
     return (
-        pd.DataFrame({"age": age, "label": label, "label_copy": label})
-        .to_csv(index=False)
-        .encode()
+        pd.DataFrame({"age": age, "label": label, "label_copy": label}).to_csv(index=False).encode()
     )
 
 
@@ -741,14 +743,16 @@ class TestExploratoryGate:
             .first()
         )
         assert report is not None and report.status == "READY"
-        html = (
-            storage_from_settings().get(key_from_uri(report.storage_uri or "")).decode("utf-8")
-        )
+        html = storage_from_settings().get(key_from_uri(report.storage_uri or "")).decode("utf-8")
         assert 'class="status-banner status-red"' in html
         assert "Results should not be interpreted as unbiased predictive performance" in html
 
     async def test_confirm_exploratory_requires_gate_failure_400(
-        self, client: AsyncClient, db_session: AsyncSession, researcher: User, version: DatasetVersion
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        researcher: User,
+        version: DatasetVersion,
     ) -> None:
         """非门禁失败（如正常 COMPLETED）的 run 不允许确认探索性模式。"""
         resp = await client.post(

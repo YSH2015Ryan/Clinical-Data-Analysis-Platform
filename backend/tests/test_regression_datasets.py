@@ -6,6 +6,7 @@
 """
 
 import numpy as np
+
 from tests.fixtures import regression_datasets as rd
 
 

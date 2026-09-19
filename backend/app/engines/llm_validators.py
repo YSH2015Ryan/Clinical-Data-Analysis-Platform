@@ -21,7 +21,7 @@ class OutputValidator:
 
     # 常见的统计阈值，不算幻觉
     COMMON_THRESHOLDS: ClassVar[set[float]] = {0.05, 0.01, 0.001, 0.0001, 1.0, 100.0}
-    
+
     # 旧版 prompt 示例中的数值（需要容忍，避免误判）
     LEGACY_EXAMPLE_NUMBERS: ClassVar[set[float]] = {4.23, 0.002, 1.18, 1.23}
 
@@ -98,7 +98,7 @@ class OutputValidator:
             # 跳过常见统计阈值
             if num in self.COMMON_THRESHOLDS:
                 continue
-            
+
             # 跳过旧版 prompt 示例数值（避免误判历史生成内容）
             if num in self.LEGACY_EXAMPLE_NUMBERS:
                 continue

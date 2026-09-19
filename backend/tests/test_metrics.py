@@ -17,6 +17,7 @@ from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
     brier_score_loss,
+    confusion_matrix,
     f1_score,
     matthews_corrcoef,
     mean_absolute_error,
@@ -25,7 +26,6 @@ from sklearn.metrics import (
     r2_score,
     recall_score,
     roc_auc_score,
-    confusion_matrix,
 )
 from sksurv.metrics import (
     concordance_index_censored,

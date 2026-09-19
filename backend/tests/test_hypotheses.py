@@ -10,7 +10,6 @@ Potential Subgroup Differences / Potential Prediction Tasks / Potential Hypothes
 from typing import Any
 
 import pandas as pd
-
 from app.engines.hypotheses import generate_research_opportunities
 
 
@@ -24,9 +23,7 @@ def _df(n: int = 400) -> pd.DataFrame:
     sex = rng.choice(["M", "F"], n)
     ward = rng.choice(["A", "B", "C"], n)
     outcome = (rng.uniform(0, 1, n) < 0.3).astype(int)
-    return pd.DataFrame(
-        {"age": age, "bmi": bmi, "sex": sex, "ward": ward, "outcome": outcome}
-    )
+    return pd.DataFrame({"age": age, "bmi": bmi, "sex": sex, "ward": ward, "outcome": outcome})
 
 
 def _inputs(df: pd.DataFrame) -> dict[str, Any]:
@@ -81,7 +78,9 @@ class TestContract:
 
     def test_deterministic(self) -> None:
         inputs = _inputs(_df())
-        assert generate_research_opportunities(**inputs) == generate_research_opportunities(**inputs)
+        assert generate_research_opportunities(**inputs) == generate_research_opportunities(
+            **inputs
+        )
 
 
 class TestObservedPatterns:

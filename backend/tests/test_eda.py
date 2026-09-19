@@ -142,11 +142,23 @@ class TestSampleSize:
     def test_epv_level_three_tiers(self) -> None:
         """P0-11（updateplan §19）：EPV ≥10 ok / 5–10 warning / <5 critical。"""
         profiles = [
-            {"name": "death", "inferred_type": "continuous", "semantic": "Event",
-             "semantic_confidence": 0.9, "missing_rate": 0.0, "unique": 2},
+            {
+                "name": "death",
+                "inferred_type": "continuous",
+                "semantic": "Event",
+                "semantic_confidence": 0.9,
+                "missing_rate": 0.0,
+                "unique": 2,
+            },
         ] + [
-            {"name": f"x{i}", "inferred_type": "continuous", "semantic": None,
-             "semantic_confidence": 0.0, "missing_rate": 0.0, "unique": 100}
+            {
+                "name": f"x{i}",
+                "inferred_type": "continuous",
+                "semantic": None,
+                "semantic_confidence": 0.0,
+                "missing_rate": 0.0,
+                "unique": 100,
+            }
             for i in range(4)
         ]
         # n_features=4：事件数 40 → EPV=10(ok)；28 → 7(warning)；12 → 3(critical)

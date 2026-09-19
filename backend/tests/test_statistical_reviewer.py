@@ -9,8 +9,6 @@ LLM 表达增强预留 llm_summary 槽位（本模块不调用 LLM）。
 
 from typing import Any
 
-import pytest
-
 from app.engines.reporting.statistical_reviewer import review_methodology
 
 
@@ -179,8 +177,13 @@ class TestDuplicateData:
             }
         ]
         result = review_methodology(
-            _payload(quality_report={"status": "PASSED_WITH_WARNINGS", "issues": issues,
-                                     "column_profiles": []})
+            _payload(
+                quality_report={
+                    "status": "PASSED_WITH_WARNINGS",
+                    "issues": issues,
+                    "column_profiles": [],
+                }
+            )
         )
         item = [c for c in result["major_concerns"] if c["id"] == "SR-DUP"]
         assert item and item[0]["dimension"] == "duplicate_data" and "12" in item[0]["basis"]
@@ -204,16 +207,24 @@ class TestVariableSelection:
 class TestStatisticalMethod:
     def test_single_model_minor(self) -> None:
         result = review_methodology(
-            _payload(run={"task_type": "classification", "selected_models": ["logistic"],
-                          "exploratory_mode": False})
+            _payload(
+                run={
+                    "task_type": "classification",
+                    "selected_models": ["logistic"],
+                    "exploratory_mode": False,
+                }
+            )
         )
         assert "SR-SINGLE-MODEL" in _ids(result["minor_concerns"])
 
     def test_regression_without_diagnostics_question(self) -> None:
         result = review_methodology(
             _payload(
-                run={"task_type": "regression", "selected_models": ["ridge", "lasso"],
-                     "exploratory_mode": False},
+                run={
+                    "task_type": "regression",
+                    "selected_models": ["ridge", "lasso"],
+                    "exploratory_mode": False,
+                },
                 diagnostics=None,
             )
         )
@@ -247,10 +258,16 @@ class TestMultipleComparisons:
         ]
         result = review_methodology(
             _payload(
-                run={"task_type": "classification", "selected_models": ["a", "b", "c"],
-                     "exploratory_mode": False},
+                run={
+                    "task_type": "classification",
+                    "selected_models": ["a", "b", "c"],
+                    "exploratory_mode": False,
+                },
                 table=table,
-                comparison={"ranking": ["a", "b", "c"], "recommendation": {"primary_metric": "auc"}},
+                comparison={
+                    "ranking": ["a", "b", "c"],
+                    "recommendation": {"primary_metric": "auc"},
+                },
             )
         )
         assert "SR-MC-PAIRWISE" in _ids(result["minor_concerns"])

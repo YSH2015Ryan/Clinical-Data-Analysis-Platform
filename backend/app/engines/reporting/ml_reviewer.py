@@ -185,7 +185,11 @@ def _review_calibration(payload: dict[str, Any], minor: list[dict[str, Any]]) ->
                     "MLR-CALIB-SLOPE",
                     "calibration",
                     f"推荐模型 {top_key} 的校准斜率为 {slope}（理想值 1.0）："
-                    + ("预测概率整体过于极端（收缩不足）。" if float(slope) < 1 else "预测概率整体过于保守。")
+                    + (
+                        "预测概率整体过于极端（收缩不足）。"
+                        if float(slope) < 1
+                        else "预测概率整体过于保守。"
+                    )
                     + "建议做校准后处理再用于决策。",
                     f"calibration_slope mean={slope}，|1−slope|={round(dev, 4)}"
                     f">{_CALIB_SLOPE_TOL}（真实折级统计）",
@@ -269,7 +273,9 @@ def _review_feature_importance(
     if len(features) < 2 or not series:
         return
     # 各模型归一化后第二特征均 <0.3 → 单特征主导（真实归一化值）
-    seconds = [float(s.get("values", [None, None])[1]) for s in series if len(s.get("values") or []) > 1]
+    seconds = [
+        float(s.get("values", [None, None])[1]) for s in series if len(s.get("values") or []) > 1
+    ]
     if seconds and all(v < _DOMINANT_SECOND_MAX for v in seconds):
         top = str(features[0])
         minor.append(
@@ -279,7 +285,8 @@ def _review_feature_importance(
                 f"特征「{top}」在所有模型中占据绝对主导（第二特征归一化重要性均 "
                 f"<{_DOMINANT_SECOND_MAX}）：模型实质上依赖单一变量，需核实其"
                 "是否为结局的代理变量或数据录入伪迹。",
-                f"top 特征={top}；各模型第二特征归一化重要性={seconds}（feature_importance 图真实数据）",
+                f"top 特征={top}；各模型第二特征归一化重要性={seconds}"
+                "（feature_importance 图真实数据）",
             )
         )
         questions.append(

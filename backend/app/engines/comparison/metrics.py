@@ -93,9 +93,7 @@ def classification_metrics(y_true: Any, y_prob: Any) -> dict[str, float]:
     }
 
 
-def regression_metrics(
-    y_true: Any, y_pred: Any, n_features: int | None = None
-) -> dict[str, float]:
+def regression_metrics(y_true: Any, y_pred: Any, n_features: int | None = None) -> dict[str, float]:
     """回归指标：RMSE（主）、MAE、R²。
 
     P1-14（updateplan §44）连续结局评价补齐：
@@ -113,15 +111,9 @@ def regression_metrics(
     adjusted_r2 = float("nan")
     if n_features is not None and n - n_features - 1 > 0:
         adjusted_r2 = float(1.0 - (1.0 - r2) * (n - 1) / (n - n_features - 1))
-    mape = (
-        float(mean_absolute_percentage_error(y_t, y_p))
-        if not (y_t == 0).any()
-        else float("nan")
-    )
+    mape = float(mean_absolute_percentage_error(y_t, y_p)) if not (y_t == 0).any() else float("nan")
     var_p = float(np.var(y_p))
-    calibration_slope = (
-        float(np.cov(y_p, y_t, ddof=0)[0, 1] / var_p) if var_p > 0 else float("nan")
-    )
+    calibration_slope = float(np.cov(y_p, y_t, ddof=0)[0, 1] / var_p) if var_p > 0 else float("nan")
     return {
         "rmse": float(np.sqrt(mean_squared_error(y_t, y_p))),
         "mae": float(mean_absolute_error(y_t, y_p)),

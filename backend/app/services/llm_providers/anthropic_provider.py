@@ -16,7 +16,12 @@ logger = logging.getLogger(__name__)
 class AnthropicProvider:
     """Anthropic Claude LLM 提供者（需要 anthropic 库）"""
 
-    def __init__(self, api_key: str | None = None, model: str = "claude-3-5-sonnet-20241022", timeout: int = 30):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "claude-3-5-sonnet-20241022",
+        timeout: int = 30,
+    ):
         """
         初始化 Anthropic Provider
 
@@ -42,7 +47,8 @@ class AnthropicProvider:
             self.client = anthropic.Anthropic(api_key=self.api_key, timeout=self.timeout)
         except ImportError:
             raise ImportError(
-                "anthropic package is required for AnthropicProvider. Install with: pip install anthropic"
+                "anthropic package is required for AnthropicProvider. "
+                "Install with: pip install anthropic"
             ) from None
 
     def generate(
@@ -115,12 +121,12 @@ class AnthropicProvider:
                     {"role": "user", "content": prompt},
                 ],
             )
-            
+
             output = response.content[0].text if response.content else ""
-            
+
             if not output:
                 raise RuntimeError("Anthropic returned empty response")
-            
+
             return str(output).strip()
         except Exception as e:
             raise RuntimeError(f"Anthropic API request failed: {e}") from e

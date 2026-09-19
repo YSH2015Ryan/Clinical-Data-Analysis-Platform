@@ -105,9 +105,7 @@ def make_dataset_i(n: int = 16000) -> tuple[pd.DataFrame, dict[str, float]]:
 def make_dataset_j(n: int = 300, n_events: int = 40, n_features: int = 20) -> pd.DataFrame:
     """Dataset J：low EPV——事件数 40、预测变量 20 个（EPV=2 < 10）。"""
     rng = np.random.default_rng(_SEED + 10)
-    df = pd.DataFrame(
-        {f"x{k:02d}": rng.normal(0.0, 1.0, n) for k in range(n_features)}
-    )
+    df = pd.DataFrame({f"x{k:02d}": rng.normal(0.0, 1.0, n) for k in range(n_features)})
     df["patient_id"] = [f"P{i:06d}" for i in range(n)]
     # 强制恰好 n_events 个事件：按线性预测分排序取前 n_events
     score = df[[f"x{k:02d}" for k in range(5)]].sum(axis=1) + rng.normal(0, 0.5, n)

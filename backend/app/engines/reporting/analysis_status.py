@@ -36,9 +36,7 @@ _STATUS_LABELS = {
 
 # updateplan §72 固定声明（verbatim，非 LLM 生成，不得改写）：
 # 探索性模式下报告必须声明结果不得按无偏预测性能解读
-EXPLORATORY_STATEMENT = (
-    "Results should not be interpreted as unbiased predictive performance."
-)
+EXPLORATORY_STATEMENT = "Results should not be interpreted as unbiased predictive performance."
 
 
 def _epv(payload: dict[str, Any]) -> float | None:
@@ -85,11 +83,12 @@ def compute_analysis_status(payload: dict[str, Any]) -> dict[str, Any]:
     missingness = payload.get("missingness") or {}
     if missingness.get("has_outcome_associated_missingness"):
         mnar_cols = [
-            v["column"] for v in missingness.get("variables", []) if v.get("mechanism") == "possible_mnar"
+            v["column"]
+            for v in missingness.get("variables", [])
+            if v.get("mechanism") == "possible_mnar"
         ]
         yellow.append(
-            f"变量 {'、'.join(mnar_cols)} 的缺失与结局相关（Possible MNAR）："
-            "单一插补可能引入偏倚"
+            f"变量 {'、'.join(mnar_cols)} 的缺失与结局相关（Possible MNAR）：单一插补可能引入偏倚"
         )
 
     epv = _epv(payload)

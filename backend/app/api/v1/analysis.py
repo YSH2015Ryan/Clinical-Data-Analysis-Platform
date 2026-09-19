@@ -76,8 +76,12 @@ async def create_analysis_run(
         await db.commit()
         raise AppError("TASK_DISPATCH_FAILED", 503, "分析任务暂时无法排队，请稍后重试") from exc
     return AnalysisRunOut(
-        id=run.id, status=run.status, task_type=run.task_type, created_at=run.created_at,
-        integrity=run.integrity, exploratory_mode=run.exploratory_mode,
+        id=run.id,
+        status=run.status,
+        task_type=run.task_type,
+        created_at=run.created_at,
+        integrity=run.integrity,
+        exploratory_mode=run.exploratory_mode,
     )
 
 
@@ -94,8 +98,12 @@ async def list_project_runs(
     return {
         "items": [
             AnalysisRunOut(
-                id=r.id, status=r.status, task_type=r.task_type, created_at=r.created_at,
-                integrity=r.integrity, exploratory_mode=r.exploratory_mode,
+                id=r.id,
+                status=r.status,
+                task_type=r.task_type,
+                created_at=r.created_at,
+                integrity=r.integrity,
+                exploratory_mode=r.exploratory_mode,
             )
             for r in runs
         ],

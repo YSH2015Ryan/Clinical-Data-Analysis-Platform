@@ -28,9 +28,7 @@ def correction_label(method: str) -> str:
     return _METHOD_LABELS[method]
 
 
-def adjust_pvalues(
-    pvalues: list[float | None], *, method: str = "bh"
-) -> list[float | None]:
+def adjust_pvalues(pvalues: list[float | None], *, method: str = "bh") -> list[float | None]:
     """对 p 值列表做多重比较校正；None（不可估计）保持 None 且不计入检验总数。
 
     Raises:
