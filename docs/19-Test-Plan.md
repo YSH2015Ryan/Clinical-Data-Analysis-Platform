@@ -23,6 +23,7 @@
 | engines/comparison | 排名规则（构造指标断言顺序）；推荐理由快照测试（不虚构数值） |
 | engines/ground_truth（updateplan §87，P1-15） | Dataset I 已知真实效应量模拟：OR/HR/β 收敛到真值且 95%CI 覆盖；与参考实现 statsmodels/lifelines 对拍相对误差 <1%；AUC 手算对拍（0.75/1.0/0.5）、校准斜率收敛到已知真值 0.5；§86 Dataset A–J 骨架性质冒烟（不平衡率/重复数/泄漏列/EPV） |
 | engines/reporting/statistical_reviewer（updateplan §51，P2-02） | 七维度规则正反例：EPV<10→Major、RV401 重复→Major、筛选未校正→Major、红旗→Major；小样本/高缺失/单模型/少折→Minor；外部验证恒问、缺失机制/时序 CV/诊断缺失→条件问题；空 payload 不崩；双跑逐位相等 |
+| engines/reporting/ml_reviewer（updateplan §52，P2-03） | 六维度规则正反例：泄漏 blocker→Major/warning→Minor、折间变异系数>0.10→Minor、验证配置缺失→Major、HL p<0.05/校准斜率偏离→Minor、不均衡→Minor/极端→Major、单特征主导→Minor+代理问题；空 payload 不崩；双跑逐位相等 |
 | engines/reporting | 模板渲染（缺章节「不适用」）；免责声明强制存在 |
 | services | RBAC 过滤、存储抽象双实现一致性 |
 
