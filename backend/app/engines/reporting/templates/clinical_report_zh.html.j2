@@ -451,6 +451,20 @@
   <tr><td>{{ name }}</td><td>{{ ver }}</td></tr>
   {% endfor %}
 {% endcall %}
+{# P2-07（§55）：证据索引——本报告所有结论可引用的结构化证据（真实计算值） #}
+{% if appendix.evidence_registry %}
+{% call tbl("证据索引（Evidence Binding §55）") %}
+  <tr><th>证据 ID</th><th>类型</th><th>真实值</th></tr>
+  {% for eid, e in appendix.evidence_registry.items() %}
+  <tr>
+    <td><code>{{ eid }}</code></td>
+    <td>{{ e.kind }}</td>
+    <td>{{ e.value | fmt_num if e.value is not none else (e.title or "—") }}</td>
+  </tr>
+  {% endfor %}
+{% endcall %}
+<p class="meta">本报告及 AI 生成的每条结论必须引用上表证据；引用不存在或数值不符的证据将被拦截（§55-56）。</p>
+{% endif %}
 <p class="disclaimer">{{ appendix.disclaimer }}</p>
 </body>
 </html>

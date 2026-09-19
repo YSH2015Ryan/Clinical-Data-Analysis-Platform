@@ -49,6 +49,7 @@ flowchart TD
 - **指标三段式解读（第 5–8 章，T6.15）**：每个指标段含「含义 / 判读规则 / 本数据数值结论」三句，数字全部来自 payload 真实值；LLM 解读缺失时模板兜底仍达可读底线。
 - **统计审查（第 9 章末，P2-02 / updateplan §51）**：确定性规则审查本次分析的方法学七维度（样本量/缺失/重复/变量选择/统计方法/多重比较/验证策略），输出三段式 Major Concerns / Minor Concerns / Questions for Researchers，每条附真实数值依据串；规则保底，LLM 表达增强预留槽位。
 - **ML 审查（第 9 章末，P2-03 / updateplan §52）**：确定性规则审查建模流程六维度（泄漏/过拟合/验证/校准/类别不均衡/特征重要性），紧随统计审查块，同样三段式输出；完美指标红旗由 §51 的 SR-PERFECT 统一呈现，本块不重复。
+- **证据索引（附录，P2-07 / updateplan §55）**：报告附录新增「证据索引」表——由 payload 真实计算值构建证据注册表（metric:{model}:{指标} / figure:{图类} / fact:target_summary:{字段} / table:screening:{变量} / 校准检验 p），本报告及 AI 生成的每条结论必须引用其中证据；`engines/evidence_binding.validate_claims` 对引用不存在证据或引用值偏差 >5% 的 claim 一律拦截（§56 Reject），作为 P2-05 结构化写作与所有 llm_summary 槽位的强制校验门。
 - 上述内容全部来自真实计算；对应产物缺失时章节降级为「不适用」或省略，不阻断报告生成。
 
 ### 2.1 排版与图表规范（2026-08-10 修订）

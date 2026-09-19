@@ -8,6 +8,7 @@
 import json
 from typing import Any
 
+from app.engines.evidence_binding import build_evidence_registry
 from app.engines.reporting.analysis_status import compute_analysis_status
 from app.engines.reporting.captions import caption_for
 from app.engines.reporting.checklist import build_reporting_checklist
@@ -344,6 +345,9 @@ def build_report_context(payload: dict[str, Any]) -> dict[str, Any]:
             "preprocess_steps": steps or [],
             "validation": payload.get("validation"),
             "software": payload.get("software") or {},
+            # P2-07（§55）：证据索引——报告/LLM 结论可引用的结构化证据注册表
+            #（全部来自 payload 真实计算值；claim 引用不存在或不符的证据即拦截）
+            "evidence_registry": build_evidence_registry(payload),
             "disclaimer": DISCLAIMER,
         },
     }
