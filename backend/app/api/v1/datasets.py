@@ -26,6 +26,7 @@ from app.engines.quickfix import QuickFixAction
 from app.engines.research_profiler import detect_research_direction
 from app.engines.research_templates import evaluate_templates
 from app.engines.adjustment import adjusted_association
+from app.engines.leakage_experiment import run_leakage_experiment
 from app.engines.screening import subgroup_analysis, univariate_screen
 from app.engines.task_detection import detect_task_from_profile
 from app.schemas.auth import CurrentUser
@@ -38,6 +39,8 @@ from app.schemas.dataset import (
     DatasetInsightOut,
     DatasetPage,
     DatasetVersion,
+    LeakageExperimentRequest,
+    LeakageExperimentResult,
     QualityReport,
     QuickFixRequest,
     ResearchHints,
@@ -397,6 +400,33 @@ async def post_adjusted_association(
     except ValueError as exc:
         raise AppError(code="ADJUSTMENT_INVALID", status=400, message=str(exc)) from exc
     return AdjustedAssociationResult.model_validate(result)
+
+
+@dataset_router.post("/{dataset_id}/leakage-experiment", response_model=LeakageExperimentResult)
+async def post_leakage_experiment(
+    dataset_id: uuid.UUID,
+    body: LeakageExperimentRequest,
+    user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> LeakageExperimentResult:
+    """§25 泄漏敏感性实验：A/B/C/D 变量集交叉验证性能对比。
+
+    固定快速参考模型 + seed=42；解读文案为固定规则模板，数值全部真实计算。
+    """
+    dataframe = await _load_dataframe(dataset_id, user, db)
+    try:
+        result = await to_thread.run_sync(
+            lambda: run_leakage_experiment(
+                dataframe,
+                task_type=body.task_type,
+                label_col=body.label_col,
+                time_col=body.time_col,
+                event_col=body.event_col,
+            )
+        )
+    except ValueError as exc:
+        raise AppError(code="LEAKAGE_EXPERIMENT_INVALID", status=400, message=str(exc)) from exc
+    return LeakageExperimentResult.model_validate(result)
 
 
 @dataset_router.post("/{dataset_id}/quick-fix", response_model=DatasetVersion)

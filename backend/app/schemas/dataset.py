@@ -272,3 +272,32 @@ class AnalysisDraft(BaseModel):
     task_detection: dict[str, Any] | None  # engines/task_detection.TaskDetection.to_dict()
     preprocess_config: dict[str, Any]
     standard_models: list[str]
+
+
+class LeakageExperimentRequest(BaseModel):
+    """泄漏敏感性实验请求（updateplan §25，docs/14 §5 变更记录 2026-09-19）。"""
+
+    task_type: Literal["survival", "classification", "regression"]
+    label_col: str | None = None
+    time_col: str | None = None
+    event_col: str | None = None
+
+
+class LeakageExperimentSet(BaseModel):
+    """单个变量集（A/B/C/D）的实验结果；metrics 键随任务类型不同（§25 清单）。"""
+
+    set_key: str
+    label: str
+    features: list[str]
+    removed: list[str]
+    n_features: int
+    metrics: dict[str, float] | None = None  # None = 集合为空或拟合失败（见 note）
+    note: str | None = None
+
+
+class LeakageExperimentResult(BaseModel):
+    task_type: str
+    target: str
+    n_used: int
+    sets: list[LeakageExperimentSet]
+    interpretation: str  # 固定规则文案（数值全部真实计算，红线 8）

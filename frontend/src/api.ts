@@ -803,6 +803,44 @@ export async function adjustedAssociation(
   });
 }
 
+// ---- §25 泄漏敏感性实验（docs/14 §5 变更记录 2026-09-19） ----
+
+export interface LeakageExperimentRequest {
+  task_type: TaskType;
+  label_col?: string;
+  time_col?: string;
+  event_col?: string;
+}
+
+export interface LeakageExperimentSet {
+  set_key: string;
+  label: string;
+  features: string[];
+  removed: string[];
+  n_features: number;
+  metrics: Record<string, number> | null;
+  note: string | null;
+}
+
+export interface LeakageExperimentResult {
+  task_type: TaskType;
+  target: string;
+  n_used: number;
+  sets: LeakageExperimentSet[];
+  /** 固定规则文案（数值真实计算，红线 8） */
+  interpretation: string;
+}
+
+export async function leakageExperiment(
+  datasetId: string,
+  body: LeakageExperimentRequest,
+): Promise<LeakageExperimentResult> {
+  return apiFetch<LeakageExperimentResult>(`/datasets/${datasetId}/leakage-experiment`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 // ---- 分析运行（docs/14 §3 /analysis-runs；docs/08 §3 状态机） ----
 
 export type RunStatus =

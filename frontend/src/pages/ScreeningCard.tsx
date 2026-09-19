@@ -11,11 +11,13 @@ import { Alert, Button, Card, Form, InputNumber, Select, Space, Table, Tag, Typo
 import { useState } from "react";
 import {
   adjustedAssociation,
+  leakageExperiment,
   subgroupAnalysis,
   univariateScreen,
   type AdjustedAssociationResult,
   type ApiError,
   type CorrectionMethod,
+  type LeakageExperimentResult,
   type SubgroupAnalysisResult,
   type TaskType,
   type UnivariateScreenResult,
@@ -53,6 +55,9 @@ export default function ScreeningCard({
   const [subgroupResult, setSubgroupResult] = useState<SubgroupAnalysisResult | null>(null);
   const [adjusting, setAdjusting] = useState(false);
   const [adjustResult, setAdjustResult] = useState<AdjustedAssociationResult | null>(null);
+  const [experimentForm] = Form.useForm();
+  const [experimenting, setExperimenting] = useState(false);
+  const [experimentResult, setExperimentResult] = useState<LeakageExperimentResult | null>(null);
 
   const columnOptions = columns.map((c) => ({ value: c, label: c }));
 
@@ -89,6 +94,18 @@ export default function ScreeningCard({
       message.error((e as ApiError).message || "混杂校正失败");
     } finally {
       setAdjusting(false);
+    }
+  };
+
+  const runExperiment = async () => {
+    const v = await experimentForm.validateFields();
+    setExperimenting(true);
+    try {
+      setExperimentResult(await leakageExperiment(datasetId, v));
+    } catch (e) {
+      message.error((e as ApiError).message || "泄漏实验失败");
+    } finally {
+      setExperimenting(false);
     }
   };
 
@@ -390,6 +407,100 @@ export default function ScreeningCard({
             ]}
           />
           <Alert type="info" showIcon message={adjustResult.note} />
+        </>
+      )}
+
+      <Typography.Title level={5}>泄漏敏感性实验（A/B/C/D 变量集对比，§25）</Typography.Title>
+      <Form form={experimentForm} layout="inline" style={{ marginBottom: 12 }}>
+        <Form.Item
+          name="task_type"
+          label="任务类型"
+          initialValue="classification"
+          rules={[{ required: true }]}
+        >
+          <Select
+            style={{ width: 120 }}
+            options={(Object.keys(TASK_LABEL) as TaskType[]).map((t) => ({
+              value: t,
+              label: TASK_LABEL[t],
+            }))}
+          />
+        </Form.Item>
+        {outcomeFields(experimentForm)}
+        <Button type="primary" loading={experimenting} onClick={() => void runExperiment()}>
+          开始实验
+        </Button>
+      </Form>
+      {experimentResult && (
+        <>
+          <Table
+            rowKey="set_key"
+            size="small"
+            pagination={false}
+            style={{ marginBottom: 8 }}
+            dataSource={experimentResult.sets}
+            columns={[
+              { title: "变量集", dataIndex: "label" },
+              { title: "变量数", dataIndex: "n_features", width: 70 },
+              ...(experimentResult.task_type === "regression"
+                ? [
+                    {
+                      title: "RMSE",
+                      render: (_: unknown, r: LeakageExperimentResult["sets"][number]) =>
+                        r.metrics?.rmse != null ? r.metrics.rmse.toFixed(4) : (r.note ?? "—"),
+                    },
+                    {
+                      title: "R²",
+                      render: (_: unknown, r: LeakageExperimentResult["sets"][number]) =>
+                        r.metrics?.r2 != null ? r.metrics.r2.toFixed(4) : "—",
+                    },
+                  ]
+                : experimentResult.task_type === "survival"
+                  ? [
+                      {
+                        title: "C-index",
+                        render: (_: unknown, r: LeakageExperimentResult["sets"][number]) =>
+                          r.metrics?.c_index != null
+                            ? r.metrics.c_index.toFixed(4)
+                            : (r.note ?? "—"),
+                      },
+                    ]
+                  : [
+                      {
+                        title: "AUC",
+                        render: (_: unknown, r: LeakageExperimentResult["sets"][number]) =>
+                          r.metrics?.auc != null ? r.metrics.auc.toFixed(4) : (r.note ?? "—"),
+                      },
+                      {
+                        title: "PR-AUC",
+                        render: (_: unknown, r: LeakageExperimentResult["sets"][number]) =>
+                          r.metrics?.pr_auc != null ? r.metrics.pr_auc.toFixed(4) : "—",
+                      },
+                      {
+                        title: "校准斜率",
+                        render: (_: unknown, r: LeakageExperimentResult["sets"][number]) =>
+                          r.metrics?.calibration_slope != null
+                            ? r.metrics.calibration_slope.toFixed(4)
+                            : "—",
+                      },
+                    ]),
+              {
+                title: "移除变量",
+                dataIndex: "removed",
+                render: (v: string[]) =>
+                  v.length > 0 ? (
+                    <Typography.Text type="secondary">{v.join("、")}</Typography.Text>
+                  ) : (
+                    "—"
+                  ),
+              },
+            ]}
+          />
+          <Alert
+            type={experimentResult.interpretation.includes("很可能由泄漏驱动") ? "error" : "info"}
+            showIcon
+            message={experimentResult.interpretation}
+          />
         </>
       )}
     </Card>
