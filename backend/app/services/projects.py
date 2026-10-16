@@ -49,8 +49,9 @@ async def list_projects(
         .limit(limit + 1)
     )
     stmt = _visible_to(stmt, user)
-    rows = list((await db.execute(stmt)).scalars().all())
-    items, next_cursor = rows[:limit], None
+    rows: list[Project] = list((await db.execute(stmt)).scalars().all())
+    items: list[Project] = rows[:limit]
+    next_cursor: str | None = None
     if len(rows) > limit:
         next_cursor = _encode_cursor(offset + limit)
     return items, next_cursor
