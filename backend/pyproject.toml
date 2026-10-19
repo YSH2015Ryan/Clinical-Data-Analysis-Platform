@@ -37,7 +37,7 @@ dependencies = [
     "openpyxl~=3.1",  # xlsx 解析（MIT）
     "numpy~=1.26",
     "scipy~=1.14",
-    "pyarrow>=23.0.1",  # PYSEC-2026-113 修复版
+    "pyarrow>=23.0.1,<26",  # PYSEC-2026-113 修复版；26+ 要求 NumPy 2，与锁定的 NumPy 1.26 冲突
     "charset-normalizer~=3.3",
     "pandera~=0.20",
     # ML（复用开源，不自研 —— docs/03）

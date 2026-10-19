@@ -9,7 +9,7 @@
 
 | 包 | 漏洞 | 处置 |
 |---|---|---|
-| pyarrow | PYSEC-2026-113 | `~=17.0` → `>=23.0.1` |
+| pyarrow | PYSEC-2026-113 | `~=17.0` → `>=23.0.1,<26`（26+ 要求 NumPy 2，科学计算栈仍锁定 NumPy 1.26） |
 | weasyprint | PYSEC-2026-2034 | `~=62.3` → `>=68.0`（PYSEC-2026-3412 暂无修复版，持续监控） |
 | ecdsa（python-jose 拖入） | PYSEC-2026-1325（无修复版） | **弃用 python-jose，换 PyJWT[crypto]** |
 
