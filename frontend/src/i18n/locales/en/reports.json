@@ -1,0 +1,39 @@
+{
+  "title": "Analysis reports",
+  "loadFailed": "Could not load report list",
+  "unavailable": "Report list unavailable",
+  "backComparison": "Back to comparison",
+  "queued": "Report queued; generation in progress…",
+  "createFailed": "Could not generate report",
+  "previewTitle": "Report preview ({{format}})",
+  "previewFailed": "Could not load preview",
+  "downloadFailed": "Download failed",
+  "create": {
+    "html": "Generate HTML report",
+    "pdf": "Generate PDF report",
+    "docx": "Generate Word",
+    "markdown": "Generate Markdown"
+  },
+  "tooltip": {
+    "docx": "Word document (same sections as the HTML version)",
+    "markdown": "Markdown (figures represented as placeholders)"
+  },
+  "table": {
+    "format": "Format",
+    "status": "Status",
+    "template": "Template",
+    "createdAt": "Created at",
+    "actions": "Actions",
+    "preview": "Preview",
+    "download": "Download"
+  },
+  "status": {
+    "PENDING": "Generating",
+    "READY": "Ready",
+    "FAILED": "Failed"
+  },
+  "empty": "No reports yet. Use the buttons above to generate one.",
+  "iframeTitle": "Report preview",
+  "disclaimerLabel": "Disclaimer",
+  "disclaimer": "This report is generated automatically by CDAP for research reference only and does not constitute clinical diagnostic advice."
+}

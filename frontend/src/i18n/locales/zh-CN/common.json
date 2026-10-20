@@ -1,0 +1,32 @@
+{
+  "app": {
+    "title": "CDAP 临床数据分析平台"
+  },
+  "language": {
+    "label": "界面语言"
+  },
+  "action": {
+    "cancel": "取消",
+    "confirm": "确认",
+    "create": "创建",
+    "delete": "删除"
+  },
+  "error": {
+    "load": "加载失败",
+    "network": "网络连接中断",
+    "fileTooLarge": "文件超过 200 MB 上限，请压缩或拆分后重试",
+    "authExpired": "登录已过期，请重新登录"
+  },
+  "taskType": {
+    "survival": "生存分析",
+    "classification": "分类",
+    "regression": "回归"
+  },
+  "datasetStatus": {
+    "UPLOADED": "已上传",
+    "VALIDATING": "校验中",
+    "VALIDATED": "已校验",
+    "FAILED": "失败",
+    "ARCHIVED": "已归档"
+  }
+}

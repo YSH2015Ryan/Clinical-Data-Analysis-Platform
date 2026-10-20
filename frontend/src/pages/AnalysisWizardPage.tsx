@@ -26,6 +26,7 @@ import {
   message,
 } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   createRun,
@@ -48,17 +49,11 @@ import {
   type TaskDetectionResult,
   type TaskType,
 } from "../api";
+import LanguageSwitcher from "../components/LanguageSwitcher";
 import PreprocessPanel from "./PreprocessPanel";
 
-const TASK_LABEL: Record<TaskType, string> = {
-  survival: "生存分析",
-  classification: "分类 / 风险预测",
-  regression: "回归 / 预后",
-};
-
-const STEP_TITLES = ["选择数据集", "预处理配置", "任务类型确认", "选择模型", "确认并提交"];
-const SURVIVAL_GUIDANCE =
-  "请进入“逐步调整”选择随访时间列和结局事件列，或切换到“分类 / 风险预测”。";
+const TASK_TYPES: TaskType[] = ["survival", "classification", "regression"];
+const STEP_KEYS = ["selectDataset", "preprocessing", "taskType", "models", "confirm"] as const;
 
 function mergeDetectionTarget(
   config: PreprocessConfig,
@@ -113,6 +108,26 @@ export default function AnalysisWizardPage() {
   const { id: projectId } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  const taskTypeLabel = useCallback((value: TaskType) => t(`analysis.taskTypes.${value}`), [t]);
+  const inferredTypeLabel = useCallback(
+    (value: string) => {
+      if (value === "text" || value === "datetime" || value === "id") {
+        return t(`analysis.inferredTypes.${value}`);
+      }
+      return value;
+    },
+    [t],
+  );
+  const candidateKindLabel = useCallback(
+    (kind: string) => {
+      if (kind === "time_col" || kind === "event_col" || kind === "label_col") {
+        return t(`analysis.detection.candidateKinds.${kind}`);
+      }
+      return kind;
+    },
+    [t],
+  );
   // T6.13：比较页「按建议重跑」经 location.state 传入结构化建议（仅首次装载生效）
   const location = useLocation();
   const [iterateSuggestion] = useState<RerunSuggestion | null>(
@@ -201,8 +216,8 @@ export default function AnalysisWizardPage() {
     if (!projectId) return;
     listDatasets(projectId)
       .then((page) => setDatasets(page.items))
-      .catch((e) => message.error((e as ApiError).message || "数据集加载失败"));
-  }, [projectId]);
+      .catch((e) => message.error((e as ApiError).message || t("analysis.errors.loadDatasets")));
+  }, [projectId, t]);
 
   // T6.9：选定数据集后加载科研流程模板（适用性 + 样本量核对，失败不阻塞向导）
   useEffect(() => {
@@ -216,10 +231,10 @@ export default function AnalysisWizardPage() {
   }, [datasetId]);
 
   /** 应用模板：预填任务类型与推荐模型（进入后续步骤可改）。 */
-  const applyTemplate = (t: ResearchTemplateSuggestion) => {
-    setTaskType(t.task_type);
-    setSelectedModels(t.models);
-    message.success(`已应用「${t.name}」模板：任务类型与推荐模型已预填，后续步骤可调整`);
+  const applyTemplate = (template: ResearchTemplateSuggestion) => {
+    setTaskType(template.task_type);
+    setSelectedModels(template.models);
+    message.success(t("analysis.messages.templateApplied", { name: template.name }));
   };
 
   // 进入 Step 2：取列名 + 自动推荐配置（默认值策略：推荐配置已填充）
@@ -235,8 +250,8 @@ export default function AnalysisWizardPage() {
       .then((cfg) =>
         setRecommended(iterateSuggestion ? applyIterateSuggestion(cfg, iterateSuggestion) : cfg),
       )
-      .catch((e) => message.error((e as ApiError).message || "推荐配置生成失败"));
-  }, [step, datasetId, recommended, iterateSuggestion]);
+      .catch((e) => message.error((e as ApiError).message || t("analysis.errors.recommendPreprocess")));
+  }, [step, datasetId, recommended, iterateSuggestion, t]);
 
   // 进入 Step 3：自动识别任务类型（推荐项默认选中）
   useEffect(() => {
@@ -249,9 +264,9 @@ export default function AnalysisWizardPage() {
       .catch((e) => {
         const err = e as ApiError;
         if (err.code === "TASK_DETECTION_FAILED") setDetectFailed(err.message);
-        else message.error(err.message || "识别失败");
+        else message.error(err.message || t("analysis.errors.detectTask"));
       });
-  }, [step, datasetId, detection, detectFailed]);
+  }, [step, datasetId, detection, detectFailed, t]);
 
   // 进入 Step 4：按任务类型拉取可用模型，默认勾选标准套餐（T6.12 分层）
   useEffect(() => {
@@ -266,8 +281,8 @@ export default function AnalysisWizardPage() {
           return standard.length > 0 ? standard : items.map((m) => m.key);
         });
       })
-      .catch((e) => message.error((e as ApiError).message || "模型列表加载失败"));
-  }, [step, taskType]);
+      .catch((e) => message.error((e as ApiError).message || t("analysis.errors.loadModels")));
+  }, [step, taskType, t]);
 
   /** 任务确认后按识别候选回填 target（仅补空缺，不覆盖用户手填）。 */
   const applyDetectionToConfig = useCallback(() => {
@@ -309,25 +324,31 @@ export default function AnalysisWizardPage() {
     if (!config || !taskType) return null;
     const target = config.target;
     if (taskType === "survival" && survivalBlocked) {
-      return `生存分析需要有效的随访时间列和结局事件列。${SURVIVAL_GUIDANCE}`;
+      return t("analysis.validation.survivalMissingTargets");
     }
     const need =
       taskType === "survival" ? [target.time_col, target.event_col] : [target.label_col];
     const missing = need.filter((c): c is string => !!c && !columns.includes(c));
     if (missing.length > 0) {
-      return `结局相关列 ${missing.join("、")} 在数据集中不存在，请返回步骤 2 核对结局定义。`;
+      return t("analysis.validation.targetColumnsMissing", {
+        columns: missing.join(t("analysis.validation.columnListSeparator")),
+      });
     }
     if (!profile || !target.label_col) return null;
     const p = profile.find((c) => c.name === target.label_col);
     if (!p) return null;
     if (taskType === "regression" && ["text", "datetime", "id"].includes(p.inferred_type)) {
-      return `回归任务的结局列「${target.label_col}」必须是数值，当前列为${p.inferred_type === "text" ? "文字类别" : p.inferred_type === "datetime" ? "日期" : "标识"}类型。如果研究问题是「是否/属于哪类」的判断，请改用「分类 / 风险预测」。`;
+      return t("analysis.validation.regressionOutcomeMustBeNumeric", {
+        column: target.label_col,
+        type: inferredTypeLabel(p.inferred_type),
+        classificationTask: taskTypeLabel("classification"),
+      });
     }
     if (taskType === "classification" && p.unique < 2) {
-      return `结局列「${target.label_col}」只有一个有效取值，分类任务需要至少两个类别，请核对结局定义。`;
+      return t("analysis.validation.classificationOutcomeNeedsTwoClasses", { column: target.label_col });
     }
     return null;
-  }, [config, taskType, columns, profile, survivalBlocked]);
+  }, [config, taskType, columns, profile, survivalBlocked, t, inferredTypeLabel, taskTypeLabel]);
 
   const canNext = useMemo(() => {
     switch (step) {
@@ -363,24 +384,24 @@ export default function AnalysisWizardPage() {
     try {
       const versions = await listDatasetVersions(datasetId);
       const latest = versions[0]; // 服务端按 version_no 降序
-      if (!latest) throw new Error("数据集无可用版本");
+      if (!latest) throw new Error(t("analysis.errors.noDatasetVersion"));
       const run = await createRun({
         dataset_version_id: latest.id,
         task_type: taskType,
         preprocess_config: config,
         selected_models: selectedModels,
       });
-      message.success("分析已提交");
+      message.success(t("analysis.messages.submitted"));
       navigate(`/runs/${run.id}`);
     } catch (e) {
       const err = e as ApiError;
-      message.error(err.message || "提交失败");
+      message.error(err.message || t("analysis.errors.submit"));
     } finally {
       setSubmitting(false);
     }
   };
 
-  const datasetName = datasets?.find((d) => d.id === datasetId)?.name ?? datasetId ?? "—";
+  const datasetName = datasets?.find((d) => d.id === datasetId)?.name ?? datasetId ?? t("analysis.notAvailable");
 
   /** 单页模式任务切换：按识别候选重填结局列 + 重拉模型清单。 */
   const onSinglePageTaskChange = (v: TaskType) => {
@@ -414,24 +435,30 @@ export default function AnalysisWizardPage() {
       <div style={{ maxWidth: 1080, margin: "24px auto", padding: "0 16px" }}>
         <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}>
           <Typography.Title level={3} style={{ margin: 0 }}>
-            新建分析 — 智能确认
+            {t("analysis.singlePage.title")}
           </Typography.Title>
-          <Button onClick={() => navigate(projectId ? `/projects/${projectId}` : "/projects")}>
-            取消
-          </Button>
+          <Space wrap>
+            <LanguageSwitcher />
+            <Button onClick={() => navigate(projectId ? `/projects/${projectId}` : "/projects")}>
+              {t("analysis.actions.cancel")}
+            </Button>
+          </Space>
         </Space>
         {!draft || models === null ? (
           <Card>
-            <Spin tip="正在按数据自动生成分析方案…" />
+            <Spin tip={t("analysis.singlePage.loadingTip")} />
           </Card>
         ) : (
-          <Card title="分析方案已按数据自动填好，确认后即可提交">
+          <Card title={t("analysis.singlePage.readyTitle")}>
             {detection && (
               <Alert
                 type="info"
                 showIcon
                 style={{ marginBottom: 16 }}
-                message={`自动识别：${detection.reason}（置信度 ${Math.round(detection.confidence * 100)}%）`}
+                message={t("analysis.detection.autoMessage", {
+                  reason: detection.reason,
+                  confidence: Math.round(detection.confidence * 100),
+                })}
               />
             )}
             {survivalBlocked && (
@@ -439,8 +466,8 @@ export default function AnalysisWizardPage() {
                 type="warning"
                 showIcon
                 style={{ marginBottom: 16 }}
-                message="当前数据没有随访时间 / 结局事件列，无法进行生存分析"
-                description={SURVIVAL_GUIDANCE}
+                message={t("analysis.validation.survivalUnavailable")}
+                description={t("analysis.validation.survivalGuidance")}
               />
             )}
             {submitBlock && (
@@ -448,35 +475,39 @@ export default function AnalysisWizardPage() {
                 type="error"
                 showIcon
                 style={{ marginBottom: 16 }}
-                message="当前配置无法完成分析"
+                message={t("analysis.validation.configurationCannotComplete")}
                 description={submitBlock}
               />
             )}
             <Descriptions bordered size="small" column={1}>
-              <Descriptions.Item label="数据集">{datasetName}</Descriptions.Item>
-              <Descriptions.Item label="任务类型">
+              <Descriptions.Item label={t("analysis.fields.dataset")}>{datasetName}</Descriptions.Item>
+              <Descriptions.Item label={t("analysis.fields.taskType")}>
                 <Select<TaskType>
                   style={{ width: 220 }}
                   value={taskType ?? undefined}
-                  options={(Object.keys(TASK_LABEL) as TaskType[]).map((t) => ({
-                    value: t,
-                    label: TASK_LABEL[t],
+                  options={TASK_TYPES.map((type) => ({
+                    value: type,
+                    label: taskTypeLabel(type),
                   }))}
                   onChange={onSinglePageTaskChange}
                 />
               </Descriptions.Item>
-              <Descriptions.Item label="结局定义">
+              <Descriptions.Item label={t("analysis.fields.outcomeDefinition")}>
                 <Typography.Text code>{JSON.stringify(config?.target ?? {})}</Typography.Text>
               </Descriptions.Item>
-              <Descriptions.Item label="预处理步骤（推荐配置）">
+              <Descriptions.Item label={t("analysis.fields.preprocessStepsRecommended")}>
                 {config?.steps.map((s, i) => <Tag key={i}>{s.type}</Tag>)}
               </Descriptions.Item>
-              <Descriptions.Item label="交叉验证">
+              <Descriptions.Item label={t("analysis.fields.crossValidation")}>
                 {config
-                  ? `${config.validation.strategy} × ${config.validation.n_splits}（seed=${config.validation.seed}）`
-                  : "—"}
+                  ? t("analysis.fields.crossValidationSummary", {
+                      strategy: config.validation.strategy,
+                      nSplits: config.validation.n_splits,
+                      seed: config.validation.seed,
+                    })
+                  : t("analysis.notAvailable")}
               </Descriptions.Item>
-              <Descriptions.Item label={`模型（标准套餐已勾选，可增减）`}>
+              <Descriptions.Item label={t("analysis.fields.modelsStandardEditable")}>
                 <Checkbox.Group
                   value={selectedModels}
                   onChange={(v) => setSelectedModels(v as string[])}
@@ -504,9 +535,9 @@ export default function AnalysisWizardPage() {
                 disabled={!!submitBlock || selectedModels.length === 0 || survivalBlocked}
                 onClick={() => void submit()}
               >
-                确认并开始分析
+                {t("analysis.actions.confirmStart")}
               </Button>
-              <Button onClick={() => setFullWizard(true)}>逐步调整（高级）</Button>
+              <Button onClick={() => setFullWizard(true)}>{t("analysis.actions.guidedSetup")}</Button>
             </Space>
           </Card>
         )}
@@ -521,11 +552,11 @@ export default function AnalysisWizardPage() {
         <Alert
           type="warning"
           showIcon
-          message="未能自动识别任务类型"
-          description="数据中未找到明确的结局/事件列，请使用逐步向导手动指定分析目标。"
+          message={t("analysis.singlePage.detectionUnavailableTitle")}
+          description={t("analysis.singlePage.detectionUnavailableDescription")}
           action={
             <Button type="primary" onClick={() => setFullWizard(true)}>
-              进入逐步向导
+              {t("analysis.singlePage.enterGuidedWizard")}
             </Button>
           }
         />
@@ -535,17 +566,20 @@ export default function AnalysisWizardPage() {
 
   const stepContent = [
     // Step 1 数据集
-    <Card key="s1" title="选择已校验数据集">
+    <Card key="s1" title={t("analysis.datasetStep.title")}>
       <Select
         style={{ width: 420 }}
-        placeholder="选择数据集（仅 VALIDATED 可分析）"
+        placeholder={t("analysis.datasetStep.placeholder")}
         loading={datasets === null}
         value={datasetId ?? undefined}
         options={(datasets ?? [])
           .filter((d) => d.status === "VALIDATED")
           .map((d) => ({
             value: d.id,
-            label: `${d.name}（${d.preview?.total_rows ?? "?"} 行）`,
+            label: t("analysis.datasetStep.optionLabel", {
+              name: d.name,
+              rowCount: d.preview?.total_rows ?? t("analysis.datasetStep.unknownRowCount"),
+            }),
           }))}
         onChange={(v) => {
           setDatasetId(v);
@@ -562,32 +596,32 @@ export default function AnalysisWizardPage() {
       />
       {templates && datasetId && (
         <div style={{ marginTop: 16 }}>
-          <Typography.Text strong>科研流程模板（可选）：</Typography.Text>
+          <Typography.Text strong>{t("analysis.templates.title")}</Typography.Text>
           <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
-            {templates.map((t) => (
+            {templates.map((template) => (
               <Alert
-                key={t.key}
-                type={t.applicable ? "info" : "warning"}
+                key={template.key}
+                type={template.applicable ? "info" : "warning"}
                 showIcon
                 message={
                   <Space wrap>
-                    <span>{t.name}</span>
-                    <Tag color={t.applicable ? "green" : "default"}>
-                      {t.applicable ? "适用" : "不适用"}
+                    <span>{template.name}</span>
+                    <Tag color={template.applicable ? "green" : "default"}>
+                      {template.applicable ? t("analysis.templates.applicable") : t("analysis.templates.notApplicable")}
                     </Tag>
-                    <Tag>{TASK_LABEL[t.task_type]}</Tag>
-                    {t.sample_size.map((a, i) => (
+                    <Tag>{taskTypeLabel(template.task_type)}</Tag>
+                    {template.sample_size.map((a, i) => (
                       <Tag key={i} color={a.meets ? "green" : "orange"}>
                         {a.rule}
-                        {a.value != null ? `（当前 ${a.value}）` : ""}
+                        {a.value != null ? t("analysis.templates.currentValue", { value: a.value }) : ""}
                       </Tag>
                     ))}
                   </Space>
                 }
                 description={
                   <>
-                    <div>{t.reasons.join("；")}</div>
-                    {t.sample_size.map((a, i) => (
+                    <div>{template.reasons.join(t("analysis.templates.reasonSeparator"))}</div>
+                    {template.sample_size.map((a, i) => (
                       <div key={i} style={{ color: "rgba(0,0,0,0.55)" }}>
                         {a.text}
                       </div>
@@ -595,9 +629,9 @@ export default function AnalysisWizardPage() {
                   </>
                 }
                 action={
-                  t.applicable ? (
-                    <Button size="small" type="primary" onClick={() => applyTemplate(t)}>
-                      使用此模板
+                  template.applicable ? (
+                    <Button size="small" type="primary" onClick={() => applyTemplate(template)}>
+                      {t("analysis.actions.useTemplate")}
                     </Button>
                   ) : undefined
                 }
@@ -611,7 +645,7 @@ export default function AnalysisWizardPage() {
           type="warning"
           showIcon
           style={{ marginTop: 16 }}
-          message="项目内暂无已校验数据集，请先上传并通过质量校验"
+          message={t("analysis.datasetStep.noValidated")}
         />
       )}
     </Card>,
@@ -628,35 +662,48 @@ export default function AnalysisWizardPage() {
       <Spin key="s2" />
     ),
     // Step 3 任务类型
-    <Card key="s3" title="任务类型识别">
+    <Card key="s3" title={t("analysis.detection.title")}>
       {detectFailed && (
         <Alert
           type="warning"
           showIcon
-          message="自动识别失败，请手动选择任务类型"
+          message={t("analysis.detection.failedTitle")}
           description={detectFailed}
           style={{ marginBottom: 12 }}
         />
       )}
-      {!detection && !detectFailed && <Spin tip="识别中…" />}
+      {!detection && !detectFailed && <Spin tip={t("analysis.detection.loading")} />}
       {detection && (
         <Space direction="vertical" style={{ width: "100%", marginBottom: 16 }}>
           <Space size="large">
             <Statistic
-              title="推荐任务"
-              value={detection.recommended_task ? TASK_LABEL[detection.recommended_task] : "—"}
+              title={t("analysis.detection.recommendedTask")}
+              value={
+                detection.recommended_task
+                  ? taskTypeLabel(detection.recommended_task)
+                  : t("analysis.notAvailable")
+              }
             />
-            <Statistic title="置信度" value={`${Math.round(detection.confidence * 100)}%`} />
+            <Statistic
+              title={t("analysis.detection.confidence")}
+              value={t("analysis.detection.confidenceValue", {
+                confidence: Math.round(detection.confidence * 100),
+              })}
+            />
           </Space>
           <Typography.Paragraph style={{ marginBottom: 4 }}>
-            <Typography.Text strong>推荐理由：</Typography.Text>
+            <Typography.Text strong>{t("analysis.detection.reasonLabel")}</Typography.Text>{" "}
             {detection.reason}
           </Typography.Paragraph>
           <Space wrap>
             {Object.entries(detection.candidates).map(([kind, cands]) =>
               (cands ?? []).slice(0, 3).map((c) => (
                 <Tag key={`${kind}-${c.column}`}>
-                  {kind}: {c.column} ({Math.round(c.confidence * 100)}%)
+                  {t("analysis.detection.candidateTag", {
+                    kind: candidateKindLabel(kind),
+                    column: c.column,
+                    confidence: Math.round(c.confidence * 100),
+                  })}
                 </Tag>
               )),
             )}
@@ -668,19 +715,23 @@ export default function AnalysisWizardPage() {
           type="warning"
           showIcon
           style={{ marginBottom: 12 }}
-          message="当前数据没有随访时间 / 结局事件列，无法进行生存分析"
-          description={SURVIVAL_GUIDANCE}
+          message={t("analysis.validation.survivalUnavailable")}
+          description={t("analysis.validation.survivalGuidance")}
         />
       )}
       <Space>
-        <span>任务类型{detection ? "（可覆盖推荐）" : "（手动选择）"}</span>
+        <span>
+          {detection
+            ? t("analysis.detection.taskSelectionOverrideRecommended")
+            : t("analysis.detection.taskSelectionManual")}
+        </span>
         <Select<TaskType>
           style={{ width: 200 }}
-          placeholder="选择任务类型"
+          placeholder={t("analysis.detection.selectPlaceholder")}
           value={taskType ?? undefined}
-          options={(Object.keys(TASK_LABEL) as TaskType[]).map((t) => ({
-            value: t,
-            label: TASK_LABEL[t],
+          options={TASK_TYPES.map((type) => ({
+            value: type,
+            label: taskTypeLabel(type),
           }))}
           onChange={(v) => {
             setTaskType(v);
@@ -696,7 +747,10 @@ export default function AnalysisWizardPage() {
       </Space>
     </Card>,
     // Step 4 模型（T6.12 分层：标准套餐默认勾选，其余折叠为高级选项）
-    <Card key="s4" title={`可用模型（${taskType ? TASK_LABEL[taskType] : ""}）`}>
+    <Card
+      key="s4"
+      title={t("analysis.modelsStep.title", { taskType: taskType ? taskTypeLabel(taskType) : "" })}
+    >
       {models === null ? (
         <Spin />
       ) : (
@@ -711,28 +765,28 @@ export default function AnalysisWizardPage() {
             const columns = (withRole: boolean) =>
               [
                 {
-                  title: "选择",
+                  title: t("analysis.modelsStep.columns.select"),
                   width: 60,
                   render: (_: unknown, m: ModelPlugin) => <Checkbox value={m.key} />,
                 },
-                { title: "模型", dataIndex: "name" },
+                { title: t("analysis.modelsStep.columns.model"), dataIndex: "name" },
                 ...(withRole
                   ? [
                       {
-                        title: "角色",
+                        title: t("analysis.modelsStep.columns.role"),
                         width: 150,
                         render: (_: unknown, m: ModelPlugin) =>
-                          m.role ? <Tag color="geekblue">{m.role}</Tag> : "—",
+                          m.role ? <Tag color="geekblue">{m.role}</Tag> : t("analysis.notAvailable"),
                       },
                     ]
                   : []),
-                { title: "标识", dataIndex: "key" },
-                { title: "版本", dataIndex: "version", width: 100 },
+                { title: t("analysis.modelsStep.columns.key"), dataIndex: "key" },
+                { title: t("analysis.modelsStep.columns.version"), dataIndex: "version", width: 100 },
               ] as const;
             return (
               <>
                 <Typography.Text strong>
-                  标准套餐（{standard.length} 个，已默认勾选：基线 + 强模型 + 可解释模型）
+                  {t("analysis.modelsStep.standardHeading", { count: standard.length })}
                 </Typography.Text>
                 <Table<ModelPlugin>
                   rowKey="key"
@@ -747,7 +801,7 @@ export default function AnalysisWizardPage() {
                     items={[
                       {
                         key: "advanced",
-                        label: `高级选项（${advanced.length} 个，按需展开勾选）`,
+                        label: t("analysis.modelsStep.advancedHeading", { count: advanced.length }),
                         children: (
                           <Table<ModelPlugin>
                             rowKey="key"
@@ -768,33 +822,37 @@ export default function AnalysisWizardPage() {
       )}
     </Card>,
     // Step 5 确认
-    <Card key="s5" title="参数摘要">
+    <Card key="s5" title={t("analysis.summary.title")}>
       {submitBlock && (
         <Alert
           type="error"
           showIcon
           style={{ marginBottom: 16 }}
-          message="当前配置无法完成分析"
+          message={t("analysis.validation.configurationCannotComplete")}
           description={submitBlock}
         />
       )}
       <Descriptions bordered size="small" column={1}>
-        <Descriptions.Item label="数据集">{datasetName}</Descriptions.Item>
-        <Descriptions.Item label="任务类型">
-          {taskType ? TASK_LABEL[taskType] : "—"}
+        <Descriptions.Item label={t("analysis.fields.dataset")}>{datasetName}</Descriptions.Item>
+        <Descriptions.Item label={t("analysis.fields.taskType")}>
+          {taskType ? taskTypeLabel(taskType) : t("analysis.notAvailable")}
         </Descriptions.Item>
-        <Descriptions.Item label="结局定义">
+        <Descriptions.Item label={t("analysis.fields.outcomeDefinition")}>
           <Typography.Text code>{JSON.stringify(config?.target ?? {})}</Typography.Text>
         </Descriptions.Item>
-        <Descriptions.Item label="预处理步骤">
+        <Descriptions.Item label={t("analysis.fields.preprocessSteps")}>
           {config?.steps.map((s, i) => <Tag key={i}>{s.type}</Tag>)}
         </Descriptions.Item>
-        <Descriptions.Item label="交叉验证">
+        <Descriptions.Item label={t("analysis.fields.crossValidation")}>
           {config
-            ? `${config.validation.strategy} × ${config.validation.n_splits}（seed=${config.validation.seed}）`
-            : "—"}
+            ? t("analysis.fields.crossValidationSummary", {
+                strategy: config.validation.strategy,
+                nSplits: config.validation.n_splits,
+                seed: config.validation.seed,
+              })
+            : t("analysis.notAvailable")}
         </Descriptions.Item>
-        <Descriptions.Item label="模型">
+        <Descriptions.Item label={t("analysis.fields.models")}>
           {selectedModels.map((k) => (
             <Tag key={k} color="geekblue">
               {k}
@@ -809,38 +867,49 @@ export default function AnalysisWizardPage() {
     <div style={{ maxWidth: 1080, margin: "24px auto", padding: "0 16px" }}>
       <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}>
         <Typography.Title level={3} style={{ margin: 0 }}>
-          新建分析
+          {t("analysis.wizard.title")}
         </Typography.Title>
-        <Button onClick={() => navigate(projectId ? `/projects/${projectId}` : "/projects")}>
-          取消
-        </Button>
+        <Space wrap>
+          <LanguageSwitcher />
+          <Button onClick={() => navigate(projectId ? `/projects/${projectId}` : "/projects")}>
+            {t("analysis.actions.cancel")}
+          </Button>
+        </Space>
       </Space>
-      <Steps current={step} items={STEP_TITLES.map((title) => ({ title }))} size="small" />
+      <Steps
+        current={step}
+        items={STEP_KEYS.map((key) => ({ title: t(`analysis.steps.${key}`) }))}
+        size="small"
+      />
       {iterateSuggestion && (
         <Alert
           type="info"
           showIcon
           style={{ marginTop: 16 }}
-          message="已按迭代建议预填"
-          description={`${iterateSuggestion.summary}（预处理步骤与模型选择可在后续步骤调整）`}
+          message={t("analysis.iteration.prefilledTitle")}
+          description={t("analysis.iteration.prefilledDescription", {
+            summary: iterateSuggestion.summary,
+          })}
         />
       )}
       <div style={{ margin: "24px 0" }}>{stepContent[step]}</div>
       <Space style={{ width: "100%", justifyContent: "flex-end" }}>
-        {step > 0 && <Button onClick={() => setStep((s) => s - 1)}>上一步</Button>}
-        {step < STEP_TITLES.length - 1 && (
+        {step > 0 && (
+          <Button onClick={() => setStep((s) => s - 1)}>{t("analysis.actions.previous")}</Button>
+        )}
+        {step < STEP_KEYS.length - 1 && (
           <Button type="primary" disabled={!canNext} onClick={next}>
-            下一步
+            {t("analysis.actions.next")}
           </Button>
         )}
-        {step === STEP_TITLES.length - 1 && (
+        {step === STEP_KEYS.length - 1 && (
           <Button
             type="primary"
             loading={submitting}
             disabled={!!submitBlock}
             onClick={() => void submit()}
           >
-            提交分析
+            {t("analysis.actions.submitAnalysis")}
           </Button>
         )}
       </Space>

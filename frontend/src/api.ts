@@ -1,5 +1,7 @@
 /** API 客户端：契约同源 docs/14（/api/v1，Bearer JWT，RFC7807 错误）。 */
 
+import i18n from "./i18n";
+
 const BASE = "/api/v1";
 let accessToken: string | null = null;
 let restorePromise: Promise<boolean> | null = null;
@@ -227,7 +229,7 @@ function uploadError(xhr: XMLHttpRequest): ApiError {
   } catch {
     return {
       code: "INTERNAL_ERROR",
-      message: xhr.status ? `HTTP ${xhr.status}` : "网络连接中断",
+      message: xhr.status ? `HTTP ${xhr.status}` : i18n.t("common.error.network"),
       details: {},
       trace_id: "",
     };
@@ -242,7 +244,7 @@ export async function uploadDataset(
   if (file.size > MAX_UPLOAD_BYTES) {
     throw {
       code: "FILE_TOO_LARGE",
-      message: "文件超过 200 MB 上限，请压缩或拆分后重试",
+      message: i18n.t("common.error.fileTooLarge"),
       details: { max_mb: 200 },
       trace_id: "",
     } satisfies ApiError;
@@ -255,7 +257,7 @@ export async function uploadDataset(
     window.location.href = "/login";
     throw {
       code: "AUTH_FAILED",
-      message: "登录已过期，请重新登录",
+      message: i18n.t("common.error.authExpired"),
       details: {},
       trace_id: "",
     } satisfies ApiError;

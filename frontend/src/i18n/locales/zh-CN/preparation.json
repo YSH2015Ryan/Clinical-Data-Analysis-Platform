@@ -1,0 +1,182 @@
+{
+  "wizard": {
+    "title": "数据准备（化验 + 诊断 → 分析宽表）",
+    "cancel": "取消",
+    "previous": "上一步",
+    "next": "下一步",
+    "submit": "提交并生成宽表",
+    "steps": {
+      "selectTables": "选择数据表",
+      "decisions": "结局与取值决策",
+      "confirm": "确认并提交",
+      "result": "准备结果"
+    },
+    "messages": {
+      "loadDatasetsFailed": "数据集加载失败",
+      "previewFailed": "扫描失败",
+      "submitFailed": "提交失败"
+    },
+    "datasetOption": "{{name}}（{{rows}} 行）",
+    "selectTables": {
+      "title": "选择要组装的两张表",
+      "labTable": "化验表（长表：一行一条化验）",
+      "labPlaceholder": "如：化验.csv",
+      "diagnosisTable": "诊断表（含诊断/诊断日期/年龄/性别）",
+      "diagnosisPlaceholder": "如：诊断.csv",
+      "insufficientDatasets": "项目内可用数据集不足两张，请先上传化验表与诊断表"
+    },
+    "decisions": {
+      "title": "扫描结果与决策（机器已填好默认值，按需调整）",
+      "scanning": "正在扫描两张表…",
+      "previewFailedTitle": "扫描失败",
+      "patientsIntersection": "患者交集",
+      "labRows": "化验行数",
+      "diagnosisRows": "诊断行数",
+      "susceptibilityRows": "疑似药敏行（将剔除）",
+      "outcomeTitle": "① 结局定义：勾选要研究的诊断词条（任一命中即记为阳性）",
+      "columns": {
+        "select": "选择",
+        "term": "诊断词条",
+        "count": "出现次数"
+      },
+      "outcomeScope": "② 结局判定范围",
+      "indexDiagnosis": "③ 索引诊断（化验时间的锚点，防泄漏：只保留它之前的化验）",
+      "windowDays": "④ 诊断前时间窗（天，0=不限）",
+      "valueStrategy": "⑤ 同一项目多次化验取值",
+      "valueColumn": "取值列",
+      "excludeSusceptibility": "剔除药敏记录",
+      "clipQuantile": "极端值截断分位（0=不截断）",
+      "topNItems": "最多保留检验项目数"
+    },
+    "options": {
+      "outcomeScopeAny": "任一诊断记录命中即阳性",
+      "outcomeScopeIndex": "仅索引诊断命中才阳性",
+      "indexFirst": "首次诊断",
+      "indexLast": "末次诊断",
+      "latest": "最近一次",
+      "mean": "均值",
+      "scopeAnySummary": "任一诊断记录",
+      "scopeIndexSummary": "仅索引诊断",
+      "firstSummary": "首次",
+      "lastSummary": "末次"
+    },
+    "valueColumns": {
+      "normalized": "归一化值",
+      "result": "结果"
+    },
+    "confirm": {
+      "title": "参数摘要",
+      "labTable": "化验表",
+      "diagnosisTable": "诊断表",
+      "outcomeTerms": "结局词条",
+      "scope": "判定范围",
+      "indexDiagnosis": "索引诊断",
+      "timeWindow": "时间窗",
+      "valueStrategy": "取值策略",
+      "cleaning": "清洗",
+      "windowUnlimited": "不限",
+      "windowDays": "诊断前 {{days}} 天",
+      "valueStrategySummary": "{{strategy}}（{{column}}）",
+      "cleaningBoth": "剔除药敏；按 {{quantile}} 分位截断极端值；最多 {{topN}} 个检验项目",
+      "cleaningSusceptibilityOnly": "剔除药敏；最多 {{topN}} 个检验项目",
+      "cleaningClippingOnly": "按 {{quantile}} 分位截断极端值；最多 {{topN}} 个检验项目",
+      "cleaningNone": "最多 {{topN}} 个检验项目"
+    },
+    "result": {
+      "processingTitle": "正在生成宽表…",
+      "processingSubtitle": "大表可能需要几十秒",
+      "failedTitle": "数据准备失败",
+      "unknownError": "未知错误",
+      "successTitle": "宽表已生成，可直接进入分析",
+      "patients": "患者数",
+      "positiveOutcomes": "结局阳性",
+      "features": "检验项目",
+      "leakageRemoved": "防泄漏剔除行",
+      "newAnalysis": "用这张宽表新建分析",
+      "viewDataset": "查看宽表数据集",
+      "auditItem": "审计项",
+      "value": "数值"
+    }
+  },
+  "summary": {
+    "labRowsIn": "化验原始行数",
+    "diagnosisRowsIn": "诊断原始行数",
+    "patients": "纳入患者数",
+    "positivePatients": "结局阳性患者数",
+    "susceptibilityRemoved": "剔除药敏行",
+    "validValueRows": "有效取值行",
+    "missingLabDateRowsRemoved": "化验日期缺失剔除行",
+    "clippedRows": "极端值截断行",
+    "retainedFeatures": "保留检验项目数",
+    "leakageRemoved": "防泄漏剔除（诊断后化验）",
+    "outsideWindowRemoved": "时间窗外剔除行",
+    "wideRows": "宽表行数",
+    "wideColumns": "宽表列数"
+  },
+  "panel": {
+    "stepLabels": {
+      "reshape": "长转宽",
+      "dropColumns": "删除列",
+      "missing": "缺失值",
+      "outlier": "异常值",
+      "encode": "编码",
+      "scale": "缩放",
+      "featureSelect": "特征选择",
+      "derive": "派生列"
+    },
+    "none": "（无）",
+    "messages": {
+      "recommendSuccess": "已按列类型/语义生成推荐配置",
+      "recommendFailed": "推荐配置生成失败",
+      "validateSuccess": "DSL 校验通过",
+      "validateFailed": "校验失败",
+      "missingTopLevelFields": "缺少 target / steps / validation 顶层字段",
+      "applySuccess": "已应用到表单",
+      "jsonParseFailed": "JSON 解析失败，请检查语法"
+    },
+    "params": {
+      "defaultStrategy": "默认策略",
+      "dropThreshold": "删除阈值",
+      "method": "方法",
+      "action": "动作",
+      "oneHotMaxCardinality": "One-Hot 基数上限",
+      "threshold": "阈值",
+      "dropColumnsPlaceholder": "选择要删除的列",
+      "indexColumn": "主键列",
+      "nameColumn": "名称列",
+      "valueColumn": "值列",
+      "aggregation": "聚合",
+      "newColumnPlaceholder": "新列名",
+      "expressionPlaceholder": "表达式，如 os_months / 12",
+      "delete": "删除",
+      "addExpression": "添加表达式"
+    },
+    "target": {
+      "title": "结局定义（target）",
+      "timeColumn": "随访时间列",
+      "eventColumn": "事件列",
+      "labelColumn": "标签列"
+    },
+    "steps": {
+      "title": "预处理步骤（steps，按顺序执行）",
+      "addStep": "添加步骤",
+      "remove": "移除"
+    },
+    "validation": {
+      "title": "交叉验证（validation）",
+      "strategy": "策略",
+      "splits": "折数",
+      "seed": "随机种子"
+    },
+    "title": "预处理配置",
+    "recommend": "推荐配置",
+    "validate": "校验",
+    "validationFailedTitle": "DSL 校验失败",
+    "tabs": {
+      "form": "表单",
+      "json": "DSL JSON"
+    },
+    "resetToForm": "还原为表单内容",
+    "applyToForm": "应用到表单"
+  }
+}

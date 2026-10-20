@@ -6,7 +6,8 @@
  */
 
 import { Alert, Button, Card, Select, Space, Statistic, Tag, Typography, message } from "antd";
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   detectTask,
   type ApiError,
@@ -14,11 +15,7 @@ import {
   type TaskType,
 } from "../api";
 
-const TASK_LABEL: Record<TaskType, string> = {
-  survival: "生存分析",
-  classification: "分类 / 风险预测",
-  regression: "回归 / 预后",
-};
+const TASK_TYPES: TaskType[] = ["survival", "classification", "regression"];
 
 interface Props {
   datasetId: string;
@@ -26,6 +23,17 @@ interface Props {
 }
 
 export default function TaskDetectCard({ datasetId, onConfirm }: Props) {
+  const { t } = useTranslation();
+  const taskTypeLabel = useCallback((value: TaskType) => t(`analysis.taskTypes.${value}`), [t]);
+  const candidateKindLabel = useCallback(
+    (kind: string) => {
+      if (kind === "time_col" || kind === "event_col" || kind === "label_col") {
+        return t(`analysis.detection.candidateKinds.${kind}`);
+      }
+      return kind;
+    },
+    [t],
+  );
   const [detection, setDetection] = useState<TaskDetectionResult | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [selected, setSelected] = useState<TaskType | null>(null);
@@ -44,7 +52,7 @@ export default function TaskDetectCard({ datasetId, onConfirm }: Props) {
         setDetection(null);
         setFailed(err.message);
       } else {
-        message.error(err.message || "识别失败");
+        message.error(err.message || t("analysis.errors.detectTask"));
       }
     } finally {
       setBusy(false);
@@ -53,19 +61,19 @@ export default function TaskDetectCard({ datasetId, onConfirm }: Props) {
 
   return (
     <Card
-      title="任务类型识别"
+      title={t("analysis.detection.title")}
       style={{ marginBottom: 16 }}
       extra={
         <Space>
           <Button onClick={() => void onDetect()} loading={busy}>
-            {detection || failed ? "重新识别" : "识别任务类型"}
+            {detection || failed ? t("analysis.actions.redetectTask") : t("analysis.actions.detectTask")}
           </Button>
           <Button
             type="primary"
             disabled={selected == null}
             onClick={() => selected && onConfirm?.(selected, detection)}
           >
-            确认任务类型
+            {t("analysis.actions.confirmTask")}
           </Button>
         </Space>
       }
@@ -74,7 +82,7 @@ export default function TaskDetectCard({ datasetId, onConfirm }: Props) {
         <Alert
           type="warning"
           showIcon
-          message="自动识别失败，请手动选择任务类型"
+          message={t("analysis.detection.failedTitle")}
           description={failed}
           style={{ marginBottom: 12 }}
         />
@@ -83,23 +91,33 @@ export default function TaskDetectCard({ datasetId, onConfirm }: Props) {
         <Space direction="vertical" style={{ width: "100%", marginBottom: 12 }}>
           <Space size="large">
             <Statistic
-              title="推荐任务"
-              value={detection.recommended_task ? TASK_LABEL[detection.recommended_task] : "—"}
+              title={t("analysis.detection.recommendedTask")}
+              value={
+                detection.recommended_task
+                  ? taskTypeLabel(detection.recommended_task)
+                  : t("analysis.notAvailable")
+              }
             />
             <Statistic
-              title="置信度"
-              value={`${Math.round(detection.confidence * 100)}%`}
+              title={t("analysis.detection.confidence")}
+              value={t("analysis.detection.confidenceValue", {
+                confidence: Math.round(detection.confidence * 100),
+              })}
             />
           </Space>
           <Typography.Paragraph style={{ marginBottom: 4 }}>
-            <Typography.Text strong>推荐理由：</Typography.Text>
+            <Typography.Text strong>{t("analysis.detection.reasonLabel")}</Typography.Text>{" "}
             {detection.reason}
           </Typography.Paragraph>
           <Space wrap>
             {Object.entries(detection.candidates).map(([kind, cands]) =>
               (cands ?? []).slice(0, 3).map((c) => (
                 <Tag key={`${kind}-${c.column}`}>
-                  {kind}: {c.column} ({Math.round(c.confidence * 100)}%)
+                  {t("analysis.detection.candidateTag", {
+                    kind: candidateKindLabel(kind),
+                    column: c.column,
+                    confidence: Math.round(c.confidence * 100),
+                  })}
                 </Tag>
               )),
             )}
@@ -107,14 +125,18 @@ export default function TaskDetectCard({ datasetId, onConfirm }: Props) {
         </Space>
       )}
       <Space>
-        <span>任务类型{detection ? "（可覆盖推荐）" : "（手动选择）"}</span>
+        <span>
+          {detection
+            ? t("analysis.detection.taskSelectionOverrideRecommended")
+            : t("analysis.detection.taskSelectionManual")}
+        </span>
         <Select<TaskType>
           style={{ width: 200 }}
-          placeholder="选择任务类型"
+          placeholder={t("analysis.detection.selectPlaceholder")}
           value={selected ?? undefined}
-          options={(Object.keys(TASK_LABEL) as TaskType[]).map((t) => ({
-            value: t,
-            label: TASK_LABEL[t],
+          options={TASK_TYPES.map((type) => ({
+            value: type,
+            label: taskTypeLabel(type),
           }))}
           onChange={(v) => setSelected(v)}
         />

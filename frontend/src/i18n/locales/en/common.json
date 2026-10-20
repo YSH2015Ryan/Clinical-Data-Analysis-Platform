@@ -1,0 +1,32 @@
+{
+  "app": {
+    "title": "CDAP Clinical Data Analysis Platform"
+  },
+  "language": {
+    "label": "Interface language"
+  },
+  "action": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "create": "Create",
+    "delete": "Delete"
+  },
+  "error": {
+    "load": "Could not load data",
+    "network": "Network connection interrupted",
+    "fileTooLarge": "The file exceeds the 200 MB limit. Compress or split it and try again.",
+    "authExpired": "Your session has expired. Sign in again."
+  },
+  "taskType": {
+    "survival": "Survival analysis",
+    "classification": "Classification",
+    "regression": "Regression"
+  },
+  "datasetStatus": {
+    "UPLOADED": "Uploaded",
+    "VALIDATING": "Validating",
+    "VALIDATED": "Validated",
+    "FAILED": "Failed",
+    "ARCHIVED": "Archived"
+  }
+}

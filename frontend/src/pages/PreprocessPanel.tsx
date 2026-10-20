@@ -19,6 +19,7 @@ import {
   message,
 } from "antd";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   DEFAULT_STEP_PARAMS,
   recommendPreprocess,
@@ -29,18 +30,18 @@ import {
   type StepType,
 } from "../api";
 
-const STEP_LABEL: Record<StepType, string> = {
-  reshape: "长转宽",
-  drop_columns: "删除列",
-  missing: "缺失值",
-  outlier: "异常值",
-  encode: "编码",
-  scale: "缩放",
-  feature_select: "特征选择",
-  derive: "派生列",
+const STEP_LABEL_KEYS: Record<StepType, string> = {
+  reshape: "preparation.panel.stepLabels.reshape",
+  drop_columns: "preparation.panel.stepLabels.dropColumns",
+  missing: "preparation.panel.stepLabels.missing",
+  outlier: "preparation.panel.stepLabels.outlier",
+  encode: "preparation.panel.stepLabels.encode",
+  scale: "preparation.panel.stepLabels.scale",
+  feature_select: "preparation.panel.stepLabels.featureSelect",
+  derive: "preparation.panel.stepLabels.derive",
 };
 
-const STEP_TYPES = Object.keys(STEP_LABEL) as StepType[];
+const STEP_TYPES = Object.keys(STEP_LABEL_KEYS) as StepType[];
 
 interface Props {
   datasetId: string;
@@ -57,6 +58,7 @@ const EMPTY_CONFIG: PreprocessConfig = {
 };
 
 export default function PreprocessPanel({ datasetId, columns, onChange, initialConfig }: Props) {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<PreprocessConfig>(initialConfig ?? EMPTY_CONFIG);
   const [jsonDraft, setJsonDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -85,16 +87,19 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
   };
 
   const columnOptions = columns.map((c) => ({ value: c, label: c }));
-  const optionalColumnOptions = [{ value: "", label: "（无）" }, ...columnOptions];
+  const optionalColumnOptions = [
+    { value: "", label: t("preparation.panel.none") },
+    ...columnOptions,
+  ];
 
   const onRecommend = async () => {
     setBusy(true);
     try {
       const cfg = await recommendPreprocess(datasetId);
       update(cfg);
-      message.success("已按列类型/语义生成推荐配置");
+      message.success(t("preparation.panel.messages.recommendSuccess"));
     } catch (e) {
-      message.error((e as ApiError).message || "推荐配置生成失败");
+      message.error((e as ApiError).message || t("preparation.panel.messages.recommendFailed"));
     } finally {
       setBusy(false);
     }
@@ -106,14 +111,14 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
       const resp = await validatePreprocess(datasetId, config);
       update(resp.normalized);
       setErrors([]);
-      message.success("DSL 校验通过");
+      message.success(t("preparation.panel.messages.validateSuccess"));
     } catch (e) {
       const err = e as ApiError;
       const details = err.details?.errors;
       setErrors(
         Array.isArray(details)
           ? details.map((d) => JSON.stringify(d))
-          : [err.message || "校验失败"],
+          : [err.message || t("preparation.panel.messages.validateFailed")],
       );
     } finally {
       setBusy(false);
@@ -125,14 +130,14 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
     try {
       const parsed = JSON.parse(jsonDraft) as PreprocessConfig;
       if (!parsed.target || !Array.isArray(parsed.steps) || !parsed.validation) {
-        message.error("缺少 target / steps / validation 顶层字段");
+        message.error(t("preparation.panel.messages.missingTopLevelFields"));
         return;
       }
       update(parsed);
       setJsonDraft(null);
-      message.success("已应用到表单");
+      message.success(t("preparation.panel.messages.applySuccess"));
     } catch {
-      message.error("JSON 解析失败，请检查语法");
+      message.error(t("preparation.panel.messages.jsonParseFailed"));
     }
   };
 
@@ -142,7 +147,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
       case "missing":
         return (
           <Space wrap>
-            <span>默认策略</span>
+            <span>{t("preparation.panel.params.defaultStrategy")}</span>
             <Select
               style={{ width: 120 }}
               value={p.default as string}
@@ -152,7 +157,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
               }))}
               onChange={(v) => setParam(index, "default", v)}
             />
-            <span>删除阈值</span>
+            <span>{t("preparation.panel.params.dropThreshold")}</span>
             <InputNumber
               min={0}
               max={1}
@@ -165,14 +170,14 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
       case "outlier":
         return (
           <Space wrap>
-            <span>方法</span>
+            <span>{t("preparation.panel.params.method")}</span>
             <Select
               style={{ width: 110 }}
               value={p.method as string}
               options={["iqr", "zscore"].map((v) => ({ value: v, label: v }))}
               onChange={(v) => setParam(index, "method", v)}
             />
-            <span>动作</span>
+            <span>{t("preparation.panel.params.action")}</span>
             <Select
               style={{ width: 90 }}
               value={p.action as string}
@@ -184,14 +189,14 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
       case "encode":
         return (
           <Space wrap>
-            <span>方法</span>
+            <span>{t("preparation.panel.params.method")}</span>
             <Select
               style={{ width: 110 }}
               value={p.method as string}
               options={["auto", "onehot", "ordinal"].map((v) => ({ value: v, label: v }))}
               onChange={(v) => setParam(index, "method", v)}
             />
-            <span>One-Hot 基数上限</span>
+            <span>{t("preparation.panel.params.oneHotMaxCardinality")}</span>
             <InputNumber
               min={2}
               max={100}
@@ -203,7 +208,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
       case "scale":
         return (
           <Space wrap>
-            <span>方法</span>
+            <span>{t("preparation.panel.params.method")}</span>
             <Select
               style={{ width: 120 }}
               value={p.method as string}
@@ -215,7 +220,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
       case "feature_select":
         return (
           <Space wrap>
-            <span>方法</span>
+            <span>{t("preparation.panel.params.method")}</span>
             <Select
               style={{ width: 180 }}
               value={p.method as string}
@@ -225,7 +230,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
               }))}
               onChange={(v) => setParam(index, "method", v)}
             />
-            <span>阈值</span>
+            <span>{t("preparation.panel.params.threshold")}</span>
             <InputNumber
               min={0}
               step={0.05}
@@ -239,7 +244,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
           <Select
             mode="multiple"
             style={{ minWidth: 280 }}
-            placeholder="选择要删除的列"
+            placeholder={t("preparation.panel.params.dropColumnsPlaceholder")}
             value={(p.columns as string[]) ?? []}
             options={columnOptions}
             onChange={(v) => setParam(index, "columns", v)}
@@ -248,28 +253,28 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
       case "reshape":
         return (
           <Space wrap>
-            <span>主键列</span>
+            <span>{t("preparation.panel.params.indexColumn")}</span>
             <Select
               style={{ width: 160 }}
               value={(p.index as string) || undefined}
               options={columnOptions}
               onChange={(v) => setParam(index, "index", v)}
             />
-            <span>名称列</span>
+            <span>{t("preparation.panel.params.nameColumn")}</span>
             <Select
               style={{ width: 160 }}
               value={(p.columns as string) || undefined}
               options={columnOptions}
               onChange={(v) => setParam(index, "columns", v)}
             />
-            <span>值列</span>
+            <span>{t("preparation.panel.params.valueColumn")}</span>
             <Select
               style={{ width: 160 }}
               value={(p.values as string) || undefined}
               options={columnOptions}
               onChange={(v) => setParam(index, "values", v)}
             />
-            <span>聚合</span>
+            <span>{t("preparation.panel.params.aggregation")}</span>
             <Select
               style={{ width: 90 }}
               value={p.agg as string}
@@ -288,7 +293,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
             {exprs.map((ex, ei) => (
               <Space key={ei} wrap>
                 <Input
-                  placeholder="新列名"
+                  placeholder={t("preparation.panel.params.newColumnPlaceholder")}
                   style={{ width: 160 }}
                   value={ex.name}
                   onChange={(e) => {
@@ -299,7 +304,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
                   }}
                 />
                 <Input
-                  placeholder="表达式，如 os_months / 12"
+                  placeholder={t("preparation.panel.params.expressionPlaceholder")}
                   style={{ width: 320 }}
                   value={ex.expr}
                   onChange={(e) => {
@@ -321,7 +326,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
                     )
                   }
                 >
-                  删除
+                  {t("preparation.panel.params.delete")}
                 </Button>
               </Space>
             ))}
@@ -329,7 +334,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
               size="small"
               onClick={() => setParam(index, "expressions", [...exprs, { name: "", expr: "" }])}
             >
-              添加表达式
+              {t("preparation.panel.params.addExpression")}
             </Button>
           </Space>
         );
@@ -339,9 +344,9 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
 
   const formView = (
     <Space direction="vertical" style={{ width: "100%" }} size="middle">
-      <Card size="small" title="结局定义（target）">
+      <Card size="small" title={t("preparation.panel.target.title")}>
         <Space wrap>
-          <span>随访时间列</span>
+          <span>{t("preparation.panel.target.timeColumn")}</span>
           <Select
             style={{ width: 170 }}
             value={config.target.time_col ?? ""}
@@ -350,7 +355,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
               update({ ...config, target: { ...config.target, time_col: v || null } })
             }
           />
-          <span>事件列</span>
+          <span>{t("preparation.panel.target.eventColumn")}</span>
           <Select
             style={{ width: 170 }}
             value={config.target.event_col ?? ""}
@@ -359,7 +364,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
               update({ ...config, target: { ...config.target, event_col: v || null } })
             }
           />
-          <span>标签列</span>
+          <span>{t("preparation.panel.target.labelColumn")}</span>
           <Select
             style={{ width: 170 }}
             value={config.target.label_col ?? ""}
@@ -373,20 +378,23 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
 
       <Card
         size="small"
-        title="预处理步骤（steps，按顺序执行）"
+        title={t("preparation.panel.steps.title")}
         extra={
           <Space>
             <Select<StepType>
-              placeholder="添加步骤"
+              placeholder={t("preparation.panel.steps.addStep")}
               style={{ width: 130 }}
               value={undefined}
-              options={STEP_TYPES.map((t) => ({ value: t, label: STEP_LABEL[t] }))}
-              onChange={(t) =>
+              options={STEP_TYPES.map((stepType) => ({
+                value: stepType,
+                label: t(STEP_LABEL_KEYS[stepType]),
+              }))}
+              onChange={(stepType) =>
                 update({
                   ...config,
                   steps: [
                     ...config.steps,
-                    { type: t, params: { ...DEFAULT_STEP_PARAMS[t] } },
+                    { type: stepType, params: { ...DEFAULT_STEP_PARAMS[stepType] } },
                   ],
                 })
               }
@@ -400,7 +408,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
             label: (
               <Space>
                 <Tag>{i + 1}</Tag>
-                <span>{STEP_LABEL[step.type]}</span>
+                <span>{t(STEP_LABEL_KEYS[step.type])}</span>
                 <Typography.Text code>{step.type}</Typography.Text>
               </Space>
             ),
@@ -414,7 +422,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
                   update({ ...config, steps: config.steps.filter((_, j) => j !== i) });
                 }}
               >
-                移除
+                {t("preparation.panel.steps.remove")}
               </Button>
             ),
             children: paramControls(step, i),
@@ -422,9 +430,9 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
         />
       </Card>
 
-      <Card size="small" title="交叉验证（validation）">
+      <Card size="small" title={t("preparation.panel.validation.title")}>
         <Space wrap>
-          <span>策略</span>
+          <span>{t("preparation.panel.validation.strategy")}</span>
           <Select
             style={{ width: 170 }}
             value={config.validation.strategy}
@@ -436,7 +444,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
               update({ ...config, validation: { ...config.validation, strategy: v } })
             }
           />
-          <span>折数</span>
+          <span>{t("preparation.panel.validation.splits")}</span>
           <InputNumber
             min={2}
             max={10}
@@ -445,7 +453,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
               update({ ...config, validation: { ...config.validation, n_splits: v ?? 5 } })
             }
           />
-          <span>随机种子</span>
+          <span>{t("preparation.panel.validation.seed")}</span>
           <InputNumber
             min={0}
             value={config.validation.seed}
@@ -460,15 +468,15 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
 
   return (
     <Card
-      title="预处理配置"
+      title={t("preparation.panel.title")}
       style={{ marginBottom: 16 }}
       extra={
         <Space>
           <Button onClick={() => void onRecommend()} loading={busy}>
-            推荐配置
+            {t("preparation.panel.recommend")}
           </Button>
           <Button type="primary" onClick={() => void onValidate()} loading={busy}>
-            校验
+            {t("preparation.panel.validate")}
           </Button>
         </Space>
       }
@@ -477,7 +485,7 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
         <Alert
           type="error"
           showIcon
-          message="DSL 校验失败"
+          message={t("preparation.panel.validationFailedTitle")}
           description={
             <ul style={{ margin: 0, paddingLeft: 18 }}>
               {errors.slice(0, 5).map((e, i) => (
@@ -490,10 +498,10 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
       )}
       <Tabs
         items={[
-          { key: "form", label: "表单", children: formView },
+          { key: "form", label: t("preparation.panel.tabs.form"), children: formView },
           {
             key: "json",
-            label: "DSL JSON",
+            label: t("preparation.panel.tabs.json"),
             children: (
               <Space direction="vertical" style={{ width: "100%" }}>
                 <Input.TextArea
@@ -502,9 +510,11 @@ export default function PreprocessPanel({ datasetId, columns, onChange, initialC
                   onChange={(e) => setJsonDraft(e.target.value)}
                 />
                 <Space>
-                  <Button onClick={() => setJsonDraft(null)}>还原为表单内容</Button>
+                  <Button onClick={() => setJsonDraft(null)}>
+                    {t("preparation.panel.resetToForm")}
+                  </Button>
                   <Button type="primary" onClick={applyJson} disabled={jsonDraft == null}>
-                    应用到表单
+                    {t("preparation.panel.applyToForm")}
                   </Button>
                 </Space>
               </Space>

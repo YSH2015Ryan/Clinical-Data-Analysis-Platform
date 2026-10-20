@@ -1,0 +1,53 @@
+{
+  "title": "Model comparison",
+  "loadFailed": "Could not load comparison results",
+  "unavailable": "Comparison results unavailable",
+  "downloadManifest": "Download manifest",
+  "manifestFailed": "Could not download manifest",
+  "generateReport": "Generate report",
+  "backMonitor": "Back to monitor",
+  "loading": "Loading…",
+  "exploratoryTitle": "Exploratory analysis mode (§72): continued after researcher confirmation despite major data or methodological issues",
+  "exploratoryBody": "These results are for methodological screening only and must not be used as confirmatory conclusions.",
+  "exploratoryStatement": "Results should not be interpreted as unbiased predictive performance.",
+  "samplingTitle": "Large Dataset Mode (optimized)",
+  "samplingBody": "This analysis used outcome-stratified sampled data ({{original}} → {{sampled}} rows, seed=42). The metrics below use the sampled dataset and should be reported accordingly.",
+  "tabs": {
+    "metrics": "Performance",
+    "charts": "Comparison charts",
+    "explain": "Explainability",
+    "models": "Model details"
+  },
+  "table": {
+    "model": "Model",
+    "status": "Status",
+    "duration": "Duration"
+  },
+  "recommendation": {
+    "title": "Ranking and rationale",
+    "notRecommended": "Not recommended: {{model}}",
+    "formula": "Ranking formula: {{formula}}"
+  },
+  "chartsEmpty": "No chart data available",
+  "details": {
+    "rerun": "Rerun this model",
+    "noMetrics": "No metrics (model did not succeed)"
+  },
+  "rerunQueued": "Requeued {{model}}; opening run monitor",
+  "rerunFailed": "Rerun failed",
+  "iterate": {
+    "title": "Iterative Q&A",
+    "description": "For example: “What if this column were a covariate?” or “Rerun without this column.” Answers use the real metrics from this run; executable suggestions include a structured rerun plan.",
+    "placeholder": "Enter your question…",
+    "ask": "Ask",
+    "askFailed": "Could not submit question",
+    "answer": "Answer",
+    "aiEnhanced": "AI-enhanced",
+    "ruleAnswer": "Rule-based answer",
+    "suggestion": "Rerun suggestion",
+    "addFeatures": "Add covariates:",
+    "dropFeatures": "Remove variables:",
+    "models": "Model set:",
+    "rerunSuggested": "Rerun with suggestion (open analysis wizard)"
+  }
+}

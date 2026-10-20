@@ -19,6 +19,7 @@ import {
   message,
 } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
@@ -29,6 +30,8 @@ import {
   fetchReportBlob,
   listRunReports,
 } from "../api";
+import LanguageSwitcher from "../components/LanguageSwitcher";
+import { formatDateTime } from "../i18n/locale";
 
 const POLL_MS = 3000;
 
@@ -41,6 +44,7 @@ const STATUS_COLOR: Record<string, string> = {
 export default function ReportsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { i18n, t } = useTranslation();
   const [reports, setReports] = useState<ReportItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState<ReportFormat | null>(null);
@@ -57,9 +61,9 @@ export default function ReportsPage() {
         timer.current = null;
       }
     } catch (e) {
-      setLoadError((e as ApiError).message || "报告列表加载失败");
+      setLoadError((e as ApiError).message || t("reports.loadFailed"));
     }
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => {
     void refresh();
@@ -74,11 +78,11 @@ export default function ReportsPage() {
     setCreating(format);
     try {
       await createReport(id, format);
-      message.success("报告已入队，生成中…");
+      message.success(t("reports.queued"));
       if (!timer.current) timer.current = window.setInterval(() => void refresh(), POLL_MS);
       await refresh();
     } catch (e) {
-      message.error((e as ApiError).message || "报告生成失败");
+      message.error((e as ApiError).message || t("reports.createFailed"));
     } finally {
       setCreating(null);
     }
@@ -89,10 +93,10 @@ export default function ReportsPage() {
       const blob = await fetchReportBlob(report.id);
       setPreview({
         url: URL.createObjectURL(blob),
-        title: `报告预览（${report.format.toUpperCase()}）`,
+        title: t("reports.previewTitle", { format: report.format.toUpperCase() }),
       });
     } catch (e) {
-      message.error((e as ApiError).message || "预览加载失败");
+      message.error((e as ApiError).message || t("reports.previewFailed"));
     }
   };
 
@@ -100,17 +104,17 @@ export default function ReportsPage() {
     try {
       await downloadReport(report);
     } catch (e) {
-      message.error((e as ApiError).message || "下载失败");
+      message.error((e as ApiError).message || t("reports.downloadFailed"));
     }
   };
 
   if (loadError) {
     return (
       <div style={{ maxWidth: 960, margin: "24px auto", padding: "0 16px" }}>
-        <Alert type="error" message="报告列表不可用" description={loadError} />
+        <Alert type="error" message={t("reports.unavailable")} description={loadError} />
         <Space style={{ marginTop: 16 }}>
-          <Button onClick={() => navigate(-1)}>返回</Button>
-          <Button onClick={() => navigate("/projects")}>返回主页</Button>
+          <Button onClick={() => navigate(-1)}>{t("run.monitor.back")}</Button>
+          <Button onClick={() => navigate("/projects")}>{t("run.monitor.backHome")}</Button>
         </Space>
       </div>
     );
@@ -118,36 +122,36 @@ export default function ReportsPage() {
 
   return (
     <div style={{ maxWidth: 1080, margin: "24px auto", padding: "0 16px" }}>
-      <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}>
+      <Space wrap style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}>
         <Typography.Title level={3} style={{ margin: 0 }}>
-          分析报告
+          {t("reports.title")}
         </Typography.Title>
-        <Space>
+        <Space wrap>
+          <LanguageSwitcher />
           <Button
             type="primary"
             loading={creating === "html"}
             onClick={() => void onCreate("html")}
           >
-            生成 HTML 报告
+            {t("reports.create.html")}
           </Button>
           <Button loading={creating === "pdf"} onClick={() => void onCreate("pdf")}>
-            生成 PDF 报告
+            {t("reports.create.pdf")}
           </Button>
-          <Tooltip title="Word 文档（章节与 HTML 版同源）">
+          <Tooltip title={t("reports.tooltip.docx")}>
             <Button loading={creating === "docx"} onClick={() => void onCreate("docx")}>
-              生成 Word
+              {t("reports.create.docx")}
             </Button>
           </Tooltip>
-          <Tooltip title="Markdown（图表以占位标注）">
-            <Button
-              loading={creating === "markdown"}
-              onClick={() => void onCreate("markdown")}
-            >
-              生成 Markdown
+          <Tooltip title={t("reports.tooltip.markdown")}>
+            <Button loading={creating === "markdown"} onClick={() => void onCreate("markdown")}>
+              {t("reports.create.markdown")}
             </Button>
           </Tooltip>
-          <Button onClick={() => navigate(`/runs/${id}/comparison`)}>返回比较</Button>
-          <Button onClick={() => navigate("/projects")}>返回主页</Button>
+          <Button onClick={() => navigate(`/runs/${id}/comparison`)}>
+            {t("reports.backComparison")}
+          </Button>
+          <Button onClick={() => navigate("/projects")}>{t("run.monitor.backHome")}</Button>
         </Space>
       </Space>
 
@@ -159,19 +163,25 @@ export default function ReportsPage() {
             pagination={false}
             columns={[
               {
-                title: "格式",
+                title: t("reports.table.format"),
                 dataIndex: "format",
                 render: (f: string) => f.toUpperCase(),
               },
               {
-                title: "状态",
+                title: t("reports.table.status"),
                 dataIndex: "status",
-                render: (s: string) => <Tag color={STATUS_COLOR[s]}>{s}</Tag>,
+                render: (s: ReportItem["status"]) => (
+                  <Tag color={STATUS_COLOR[s]}>{t(`reports.status.${s}`)}</Tag>
+                ),
               },
-              { title: "模板", dataIndex: "template_key" },
-              { title: "创建时间", dataIndex: "created_at" },
+              { title: t("reports.table.template"), dataIndex: "template_key" },
               {
-                title: "操作",
+                title: t("reports.table.createdAt"),
+                dataIndex: "created_at",
+                render: (v: string) => formatDateTime(v, i18n.language),
+              },
+              {
+                title: t("reports.table.actions"),
                 render: (_, r) => (
                   <Space>
                     <Button
@@ -179,14 +189,14 @@ export default function ReportsPage() {
                       disabled={r.status !== "READY"}
                       onClick={() => void onPreview(r)}
                     >
-                      预览
+                      {t("reports.table.preview")}
                     </Button>
                     <Button
                       size="small"
                       disabled={r.status !== "READY"}
                       onClick={() => void onDownload(r)}
                     >
-                      下载
+                      {t("reports.table.download")}
                     </Button>
                   </Space>
                 ),
@@ -194,7 +204,7 @@ export default function ReportsPage() {
             ]}
           />
         ) : (
-          <Empty description="暂无报告，点击上方按钮生成" />
+          <Empty description={t("reports.empty")} />
         )}
       </Card>
 
@@ -211,7 +221,7 @@ export default function ReportsPage() {
         {preview && (
           <iframe
             sandbox=""
-            title="报告预览"
+            title={t("reports.iframeTitle")}
             src={preview.url}
             style={{ width: "100%", height: "70vh", border: "none" }}
           />
@@ -219,8 +229,8 @@ export default function ReportsPage() {
       </Modal>
 
       <Descriptions size="small" style={{ marginTop: 16 }}>
-        <Descriptions.Item label="免责声明">
-          报告由 CDAP 自动生成，仅供科研参考，不构成临床诊断建议。
+        <Descriptions.Item label={t("reports.disclaimerLabel")}>
+          {t("reports.disclaimer")}
         </Descriptions.Item>
       </Descriptions>
     </div>

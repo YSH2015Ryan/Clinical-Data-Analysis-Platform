@@ -1,0 +1,56 @@
+{
+  "status": {
+    "PENDING": "排队中",
+    "PREPROCESSING": "预处理",
+    "MODELING": "建模中",
+    "COMPARING": "模型比较",
+    "COMPLETED": "已完成",
+    "FAILED": "失败",
+    "CANCELED": "已取消"
+  },
+  "modelStatus": {
+    "PENDING": "排队",
+    "RUNNING": "运行中",
+    "SUCCESS": "成功",
+    "FAILED": "失败",
+    "SKIPPED": "已跳过"
+  },
+  "currentStep": "当前步骤：{{step}}",
+  "monitor": {
+    "title": "运行监控",
+    "completed": "分析完成，报告已自动生成",
+    "progressFailed": "进度加载失败",
+    "canceled": "已取消",
+    "cancelFailed": "取消失败",
+    "rerunQueued": "已重新入队：{{model}}",
+    "rerunFailed": "重跑失败",
+    "confirmExploratory": "已进入探索性模式，重新入队",
+    "confirmFailed": "确认失败",
+    "viewResults": "查看比较结果",
+    "cancelConfirm": "确认取消该运行？",
+    "cancelRun": "取消运行",
+    "back": "返回",
+    "backHome": "返回主页",
+    "gateTitle": "方法学完整性门禁拦截（§72）",
+    "runFailed": "运行失败",
+    "blocker": "阻断",
+    "critical": "严重",
+    "recommendedAction": "建议：{{action}}",
+    "exploratoryAction": "继续探索性分析",
+    "backToCleaning": "返回数据清洗",
+    "exploratoryTitle": "探索性分析模式（§72）",
+    "exploratoryDescription": "本次运行是在存在 critical 级方法学问题的情况下经确认继续的探索性分析。Results should not be interpreted as unbiased predictive performance.",
+    "samplingTitle": "Large Dataset Mode（优化模式）",
+    "samplingDescription": "检测到 {{original}} 行，超过 100,000 行阈值；本次分析按结局分层采样至 {{sampled}} 行（seed=42，确定性可复现）。性能指标基于采样数据，全量数据的指标可能略有差异。",
+    "loading": "加载中…",
+    "rerunModel": "重跑 {{model}}",
+    "modal": {
+      "title": "继续探索性分析？",
+      "body1": "检测到重大数据或方法学问题。继续后本次运行将以探索性模式执行，报告强制标记 RED，并声明：",
+      "statement": "Results should not be interpreted as unbiased predictive performance.",
+      "body2": "结果仅供方法学筛查参考，不得作为确认性结论。",
+      "ok": "继续探索性分析",
+      "cancel": "返回数据清洗"
+    }
+  }
+}

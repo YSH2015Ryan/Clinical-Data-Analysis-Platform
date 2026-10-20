@@ -1,0 +1,128 @@
+{
+  "notAvailable": "—",
+  "taskTypes": {
+    "survival": "Survival analysis",
+    "classification": "Classification / Risk prediction",
+    "regression": "Regression / Prognosis"
+  },
+  "inferredTypes": {
+    "text": "text/category",
+    "datetime": "date",
+    "id": "identifier"
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "previous": "Previous",
+    "next": "Next",
+    "submitAnalysis": "Submit analysis",
+    "confirmStart": "Confirm and start analysis",
+    "guidedSetup": "Guided setup (advanced)",
+    "useTemplate": "Use this template",
+    "detectTask": "Detect task type",
+    "redetectTask": "Detect again",
+    "confirmTask": "Confirm task type"
+  },
+  "fields": {
+    "dataset": "Dataset",
+    "taskType": "Task type",
+    "outcomeDefinition": "Outcome definition",
+    "preprocessStepsRecommended": "Preprocessing steps (recommended configuration)",
+    "preprocessSteps": "Preprocessing steps",
+    "crossValidation": "Cross-validation",
+    "crossValidationSummary": "{{strategy}} × {{nSplits}} folds (seed={{seed}})",
+    "modelsStandardEditable": "Models (standard package selected; adjustable)",
+    "models": "Models"
+  },
+  "steps": {
+    "selectDataset": "Select dataset",
+    "preprocessing": "Preprocessing configuration",
+    "taskType": "Confirm task type",
+    "models": "Select models",
+    "confirm": "Confirm and submit"
+  },
+  "wizard": {
+    "title": "New analysis"
+  },
+  "singlePage": {
+    "title": "New analysis — Smart confirmation",
+    "loadingTip": "Generating an analysis plan from your data…",
+    "readyTitle": "The analysis plan has been prefilled from your data. Confirm it to submit.",
+    "detectionUnavailableTitle": "Could not detect the task type automatically",
+    "detectionUnavailableDescription": "No clear outcome or event column was found in the data. Use the guided wizard to specify the analysis target manually.",
+    "enterGuidedWizard": "Open guided wizard"
+  },
+  "datasetStep": {
+    "title": "Select a validated dataset",
+    "placeholder": "Select a dataset (only VALIDATED datasets can be analyzed)",
+    "optionLabel": "{{name}} ({{rowCount}} rows)",
+    "unknownRowCount": "?",
+    "noValidated": "No validated datasets are available in this project. Upload a dataset and pass quality validation first."
+  },
+  "templates": {
+    "title": "Research workflow templates (optional):",
+    "applicable": "Applicable",
+    "notApplicable": "Not applicable",
+    "currentValue": " (current: {{value}})",
+    "reasonSeparator": "; "
+  },
+  "detection": {
+    "title": "Task type detection",
+    "failedTitle": "Automatic detection failed. Select a task type manually.",
+    "loading": "Detecting…",
+    "recommendedTask": "Recommended task",
+    "confidence": "Confidence",
+    "confidenceValue": "{{confidence}}%",
+    "reasonLabel": "Recommendation reason:",
+    "autoMessage": "Automatic detection: {{reason}} (confidence {{confidence}}%)",
+    "candidateKinds": {
+      "time_col": "Follow-up time column",
+      "event_col": "Outcome event column",
+      "label_col": "Outcome label column"
+    },
+    "candidateTag": "{{kind}}: {{column}} ({{confidence}}%)",
+    "taskSelectionOverrideRecommended": "Task type (recommendation can be overridden)",
+    "taskSelectionManual": "Task type (manual selection)",
+    "selectPlaceholder": "Select a task type"
+  },
+  "modelsStep": {
+    "title": "Available models ({{taskType}})",
+    "columns": {
+      "select": "Select",
+      "model": "Model",
+      "role": "Role",
+      "key": "Key",
+      "version": "Version"
+    },
+    "standardHeading": "Standard package ({{count}} models; selected by default: baseline + strong model + interpretable model)",
+    "advancedHeading": "Advanced options ({{count}} models; expand to select as needed)"
+  },
+  "summary": {
+    "title": "Parameter summary"
+  },
+  "iteration": {
+    "prefilledTitle": "Prefilled from iteration suggestions",
+    "prefilledDescription": "{{summary}} (You can adjust preprocessing steps and model selection in later steps.)"
+  },
+  "validation": {
+    "survivalGuidance": "Open Guided setup to select the follow-up time and outcome event columns, or switch to Classification / Risk prediction.",
+    "survivalUnavailable": "The current data has no follow-up time or outcome event column, so survival analysis cannot be performed.",
+    "configurationCannotComplete": "The current configuration cannot complete the analysis",
+    "survivalMissingTargets": "Survival analysis requires valid follow-up time and outcome event columns. Open Guided setup to select the follow-up time and outcome event columns, or switch to Classification / Risk prediction.",
+    "columnListSeparator": ", ",
+    "targetColumnsMissing": "The outcome-related column(s) {{columns}} do not exist in the dataset. Return to step 2 and check the outcome definition.",
+    "regressionOutcomeMustBeNumeric": "The outcome column \"{{column}}\" for a regression task must be numeric, but the current column has the {{type}} type. If the research question asks whether something occurs or which category it belongs to, use \"{{classificationTask}}\" instead.",
+    "classificationOutcomeNeedsTwoClasses": "The outcome column \"{{column}}\" has only one valid value. Classification tasks require at least two classes. Check the outcome definition."
+  },
+  "messages": {
+    "templateApplied": "Applied the \"{{name}}\" template. The task type and recommended models have been prefilled; you can adjust them in later steps.",
+    "submitted": "Analysis submitted"
+  },
+  "errors": {
+    "loadDatasets": "Could not load datasets",
+    "recommendPreprocess": "Could not generate the recommended configuration",
+    "detectTask": "Task detection failed",
+    "loadModels": "Could not load the model list",
+    "noDatasetVersion": "The dataset has no available version",
+    "submit": "Submission failed"
+  }
+}

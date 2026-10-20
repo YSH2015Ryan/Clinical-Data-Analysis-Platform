@@ -1,0 +1,39 @@
+{
+  "title": "分析报告",
+  "loadFailed": "报告列表加载失败",
+  "unavailable": "报告列表不可用",
+  "backComparison": "返回比较",
+  "queued": "报告已入队，生成中…",
+  "createFailed": "报告生成失败",
+  "previewTitle": "报告预览（{{format}}）",
+  "previewFailed": "预览加载失败",
+  "downloadFailed": "下载失败",
+  "create": {
+    "html": "生成 HTML 报告",
+    "pdf": "生成 PDF 报告",
+    "docx": "生成 Word",
+    "markdown": "生成 Markdown"
+  },
+  "tooltip": {
+    "docx": "Word 文档（章节与 HTML 版同源）",
+    "markdown": "Markdown（图表以占位标注）"
+  },
+  "table": {
+    "format": "格式",
+    "status": "状态",
+    "template": "模板",
+    "createdAt": "创建时间",
+    "actions": "操作",
+    "preview": "预览",
+    "download": "下载"
+  },
+  "status": {
+    "PENDING": "生成中",
+    "READY": "已就绪",
+    "FAILED": "失败"
+  },
+  "empty": "暂无报告，点击上方按钮生成",
+  "iframeTitle": "报告预览",
+  "disclaimerLabel": "免责声明",
+  "disclaimer": "报告由 CDAP 自动生成，仅供科研参考，不构成临床诊断建议。"
+}

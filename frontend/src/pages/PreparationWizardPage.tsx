@@ -30,7 +30,9 @@ import {
   message,
 } from "antd";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
+import LanguageSwitcher from "../components/LanguageSwitcher";
 import {
   getPreparationJob,
   listDatasets,
@@ -43,7 +45,12 @@ import {
   type PreparationPreview,
 } from "../api";
 
-const STEP_TITLES = ["选择数据表", "结局与取值决策", "确认并提交", "准备结果"];
+const STEP_TITLE_KEYS = [
+  "preparation.wizard.steps.selectTables",
+  "preparation.wizard.steps.decisions",
+  "preparation.wizard.steps.confirm",
+  "preparation.wizard.steps.result",
+] as const;
 
 const DEFAULT_DECISIONS: PreparationDecisions = {
   outcome_terms: [],
@@ -57,26 +64,33 @@ const DEFAULT_DECISIONS: PreparationDecisions = {
   top_n_items: 200,
 };
 
-/** summary 键 → 中文说明（与 engines/preparation.py 输出一一对应）。 */
-const SUMMARY_LABEL: Record<string, string> = {
-  lab_rows_in: "化验原始行数",
-  diag_rows_in: "诊断原始行数",
-  patients: "纳入患者数",
-  label_positive: "结局阳性患者数",
-  susceptibility_removed: "剔除药敏行",
-  lab_rows_value_ok: "有效取值行",
-  lab_rows_bad_date_dropped: "化验日期缺失剔除行",
-  clipped_rows: "极端值截断行",
-  features: "保留检验项目数",
-  leakage_removed: "防泄漏剔除（诊断后化验）",
-  outside_window_removed: "时间窗外剔除行",
-  wide_rows: "宽表行数",
-  wide_cols: "宽表列数",
+/** summary 键 → 本地化说明键（与 engines/preparation.py 输出一一对应）。 */
+const SUMMARY_LABEL_KEYS: Record<string, string> = {
+  lab_rows_in: "preparation.summary.labRowsIn",
+  diag_rows_in: "preparation.summary.diagnosisRowsIn",
+  patients: "preparation.summary.patients",
+  label_positive: "preparation.summary.positivePatients",
+  susceptibility_removed: "preparation.summary.susceptibilityRemoved",
+  lab_rows_value_ok: "preparation.summary.validValueRows",
+  lab_rows_bad_date_dropped: "preparation.summary.missingLabDateRowsRemoved",
+  clipped_rows: "preparation.summary.clippedRows",
+  features: "preparation.summary.retainedFeatures",
+  leakage_removed: "preparation.summary.leakageRemoved",
+  outside_window_removed: "preparation.summary.outsideWindowRemoved",
+  wide_rows: "preparation.summary.wideRows",
+  wide_cols: "preparation.summary.wideColumns",
+};
+
+/** 后端提交值保持不变；仅为已知取值列提供本地化展示名。 */
+const VALUE_COLUMN_LABEL_KEYS: Record<string, string> = {
+  归一化值: "preparation.wizard.valueColumns.normalized",
+  结果: "preparation.wizard.valueColumns.result",
 };
 
 export default function PreparationWizardPage() {
   const { id: projectId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const [step, setStep] = useState(0);
   // Step 1
@@ -95,8 +109,8 @@ export default function PreparationWizardPage() {
     if (!projectId) return;
     listDatasets(projectId)
       .then((page) => setDatasets(page.items))
-      .catch((e) => message.error((e as ApiError).message || "数据集加载失败"));
-  }, [projectId]);
+      .catch((e) => message.error((e as ApiError).message || t("preparation.wizard.messages.loadDatasetsFailed")));
+  }, [projectId, t]);
 
   // 进入 Step 2：自动扫描预览，并用建议默认值回填决策
   useEffect(() => {
@@ -106,8 +120,8 @@ export default function PreparationWizardPage() {
         setPreview(prev);
         setDecisions((d) => ({ ...d, ...prev.suggested, outcome_terms: d.outcome_terms }));
       })
-      .catch((e) => setPreviewError((e as ApiError).message || "扫描失败"));
-  }, [step, labId, diagId, preview, previewError]);
+      .catch((e) => setPreviewError((e as ApiError).message || t("preparation.wizard.messages.previewFailed")));
+  }, [step, labId, diagId, preview, previewError, t]);
 
   // 提交后轮询任务（2s），终态停止
   useEffect(() => {
@@ -127,7 +141,10 @@ export default function PreparationWizardPage() {
   );
   const datasetOptions = selectable.map((d) => ({
     value: d.id,
-    label: `${d.name}（${d.preview?.total_rows ?? "?"} 行）`,
+    label: t("preparation.wizard.datasetOption", {
+      name: d.name,
+      rows: d.preview?.total_rows ?? "?",
+    }),
   }));
 
   const canNext = useMemo(() => {
@@ -149,7 +166,7 @@ export default function PreparationWizardPage() {
       setJob(created);
       setStep(3);
     } catch (e) {
-      message.error((e as ApiError).message || "提交失败");
+      message.error((e as ApiError).message || t("preparation.wizard.messages.submitFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -159,16 +176,44 @@ export default function PreparationWizardPage() {
     setDecisions((d) => ({ ...d, [key]: value }));
 
   const nameOf = (id: string | null) => datasets?.find((d) => d.id === id)?.name ?? "—";
+  const valueColumnLabel = (column: string) => {
+    const labelKey = VALUE_COLUMN_LABEL_KEYS[column];
+    return labelKey ? t(labelKey) : column;
+  };
+  const summaryLabel = (key: string) => {
+    const labelKey = SUMMARY_LABEL_KEYS[key];
+    return labelKey ? t(labelKey) : key;
+  };
+  const outcomeScopeSummary =
+    decisions.outcome_scope === "any"
+      ? t("preparation.wizard.options.scopeAnySummary")
+      : t("preparation.wizard.options.scopeIndexSummary");
+  const indexDiagnosisSummary =
+    decisions.index_diagnosis === "first"
+      ? t("preparation.wizard.options.firstSummary")
+      : t("preparation.wizard.options.lastSummary");
+  const valueStrategySummary =
+    decisions.value_strategy === "latest"
+      ? t("preparation.wizard.options.latest")
+      : t("preparation.wizard.options.mean");
+  const cleaningSummaryKey =
+    decisions.exclude_susceptibility && decisions.clip_quantile > 0
+      ? "preparation.wizard.confirm.cleaningBoth"
+      : decisions.exclude_susceptibility
+        ? "preparation.wizard.confirm.cleaningSusceptibilityOnly"
+        : decisions.clip_quantile > 0
+          ? "preparation.wizard.confirm.cleaningClippingOnly"
+          : "preparation.wizard.confirm.cleaningNone";
 
   const stepContent = [
     // Step 1 选表
-    <Card key="s1" title="选择要组装的两张表">
+    <Card key="s1" title={t("preparation.wizard.selectTables.title")}>
       <Space direction="vertical" size="middle" style={{ width: "100%" }}>
         <div>
-          <Typography.Text strong>化验表（长表：一行一条化验）</Typography.Text>
+          <Typography.Text strong>{t("preparation.wizard.selectTables.labTable")}</Typography.Text>
           <Select
             style={{ width: "100%", marginTop: 8 }}
-            placeholder="如：化验.csv"
+            placeholder={t("preparation.wizard.selectTables.labPlaceholder")}
             loading={datasets === null}
             value={labId ?? undefined}
             options={datasetOptions}
@@ -180,10 +225,12 @@ export default function PreparationWizardPage() {
           />
         </div>
         <div>
-          <Typography.Text strong>诊断表（含诊断/诊断日期/年龄/性别）</Typography.Text>
+          <Typography.Text strong>
+            {t("preparation.wizard.selectTables.diagnosisTable")}
+          </Typography.Text>
           <Select
             style={{ width: "100%", marginTop: 8 }}
-            placeholder="如：诊断.csv"
+            placeholder={t("preparation.wizard.selectTables.diagnosisPlaceholder")}
             loading={datasets === null}
             value={diagId ?? undefined}
             options={datasetOptions}
@@ -198,26 +245,42 @@ export default function PreparationWizardPage() {
           <Alert
             type="warning"
             showIcon
-            message="项目内可用数据集不足两张，请先上传化验表与诊断表"
+            message={t("preparation.wizard.selectTables.insufficientDatasets")}
           />
         )}
       </Space>
     </Card>,
     // Step 2 决策
-    <Card key="s2" title="扫描结果与决策（机器已填好默认值，按需调整）">
-      {!preview && !previewError && <Spin tip="正在扫描两张表…" />}
-      {previewError && <Alert type="error" showIcon message="扫描失败" description={previewError} />}
+    <Card key="s2" title={t("preparation.wizard.decisions.title")}>
+      {!preview && !previewError && <Spin tip={t("preparation.wizard.decisions.scanning")} />}
+      {previewError && (
+        <Alert
+          type="error"
+          showIcon
+          message={t("preparation.wizard.decisions.previewFailedTitle")}
+          description={previewError}
+        />
+      )}
       {preview && (
         <Space direction="vertical" size="large" style={{ width: "100%" }}>
           <Space size="large" wrap>
-            <Statistic title="患者交集" value={preview.patients_intersection} />
-            <Statistic title="化验行数" value={preview.lab_rows} />
-            <Statistic title="诊断行数" value={preview.diag_rows} />
-            <Statistic title="疑似药敏行（将剔除）" value={preview.susceptibility_rows} />
+            <Statistic
+              title={t("preparation.wizard.decisions.patientsIntersection")}
+              value={preview.patients_intersection}
+            />
+            <Statistic title={t("preparation.wizard.decisions.labRows")} value={preview.lab_rows} />
+            <Statistic
+              title={t("preparation.wizard.decisions.diagnosisRows")}
+              value={preview.diag_rows}
+            />
+            <Statistic
+              title={t("preparation.wizard.decisions.susceptibilityRows")}
+              value={preview.susceptibility_rows}
+            />
           </Space>
           <div>
             <Typography.Title level={5}>
-              ① 结局定义：勾选要研究的诊断词条（任一命中即记为阳性）
+              {t("preparation.wizard.decisions.outcomeTitle")}
             </Typography.Title>
             <Checkbox.Group
               style={{ width: "100%" }}
@@ -230,70 +293,78 @@ export default function PreparationWizardPage() {
                 dataSource={preview.diagnosis_terms}
                 pagination={{ pageSize: 8, size: "small" }}
                 columns={[
-                  { title: "选择", width: 60, render: (_, t) => <Checkbox value={t.term} /> },
-                  { title: "诊断词条", dataIndex: "term" },
-                  { title: "出现次数", dataIndex: "count", width: 100 },
+                  {
+                    title: t("preparation.wizard.decisions.columns.select"),
+                    width: 60,
+                    render: (_, term) => <Checkbox value={term.term} />,
+                  },
+                  { title: t("preparation.wizard.decisions.columns.term"), dataIndex: "term" },
+                  {
+                    title: t("preparation.wizard.decisions.columns.count"),
+                    dataIndex: "count",
+                    width: 100,
+                  },
                 ]}
               />
             </Checkbox.Group>
           </div>
           <Form layout="vertical">
-            <Form.Item label="② 结局判定范围">
+            <Form.Item label={t("preparation.wizard.decisions.outcomeScope")}>
               <Radio.Group
                 value={decisions.outcome_scope}
                 onChange={(e) => set("outcome_scope", e.target.value)}
                 options={[
-                  { value: "any", label: "任一诊断记录命中即阳性" },
-                  { value: "index", label: "仅索引诊断命中才阳性" },
+                  { value: "any", label: t("preparation.wizard.options.outcomeScopeAny") },
+                  { value: "index", label: t("preparation.wizard.options.outcomeScopeIndex") },
                 ]}
               />
             </Form.Item>
-            <Form.Item label="③ 索引诊断（化验时间的锚点，防泄漏：只保留它之前的化验）">
+            <Form.Item label={t("preparation.wizard.decisions.indexDiagnosis")}>
               <Radio.Group
                 value={decisions.index_diagnosis}
                 onChange={(e) => set("index_diagnosis", e.target.value)}
                 options={[
-                  { value: "first", label: "首次诊断" },
-                  { value: "last", label: "末次诊断" },
+                  { value: "first", label: t("preparation.wizard.options.indexFirst") },
+                  { value: "last", label: t("preparation.wizard.options.indexLast") },
                 ]}
               />
             </Form.Item>
             <Space size="large" wrap>
-              <Form.Item label="④ 诊断前时间窗（天，0=不限）">
+              <Form.Item label={t("preparation.wizard.decisions.windowDays")}>
                 <InputNumber
                   min={0}
                   value={decisions.window_days}
                   onChange={(v) => set("window_days", v ?? 0)}
                 />
               </Form.Item>
-              <Form.Item label="⑤ 同一项目多次化验取值">
+              <Form.Item label={t("preparation.wizard.decisions.valueStrategy")}>
                 <Radio.Group
                   value={decisions.value_strategy}
                   onChange={(e) => set("value_strategy", e.target.value)}
                   options={[
-                    { value: "latest", label: "最近一次" },
-                    { value: "mean", label: "均值" },
+                    { value: "latest", label: t("preparation.wizard.options.latest") },
+                    { value: "mean", label: t("preparation.wizard.options.mean") },
                   ]}
                 />
               </Form.Item>
-              <Form.Item label="取值列">
+              <Form.Item label={t("preparation.wizard.decisions.valueColumn")}>
                 <Select
                   style={{ width: 160 }}
                   value={decisions.value_column}
                   options={[preview.lab_columns.value, "归一化值", "结果"]
                     .filter((c): c is string => c != null)
                     .filter((c, i, arr) => arr.indexOf(c) === i)
-                    .map((c) => ({ value: c, label: c }))}
+                    .map((column) => ({ value: column, label: valueColumnLabel(column) }))}
                   onChange={(v) => set("value_column", v)}
                 />
               </Form.Item>
-              <Form.Item label="剔除药敏记录">
+              <Form.Item label={t("preparation.wizard.decisions.excludeSusceptibility")}>
                 <Switch
                   checked={decisions.exclude_susceptibility}
                   onChange={(v) => set("exclude_susceptibility", v)}
                 />
               </Form.Item>
-              <Form.Item label="极端值截断分位（0=不截断）">
+              <Form.Item label={t("preparation.wizard.decisions.clipQuantile")}>
                 <InputNumber
                   min={0}
                   max={0.999}
@@ -302,7 +373,7 @@ export default function PreparationWizardPage() {
                   onChange={(v) => set("clip_quantile", v ?? 0)}
                 />
               </Form.Item>
-              <Form.Item label="最多保留检验项目数">
+              <Form.Item label={t("preparation.wizard.decisions.topNItems")}>
                 <InputNumber
                   min={1}
                   value={decisions.top_n_items}
@@ -315,52 +386,82 @@ export default function PreparationWizardPage() {
       )}
     </Card>,
     // Step 3 确认
-    <Card key="s3" title="参数摘要">
+    <Card key="s3" title={t("preparation.wizard.confirm.title")}>
       <Descriptions bordered size="small" column={1}>
-        <Descriptions.Item label="化验表">{nameOf(labId)}</Descriptions.Item>
-        <Descriptions.Item label="诊断表">{nameOf(diagId)}</Descriptions.Item>
-        <Descriptions.Item label="结局词条">
+        <Descriptions.Item label={t("preparation.wizard.confirm.labTable")}>
+          {nameOf(labId)}
+        </Descriptions.Item>
+        <Descriptions.Item label={t("preparation.wizard.confirm.diagnosisTable")}>
+          {nameOf(diagId)}
+        </Descriptions.Item>
+        <Descriptions.Item label={t("preparation.wizard.confirm.outcomeTerms")}>
           {decisions.outcome_terms.map((t) => (
             <Tag key={t} color="red">
               {t}
             </Tag>
           ))}
         </Descriptions.Item>
-        <Descriptions.Item label="判定范围">
-          {decisions.outcome_scope === "any" ? "任一诊断记录" : "仅索引诊断"}
+        <Descriptions.Item label={t("preparation.wizard.confirm.scope")}>
+          {outcomeScopeSummary}
         </Descriptions.Item>
-        <Descriptions.Item label="索引诊断">
-          {decisions.index_diagnosis === "first" ? "首次" : "末次"}
+        <Descriptions.Item label={t("preparation.wizard.confirm.indexDiagnosis")}>
+          {indexDiagnosisSummary}
         </Descriptions.Item>
-        <Descriptions.Item label="时间窗">
-          {decisions.window_days === 0 ? "不限" : `诊断前 ${decisions.window_days} 天`}
+        <Descriptions.Item label={t("preparation.wizard.confirm.timeWindow")}>
+          {decisions.window_days === 0
+            ? t("preparation.wizard.confirm.windowUnlimited")
+            : t("preparation.wizard.confirm.windowDays", { days: decisions.window_days })}
         </Descriptions.Item>
-        <Descriptions.Item label="取值策略">
-          {decisions.value_strategy === "latest" ? "最近一次" : "均值"}（{decisions.value_column}）
+        <Descriptions.Item label={t("preparation.wizard.confirm.valueStrategy")}>
+          {t("preparation.wizard.confirm.valueStrategySummary", {
+            strategy: valueStrategySummary,
+            column: valueColumnLabel(decisions.value_column),
+          })}
         </Descriptions.Item>
-        <Descriptions.Item label="清洗">
-          {decisions.exclude_susceptibility ? "剔除药敏；" : ""}
-          {decisions.clip_quantile > 0 ? `按 ${decisions.clip_quantile} 分位截断极端值；` : ""}
-          最多 {decisions.top_n_items} 个检验项目
+        <Descriptions.Item label={t("preparation.wizard.confirm.cleaning")}>
+          {t(cleaningSummaryKey, {
+            quantile: decisions.clip_quantile,
+            topN: decisions.top_n_items,
+          })}
         </Descriptions.Item>
       </Descriptions>
     </Card>,
     // Step 4 结果
     <Card key="s4">
       {!job || (job.status !== "COMPLETED" && job.status !== "FAILED") ? (
-        <Result icon={<Spin size="large" />} title="正在生成宽表…" subTitle="大表可能需要几十秒" />
+        <Result
+          icon={<Spin size="large" />}
+          title={t("preparation.wizard.result.processingTitle")}
+          subTitle={t("preparation.wizard.result.processingSubtitle")}
+        />
       ) : job.status === "FAILED" ? (
-        <Result status="error" title="数据准备失败" subTitle={job.error ?? "未知错误"} />
+        <Result
+          status="error"
+          title={t("preparation.wizard.result.failedTitle")}
+          subTitle={job.error ?? t("preparation.wizard.result.unknownError")}
+        />
       ) : (
         <Result
           status="success"
-          title="宽表已生成，可直接进入分析"
+          title={t("preparation.wizard.result.successTitle")}
           subTitle={
             <Space size="large" wrap style={{ justifyContent: "center", marginTop: 8 }}>
-              <Statistic title="患者数" value={job.summary?.patients ?? 0} />
-              <Statistic title="结局阳性" value={job.summary?.label_positive ?? 0} />
-              <Statistic title="检验项目" value={job.summary?.features ?? 0} />
-              <Statistic title="防泄漏剔除行" value={job.summary?.leakage_removed ?? 0} />
+              <Statistic
+                title={t("preparation.wizard.result.patients")}
+                value={job.summary?.patients ?? 0}
+              />
+              <Statistic
+                title={t("preparation.wizard.result.positiveOutcomes")}
+                value={job.summary?.label_positive ?? 0}
+              />
+              <Statistic
+                title={t("preparation.wizard.result.features")}
+                value={job.summary?.features ?? 0}
+              />
+              <Statistic
+                title={t("preparation.wizard.result.leakageRemoved")}
+                value={job.summary?.leakage_removed ?? 0}
+              />
             </Space>
           }
           extra={[
@@ -371,10 +472,10 @@ export default function PreparationWizardPage() {
                 navigate(`/projects/${projectId}/analysis/new?dataset=${job.result_dataset_id}`)
               }
             >
-              用这张宽表新建分析
+              {t("preparation.wizard.result.newAnalysis")}
             </Button>,
             <Button key="dataset" onClick={() => navigate(`/datasets/${job.result_dataset_id}`)}>
-              查看宽表数据集
+              {t("preparation.wizard.result.viewDataset")}
             </Button>,
           ]}
         />
@@ -387,11 +488,11 @@ export default function PreparationWizardPage() {
           dataSource={Object.entries(job.summary).map(([k, v]) => ({ key: k, name: k, value: v }))}
           columns={[
             {
-              title: "审计项",
+              title: t("preparation.wizard.result.auditItem"),
               dataIndex: "name",
-              render: (k: string) => SUMMARY_LABEL[k] ?? k,
+              render: (key: string) => summaryLabel(key),
             },
-            { title: "数值", dataIndex: "value", width: 140 },
+            { title: t("preparation.wizard.result.value"), dataIndex: "value", width: 140 },
           ]}
         />
       )}
@@ -402,24 +503,29 @@ export default function PreparationWizardPage() {
     <div style={{ maxWidth: 1080, margin: "24px auto", padding: "0 16px" }}>
       <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}>
         <Typography.Title level={3} style={{ margin: 0 }}>
-          数据准备（化验 + 诊断 → 分析宽表）
+          {t("preparation.wizard.title")}
         </Typography.Title>
-        <Button onClick={() => navigate(projectId ? `/projects/${projectId}` : "/projects")}>
-          取消
-        </Button>
+        <Space wrap>
+          <LanguageSwitcher />
+          <Button onClick={() => navigate(projectId ? `/projects/${projectId}` : "/projects")}>
+            {t("preparation.wizard.cancel")}
+          </Button>
+        </Space>
       </Space>
-      <Steps current={step} items={STEP_TITLES.map((title) => ({ title }))} size="small" />
+      <Steps current={step} items={STEP_TITLE_KEYS.map((key) => ({ title: t(key) }))} size="small" />
       <div style={{ margin: "24px 0" }}>{stepContent[step]}</div>
       <Space style={{ width: "100%", justifyContent: "flex-end" }}>
-        {step > 0 && step < 3 && <Button onClick={() => setStep((s) => s - 1)}>上一步</Button>}
-        {step < STEP_TITLES.length - 2 && (
+        {step > 0 && step < 3 && (
+          <Button onClick={() => setStep((s) => s - 1)}>{t("preparation.wizard.previous")}</Button>
+        )}
+        {step < STEP_TITLE_KEYS.length - 2 && (
           <Button type="primary" disabled={!canNext} onClick={() => setStep((s) => s + 1)}>
-            下一步
+            {t("preparation.wizard.next")}
           </Button>
         )}
-        {step === STEP_TITLES.length - 2 && (
+        {step === STEP_TITLE_KEYS.length - 2 && (
           <Button type="primary" loading={submitting} onClick={() => void submit()}>
-            提交并生成宽表
+            {t("preparation.wizard.submit")}
           </Button>
         )}
       </Space>

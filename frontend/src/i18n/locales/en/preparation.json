@@ -1,0 +1,182 @@
+{
+  "wizard": {
+    "title": "Data Preparation (Labs + Diagnoses → Analysis Wide Table)",
+    "cancel": "Cancel",
+    "previous": "Previous",
+    "next": "Next",
+    "submit": "Submit and Generate Wide Table",
+    "steps": {
+      "selectTables": "Select Tables",
+      "decisions": "Outcome and Value Decisions",
+      "confirm": "Confirm and Submit",
+      "result": "Preparation Result"
+    },
+    "messages": {
+      "loadDatasetsFailed": "Failed to load datasets",
+      "previewFailed": "Scan failed",
+      "submitFailed": "Submission failed"
+    },
+    "datasetOption": "{{name}} ({{rows}} rows)",
+    "selectTables": {
+      "title": "Select the two tables to assemble",
+      "labTable": "Lab table (long format: one row per lab result)",
+      "labPlaceholder": "Example: labs.csv",
+      "diagnosisTable": "Diagnosis table (includes diagnosis, diagnosis date, age, and sex)",
+      "diagnosisPlaceholder": "Example: diagnoses.csv",
+      "insufficientDatasets": "Fewer than two usable datasets are available in this project. Upload a lab table and a diagnosis table first."
+    },
+    "decisions": {
+      "title": "Scan results and decisions (defaults were filled automatically; adjust as needed)",
+      "scanning": "Scanning the two tables…",
+      "previewFailedTitle": "Scan failed",
+      "patientsIntersection": "Patient intersection",
+      "labRows": "Lab rows",
+      "diagnosisRows": "Diagnosis rows",
+      "susceptibilityRows": "Suspected susceptibility rows (to remove)",
+      "outcomeTitle": "1. Outcome definition: select diagnosis terms to study (any match is positive)",
+      "columns": {
+        "select": "Select",
+        "term": "Diagnosis term",
+        "count": "Occurrences"
+      },
+      "outcomeScope": "2. Outcome evaluation scope",
+      "indexDiagnosis": "3. Index diagnosis (anchor for lab time; to prevent leakage, only labs before it are retained)",
+      "windowDays": "4. Time window before diagnosis (days; 0 = no limit)",
+      "valueStrategy": "5. Value for repeated labs of the same item",
+      "valueColumn": "Value column",
+      "excludeSusceptibility": "Remove susceptibility records",
+      "clipQuantile": "Extreme-value clipping quantile (0 = no clipping)",
+      "topNItems": "Maximum test items to retain"
+    },
+    "options": {
+      "outcomeScopeAny": "Positive when any diagnosis record matches",
+      "outcomeScopeIndex": "Positive only when the index diagnosis matches",
+      "indexFirst": "First diagnosis",
+      "indexLast": "Last diagnosis",
+      "latest": "Latest",
+      "mean": "Mean",
+      "scopeAnySummary": "Any diagnosis record",
+      "scopeIndexSummary": "Index diagnosis only",
+      "firstSummary": "First",
+      "lastSummary": "Last"
+    },
+    "valueColumns": {
+      "normalized": "Normalized value",
+      "result": "Result"
+    },
+    "confirm": {
+      "title": "Parameter Summary",
+      "labTable": "Lab table",
+      "diagnosisTable": "Diagnosis table",
+      "outcomeTerms": "Outcome terms",
+      "scope": "Evaluation scope",
+      "indexDiagnosis": "Index diagnosis",
+      "timeWindow": "Time window",
+      "valueStrategy": "Value strategy",
+      "cleaning": "Cleaning",
+      "windowUnlimited": "No limit",
+      "windowDays": "{{days}} days before diagnosis",
+      "valueStrategySummary": "{{strategy}} ({{column}})",
+      "cleaningBoth": "Remove susceptibility records; clip extreme values at the {{quantile}} quantile; retain at most {{topN}} test items",
+      "cleaningSusceptibilityOnly": "Remove susceptibility records; retain at most {{topN}} test items",
+      "cleaningClippingOnly": "Clip extreme values at the {{quantile}} quantile; retain at most {{topN}} test items",
+      "cleaningNone": "Retain at most {{topN}} test items"
+    },
+    "result": {
+      "processingTitle": "Generating the wide table…",
+      "processingSubtitle": "Large tables may take tens of seconds",
+      "failedTitle": "Data preparation failed",
+      "unknownError": "Unknown error",
+      "successTitle": "The wide table is ready for analysis",
+      "patients": "Patients",
+      "positiveOutcomes": "Positive outcomes",
+      "features": "Test items",
+      "leakageRemoved": "Rows removed to prevent leakage",
+      "newAnalysis": "Create Analysis with This Wide Table",
+      "viewDataset": "View Wide-Table Dataset",
+      "auditItem": "Audit item",
+      "value": "Value"
+    }
+  },
+  "summary": {
+    "labRowsIn": "Input lab rows",
+    "diagnosisRowsIn": "Input diagnosis rows",
+    "patients": "Included patients",
+    "positivePatients": "Patients with positive outcome",
+    "susceptibilityRemoved": "Susceptibility rows removed",
+    "validValueRows": "Rows with valid values",
+    "missingLabDateRowsRemoved": "Rows removed for missing lab dates",
+    "clippedRows": "Extreme-value rows clipped",
+    "retainedFeatures": "Retained test items",
+    "leakageRemoved": "Leakage prevention removals (labs after diagnosis)",
+    "outsideWindowRemoved": "Rows outside time window removed",
+    "wideRows": "Wide-table rows",
+    "wideColumns": "Wide-table columns"
+  },
+  "panel": {
+    "stepLabels": {
+      "reshape": "Reshape long to wide",
+      "dropColumns": "Drop columns",
+      "missing": "Missing values",
+      "outlier": "Outliers",
+      "encode": "Encoding",
+      "scale": "Scaling",
+      "featureSelect": "Feature selection",
+      "derive": "Derived columns"
+    },
+    "none": "(None)",
+    "messages": {
+      "recommendSuccess": "Recommended configuration generated from column types and semantics",
+      "recommendFailed": "Failed to generate the recommended configuration",
+      "validateSuccess": "DSL validation passed",
+      "validateFailed": "Validation failed",
+      "missingTopLevelFields": "Missing top-level target, steps, or validation field",
+      "applySuccess": "Applied to the form",
+      "jsonParseFailed": "Failed to parse JSON. Check the syntax."
+    },
+    "params": {
+      "defaultStrategy": "Default strategy",
+      "dropThreshold": "Drop threshold",
+      "method": "Method",
+      "action": "Action",
+      "oneHotMaxCardinality": "One-Hot maximum cardinality",
+      "threshold": "Threshold",
+      "dropColumnsPlaceholder": "Select columns to drop",
+      "indexColumn": "Index column",
+      "nameColumn": "Name column",
+      "valueColumn": "Value column",
+      "aggregation": "Aggregation",
+      "newColumnPlaceholder": "New column name",
+      "expressionPlaceholder": "Expression, e.g., os_months / 12",
+      "delete": "Delete",
+      "addExpression": "Add expression"
+    },
+    "target": {
+      "title": "Outcome Definition (target)",
+      "timeColumn": "Follow-up time column",
+      "eventColumn": "Event column",
+      "labelColumn": "Label column"
+    },
+    "steps": {
+      "title": "Preprocessing Steps (executed in order)",
+      "addStep": "Add step",
+      "remove": "Remove"
+    },
+    "validation": {
+      "title": "Cross-Validation (validation)",
+      "strategy": "Strategy",
+      "splits": "Number of folds",
+      "seed": "Random seed"
+    },
+    "title": "Preprocessing Configuration",
+    "recommend": "Recommend Configuration",
+    "validate": "Validate",
+    "validationFailedTitle": "DSL validation failed",
+    "tabs": {
+      "form": "Form",
+      "json": "DSL JSON"
+    },
+    "resetToForm": "Restore Form Content",
+    "applyToForm": "Apply to Form"
+  }
+}

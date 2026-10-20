@@ -1,0 +1,134 @@
+{
+  "plugins": {
+    "title": "插件管理",
+    "backToProjects": "返回项目",
+    "errors": {
+      "load": "插件列表加载失败",
+      "update": "更新失败",
+      "invalidJson": "默认参数不是合法 JSON"
+    },
+    "messages": {
+      "enabled": "{{name}} 已启用",
+      "disabled": "{{name}} 已禁用",
+      "paramsSaved": "默认参数已更新"
+    },
+    "table": {
+      "key": "标识",
+      "name": "名称",
+      "version": "版本",
+      "taskTypes": "任务类型",
+      "status": "状态",
+      "actions": "操作"
+    },
+    "status": {
+      "enabled": "启用",
+      "disabled": "禁用"
+    },
+    "actions": {
+      "disable": "禁用",
+      "enable": "启用",
+      "defaultParams": "默认参数"
+    },
+    "descriptionUnavailable": "暂无简介",
+    "descriptions": {
+      "logreg": "逻辑回归：线性分类基线模型，输出概率且系数可解释，适合快速判断线性可分性。",
+      "rf": "随机森林：多棵决策树投票，抗过拟合，能给出特征重要性。",
+      "svm": "支持向量机：适合中小样本、高维数据，概率输出经 Platt 校准。",
+      "xgboost": "XGBoost 梯度提升树：表格数据上表现强劲，支持 SHAP 解释。",
+      "lightgbm": "LightGBM：直方图加速的梯度提升树，大样本训练更快。",
+      "catboost": "CatBoost：自动处理类别特征的梯度提升树。",
+      "lasso": "Lasso 线性回归：L1 正则自动做特征选择，产出稀疏可解释模型。",
+      "elasticnet": "弹性网络：L1+L2 混合正则，兼顾特征选择与高度相关的变量组。",
+      "rfReg": "随机森林回归：树模型回归，稳健处理非线性关系。",
+      "xgboostReg": "XGBoost 回归：梯度提升树回归，表格数据表现强劲。",
+      "km": "Kaplan-Meier：无协变量的总体生存曲线基线（C-index≈0.5），作对照用。",
+      "coxph": "Cox 比例风险模型：生存分析经典半参数模型，输出各变量风险比（HR）。",
+      "rsf": "随机生存森林：树模型生存分析，可捕捉非线性风险关系。",
+      "gbs": "梯度提升生存模型（Cox PH 损失）：生存数据上的提升树方法。",
+      "deepsurv": "DeepSurv：深度神经网络版 Cox 模型（需 torch 环境的可选插件）。",
+      "dummy": "多数类基线：始终预测最常见类别，用于验证建模管线是否正常运行。"
+    },
+    "modal": {
+      "title": "默认参数 — {{name}}",
+      "description": "JSON 对象；新建分析时作为该模型的默认参数（历史运行不受影响）。",
+      "save": "保存",
+      "cancel": "取消"
+    }
+  },
+  "llm": {
+    "title": "AI 设置",
+    "backToProjects": "返回项目",
+    "errors": {
+      "load": "加载失败",
+      "test": "测试失败",
+      "save": "保存失败",
+      "operation": "操作失败"
+    },
+    "providers": {
+      "local": "本地",
+      "cloud": "云端",
+      "openai": "OpenAI",
+      "anthropic": "Anthropic"
+    },
+    "messages": {
+      "testSuccess": "{{provider}}连接正常（{{latency}}ms）",
+      "testFailure": "{{provider}}不可用：{{detail}}",
+      "saved": "已保存并即时生效",
+      "keyCleared": "{{provider}} API key 已清除"
+    },
+    "status": {
+      "title": "服务提供方状态",
+      "localTitle": "本地（Ollama）",
+      "cloudTitle": "云端（{{provider}}）",
+      "available": "可用",
+      "unavailable": "不可用",
+      "deploymentDisabled": "部署层已禁用",
+      "model": "模型：{{model}}",
+      "testConnection": "连接测试",
+      "fallbackDescription": "降级链：按下方分功能开关逐功能决定“仅本地 / 本地优先（本地失败时降级云端）/ 仅云端 / 关闭”。LLM 不可用时，相关功能自动回退到内置规则模板，主流程不阻塞。"
+    },
+    "form": {
+      "defaultStrategy": "默认模型策略",
+      "strategies": {
+        "auto": "自动（本地优先，失败降级云端）",
+        "local": "仅本地",
+        "cloud": "仅云端"
+      },
+      "ollamaModel": "本地模型（从 Ollama 已安装列表中选择）",
+      "ollamaModelsUnavailable": "未获取到模型列表（Ollama 不可用），可手动输入",
+      "ollamaPlaceholder": "选择或输入模型名",
+      "temperature": "生成温度（0–1，越低越稳定）",
+      "featureSwitches": "分功能开关",
+      "features": {
+        "researchProfile": "研究画像（研究问题与设计建议）",
+        "reportInterpretation": "报告解读段落",
+        "validationExplain": "校验报错通俗解释",
+        "iteration": "对话式迭代（重跑建议）"
+      },
+      "switchModes": {
+        "off": "关闭",
+        "local": "仅本地",
+        "localFirst": "本地优先（失败降级云端）",
+        "cloud": "仅云端"
+      },
+      "cloudConfig": "云端配置",
+      "cloudDisabledTitle": "云端已由部署层禁用（LLM_CLOUD_ENABLED=false）",
+      "cloudDisabledDescription": "如需启用，请服务器开发人员修改环境变量并重启服务。",
+      "complianceTitle": "合规提示",
+      "complianceDescription": "开启云端后，平台只会向云端发送聚合统计结果与列元数据，绝不发送行级患者数据（服务端强制校验）。医疗机构采购与数据出境合规要求请自行评估。",
+      "cloudProvider": "云端提供商",
+      "cloudProviderOptions": {
+        "openai": "OpenAI",
+        "anthropic": "Anthropic Claude"
+      },
+      "apiKeyConfigured": "{{provider}} API Key（只写不读，当前：{{preview}}）",
+      "apiKeyNotConfigured": "{{provider}} API Key（只写不读，当前未配置）",
+      "apiKeyPlaceholders": {
+        "openai": "sk-...",
+        "anthropic": "sk-ant-..."
+      },
+      "clearKey": "清除",
+      "save": "保存并生效"
+    }
+  }
+}

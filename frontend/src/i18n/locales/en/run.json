@@ -1,0 +1,56 @@
+{
+  "status": {
+    "PENDING": "Queued",
+    "PREPROCESSING": "Preprocessing",
+    "MODELING": "Modeling",
+    "COMPARING": "Comparing models",
+    "COMPLETED": "Completed",
+    "FAILED": "Failed",
+    "CANCELED": "Canceled"
+  },
+  "modelStatus": {
+    "PENDING": "Queued",
+    "RUNNING": "Running",
+    "SUCCESS": "Succeeded",
+    "FAILED": "Failed",
+    "SKIPPED": "Skipped"
+  },
+  "currentStep": "Current step: {{step}}",
+  "monitor": {
+    "title": "Run monitor",
+    "completed": "Analysis complete; the report has been generated automatically",
+    "progressFailed": "Could not load progress",
+    "canceled": "Canceled",
+    "cancelFailed": "Cancel failed",
+    "rerunQueued": "Requeued: {{model}}",
+    "rerunFailed": "Rerun failed",
+    "confirmExploratory": "Exploratory mode enabled; run requeued",
+    "confirmFailed": "Confirmation failed",
+    "viewResults": "View comparison",
+    "cancelConfirm": "Cancel this run?",
+    "cancelRun": "Cancel run",
+    "back": "Back",
+    "backHome": "Back to projects",
+    "gateTitle": "Blocked by methodological integrity gate (§72)",
+    "runFailed": "Run failed",
+    "blocker": "Blocking",
+    "critical": "Critical",
+    "recommendedAction": "Recommendation: {{action}}",
+    "exploratoryAction": "Continue exploratory analysis",
+    "backToCleaning": "Back to data cleaning",
+    "exploratoryTitle": "Exploratory analysis mode (§72)",
+    "exploratoryDescription": "This run was confirmed to continue in exploratory mode despite critical methodological issues. Results should not be interpreted as unbiased predictive performance.",
+    "samplingTitle": "Large Dataset Mode (optimized)",
+    "samplingDescription": "{{original}} rows were detected, exceeding the 100,000-row threshold. This analysis used outcome-stratified sampling to {{sampled}} rows (seed=42, deterministic and reproducible). Metrics are based on sampled data and may differ slightly from full-data metrics.",
+    "loading": "Loading…",
+    "rerunModel": "Rerun {{model}}",
+    "modal": {
+      "title": "Continue exploratory analysis?",
+      "body1": "Major data or methodological issues were detected. If you continue, this run will execute in exploratory mode, the report will be marked RED, and it will state:",
+      "statement": "Results should not be interpreted as unbiased predictive performance.",
+      "body2": "Results are for methodological screening only and must not be used as confirmatory conclusions.",
+      "ok": "Continue exploratory analysis",
+      "cancel": "Back to data cleaning"
+    }
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "notAvailable": "—",
+  "taskTypes": {
+    "survival": "生存分析",
+    "classification": "分类 / 风险预测",
+    "regression": "回归 / 预后"
+  },
+  "inferredTypes": {
+    "text": "文字类别",
+    "datetime": "日期",
+    "id": "标识"
+  },
+  "actions": {
+    "cancel": "取消",
+    "previous": "上一步",
+    "next": "下一步",
+    "submitAnalysis": "提交分析",
+    "confirmStart": "确认并开始分析",
+    "guidedSetup": "逐步调整（高级）",
+    "useTemplate": "使用此模板",
+    "detectTask": "识别任务类型",
+    "redetectTask": "重新识别",
+    "confirmTask": "确认任务类型"
+  },
+  "fields": {
+    "dataset": "数据集",
+    "taskType": "任务类型",
+    "outcomeDefinition": "结局定义",
+    "preprocessStepsRecommended": "预处理步骤（推荐配置）",
+    "preprocessSteps": "预处理步骤",
+    "crossValidation": "交叉验证",
+    "crossValidationSummary": "{{strategy}} × {{nSplits}}（seed={{seed}}）",
+    "modelsStandardEditable": "模型（标准套餐已勾选，可增减）",
+    "models": "模型"
+  },
+  "steps": {
+    "selectDataset": "选择数据集",
+    "preprocessing": "预处理配置",
+    "taskType": "任务类型确认",
+    "models": "选择模型",
+    "confirm": "确认并提交"
+  },
+  "wizard": {
+    "title": "新建分析"
+  },
+  "singlePage": {
+    "title": "新建分析 — 智能确认",
+    "loadingTip": "正在按数据自动生成分析方案…",
+    "readyTitle": "分析方案已按数据自动填好，确认后即可提交",
+    "detectionUnavailableTitle": "未能自动识别任务类型",
+    "detectionUnavailableDescription": "数据中未找到明确的结局/事件列，请使用逐步向导手动指定分析目标。",
+    "enterGuidedWizard": "进入逐步向导"
+  },
+  "datasetStep": {
+    "title": "选择已校验数据集",
+    "placeholder": "选择数据集（仅 VALIDATED 可分析）",
+    "optionLabel": "{{name}}（{{rowCount}} 行）",
+    "unknownRowCount": "?",
+    "noValidated": "项目内暂无已校验数据集，请先上传并通过质量校验"
+  },
+  "templates": {
+    "title": "科研流程模板（可选）：",
+    "applicable": "适用",
+    "notApplicable": "不适用",
+    "currentValue": "（当前：{{value}}）",
+    "reasonSeparator": "；"
+  },
+  "detection": {
+    "title": "任务类型识别",
+    "failedTitle": "自动识别失败，请手动选择任务类型",
+    "loading": "识别中…",
+    "recommendedTask": "推荐任务",
+    "confidence": "置信度",
+    "confidenceValue": "{{confidence}}%",
+    "reasonLabel": "推荐理由：",
+    "autoMessage": "自动识别：{{reason}}（置信度 {{confidence}}%）",
+    "candidateKinds": {
+      "time_col": "随访时间列",
+      "event_col": "结局事件列",
+      "label_col": "结局标签列"
+    },
+    "candidateTag": "{{kind}}: {{column}} ({{confidence}}%)",
+    "taskSelectionOverrideRecommended": "任务类型（可覆盖推荐）",
+    "taskSelectionManual": "任务类型（手动选择）",
+    "selectPlaceholder": "选择任务类型"
+  },
+  "modelsStep": {
+    "title": "可用模型（{{taskType}}）",
+    "columns": {
+      "select": "选择",
+      "model": "模型",
+      "role": "角色",
+      "key": "标识",
+      "version": "版本"
+    },
+    "standardHeading": "标准套餐（{{count}} 个，已默认勾选：基线 + 强模型 + 可解释模型）",
+    "advancedHeading": "高级选项（{{count}} 个，按需展开勾选）"
+  },
+  "summary": {
+    "title": "参数摘要"
+  },
+  "iteration": {
+    "prefilledTitle": "已按迭代建议预填",
+    "prefilledDescription": "{{summary}}（预处理步骤与模型选择可在后续步骤调整）"
+  },
+  "validation": {
+    "survivalGuidance": "请进入“逐步调整”选择随访时间列和结局事件列，或切换到“分类 / 风险预测”。",
+    "survivalUnavailable": "当前数据没有随访时间 / 结局事件列，无法进行生存分析",
+    "configurationCannotComplete": "当前配置无法完成分析",
+    "survivalMissingTargets": "生存分析需要有效的随访时间列和结局事件列。请进入“逐步调整”选择随访时间列和结局事件列，或切换到“分类 / 风险预测”。",
+    "columnListSeparator": "、",
+    "targetColumnsMissing": "结局相关列 {{columns}} 在数据集中不存在，请返回步骤 2 核对结局定义。",
+    "regressionOutcomeMustBeNumeric": "回归任务的结局列“{{column}}”必须是数值，当前列为{{type}}类型。如果研究问题是“是否/属于哪类”的判断，请改用“{{classificationTask}}”。",
+    "classificationOutcomeNeedsTwoClasses": "结局列“{{column}}”只有一个有效取值，分类任务需要至少两个类别，请核对结局定义。"
+  },
+  "messages": {
+    "templateApplied": "已应用“{{name}}”模板：任务类型与推荐模型已预填，后续步骤可调整",
+    "submitted": "分析已提交"
+  },
+  "errors": {
+    "loadDatasets": "数据集加载失败",
+    "recommendPreprocess": "推荐配置生成失败",
+    "detectTask": "识别失败",
+    "loadModels": "模型列表加载失败",
+    "noDatasetVersion": "数据集无可用版本",
+    "submit": "提交失败"
+  }
+}

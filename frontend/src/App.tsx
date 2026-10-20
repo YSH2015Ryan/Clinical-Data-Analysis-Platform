@@ -1,7 +1,8 @@
 import { ConfigProvider } from "antd";
-import zhCN from "antd/locale/zh_CN";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { applyLocale, getAntdLocale, normalizeLocale } from "./i18n/locale";
 import { getRole, getToken, restoreSession } from "./api";
 import AdminLLMSettingsPage from "./pages/AdminLLMSettingsPage";
 import AdminPluginsPage from "./pages/AdminPluginsPage";
@@ -36,9 +37,16 @@ function AdminOnly({ children }: { children: JSX.Element }) {
 }
 
 export default function App() {
+  const { i18n } = useTranslation();
+  const locale = normalizeLocale(i18n.resolvedLanguage ?? i18n.language);
+
+  useEffect(() => {
+    applyLocale(locale, i18n.t("common.app.title"));
+  }, [i18n, locale]);
+
   return (
     <ConfigProvider
-      locale={zhCN}
+      locale={getAntdLocale(locale)}
       theme={{
         token: {
           // 学术编辑风（docs/11 §6）：墨黑/藏青/纸白/hairline，克制的圆角

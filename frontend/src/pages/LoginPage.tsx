@@ -1,11 +1,14 @@
 import { Button, Form, Input, message } from "antd";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { login, setTokens, type ApiError } from "../api";
+import LanguageSwitcher from "../components/LanguageSwitcher";
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const onFinish = async (values: { email: string; password: string }) => {
     setLoading(true);
@@ -15,7 +18,7 @@ export default function LoginPage() {
       navigate("/projects");
     } catch (e) {
       const err = e as ApiError;
-      message.error(err.message || "登录失败");
+      message.error(err.message || t("auth.failed"));
     } finally {
       setLoading(false);
     }
@@ -24,51 +27,52 @@ export default function LoginPage() {
   return (
     <div className="login-wrap">
       <div className="login-brand">
-        <p className="login-eyebrow">CLINICAL DATA ANALYSIS PLATFORM</p>
+        <p className="login-eyebrow">{t("auth.eyebrow")}</p>
         <h1 className="login-title">
-          临床数据分析平台
+          {t("auth.title")}
           <br />
-          <span style={{ fontSize: "0.5em", color: "#555" }}>
-            从数据上传到可投稿报告的一体化工作台
-          </span>
+          <span style={{ fontSize: "0.5em", color: "#555" }}>{t("auth.subtitle")}</span>
         </h1>
-        <p className="login-sub">
-          为医学研究者设计：上传队列数据，自动完成质量校验、预处理、多模型比较，
-          生成符合期刊规范的临床研究报告。
-        </p>
+        <p className="login-sub">{t("auth.description")}</p>
         <ul className="login-points">
           <li>
-            <span>质量校验</span>上传即生成列画像与问题清单，阻塞项未解决不允许进入分析
+            <span>{t("auth.qualityTitle")}</span>
+            {t("auth.qualityText")}
           </li>
           <li>
-            <span>多模型比较</span>逻辑回归、随机森林、生存分析等 17 种模型并行计算，指标同源
+            <span>{t("auth.modelsTitle")}</span>
+            {t("auth.modelsText")}
           </li>
           <li>
-            <span>期刊级报告</span>IMRaD 结构、结构化摘要、表图规范，HTML / PDF 一键导出
+            <span>{t("auth.reportsTitle")}</span>
+            {t("auth.reportsText")}
           </li>
         </ul>
       </div>
       <div className="login-form-col">
         <div className="login-card">
-          <p className="login-card-title">登录</p>
-          <p className="login-card-sub">使用注册邮箱进入您的研究工作台</p>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+            <LanguageSwitcher />
+          </div>
+          <p className="login-card-title">{t("auth.cardTitle")}</p>
+          <p className="login-card-sub">{t("auth.cardSubtitle")}</p>
           <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
             <Form.Item
-              label="邮箱"
+              label={t("auth.email")}
               name="email"
-              rules={[{ required: true, type: "email", message: "请输入有效邮箱" }]}
+              rules={[{ required: true, type: "email", message: t("auth.emailRequired") }]}
             >
               <Input autoFocus />
             </Form.Item>
             <Form.Item
-              label="密码"
+              label={t("auth.password")}
               name="password"
-              rules={[{ required: true, message: "请输入密码" }]}
+              rules={[{ required: true, message: t("auth.passwordRequired") }]}
             >
               <Input.Password />
             </Form.Item>
             <Button type="primary" htmlType="submit" block loading={loading}>
-              登录
+              {t("auth.submit")}
             </Button>
           </Form>
         </div>

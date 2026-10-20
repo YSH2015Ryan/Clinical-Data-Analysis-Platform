@@ -1,0 +1,134 @@
+{
+  "plugins": {
+    "title": "Plugin management",
+    "backToProjects": "Back to projects",
+    "errors": {
+      "load": "Could not load the plugin list",
+      "update": "Could not save the update",
+      "invalidJson": "The default parameters are not valid JSON"
+    },
+    "messages": {
+      "enabled": "{{name}} has been enabled",
+      "disabled": "{{name}} has been disabled",
+      "paramsSaved": "Default parameters updated"
+    },
+    "table": {
+      "key": "Identifier",
+      "name": "Name",
+      "version": "Version",
+      "taskTypes": "Task types",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "actions": {
+      "disable": "Disable",
+      "enable": "Enable",
+      "defaultParams": "Default parameters"
+    },
+    "descriptionUnavailable": "No description available",
+    "descriptions": {
+      "logreg": "Logistic regression: an interpretable linear classification baseline that outputs probabilities and works well for quickly assessing linear separability.",
+      "rf": "Random forest: an ensemble of decision trees that resists overfitting and provides feature importance.",
+      "svm": "Support vector machine: suitable for small-to-medium samples and high-dimensional data, with probabilities calibrated using Platt scaling.",
+      "xgboost": "XGBoost gradient-boosted trees: strong performance on tabular data with SHAP explanation support.",
+      "lightgbm": "LightGBM: histogram-accelerated gradient-boosted trees that train faster on large samples.",
+      "catboost": "CatBoost: gradient-boosted trees with automatic handling of categorical features.",
+      "lasso": "Lasso linear regression: L1 regularization performs automatic feature selection and produces a sparse, interpretable model.",
+      "elasticnet": "Elastic net: combined L1 and L2 regularization that balances feature selection with groups of highly correlated variables.",
+      "rfReg": "Random forest regression: tree-based regression that robustly handles nonlinear relationships.",
+      "xgboostReg": "XGBoost regression: gradient-boosted tree regression with strong tabular-data performance.",
+      "km": "Kaplan-Meier: a covariate-free baseline overall survival curve (C-index approximately 0.5) used as a reference.",
+      "coxph": "Cox proportional hazards model: the classic semiparametric survival model that reports a hazard ratio (HR) for each variable.",
+      "rsf": "Random survival forest: tree-based survival analysis that can capture nonlinear risk relationships.",
+      "gbs": "Gradient-boosted survival model (Cox PH loss): a boosting method for survival data.",
+      "deepsurv": "DeepSurv: a deep neural network version of the Cox model (an optional plugin requiring a torch environment).",
+      "dummy": "Majority-class baseline: always predicts the most common class to verify that the modeling pipeline is running correctly."
+    },
+    "modal": {
+      "title": "Default parameters — {{name}}",
+      "description": "A JSON object used as this model's default parameters for new analyses. Historical runs are not affected.",
+      "save": "Save",
+      "cancel": "Cancel"
+    }
+  },
+  "llm": {
+    "title": "AI settings",
+    "backToProjects": "Back to projects",
+    "errors": {
+      "load": "Could not load settings",
+      "test": "Connection test failed",
+      "save": "Could not save settings",
+      "operation": "The operation failed"
+    },
+    "providers": {
+      "local": "Local",
+      "cloud": "Cloud",
+      "openai": "OpenAI",
+      "anthropic": "Anthropic"
+    },
+    "messages": {
+      "testSuccess": "The {{provider}} connection is healthy ({{latency}} ms)",
+      "testFailure": "The {{provider}} provider is unavailable: {{detail}}",
+      "saved": "Saved and applied immediately",
+      "keyCleared": "The {{provider}} API key has been cleared"
+    },
+    "status": {
+      "title": "Provider status",
+      "localTitle": "Local (Ollama)",
+      "cloudTitle": "Cloud ({{provider}})",
+      "available": "Available",
+      "unavailable": "Unavailable",
+      "deploymentDisabled": "Disabled at deployment",
+      "model": "Model: {{model}}",
+      "testConnection": "Test connection",
+      "fallbackDescription": "Fallback chain: use the feature switches below to choose Local only, Local first (fall back to cloud after a local failure), Cloud only, or Off for each feature. When an LLM is unavailable, the related features automatically fall back to built-in rule templates without blocking the main workflow."
+    },
+    "form": {
+      "defaultStrategy": "Default model strategy",
+      "strategies": {
+        "auto": "Automatic (local first, falls back to cloud)",
+        "local": "Local only",
+        "cloud": "Cloud only"
+      },
+      "ollamaModel": "Local model (choose from the installed Ollama list)",
+      "ollamaModelsUnavailable": "Could not retrieve the model list because Ollama is unavailable; you can enter one manually",
+      "ollamaPlaceholder": "Select or enter a model name",
+      "temperature": "Generation temperature (0–1; lower is more stable)",
+      "featureSwitches": "Feature switches",
+      "features": {
+        "researchProfile": "Research profile (research questions and design suggestions)",
+        "reportInterpretation": "Report interpretation section",
+        "validationExplain": "Plain-language validation error explanation",
+        "iteration": "Conversational iteration (rerun suggestions)"
+      },
+      "switchModes": {
+        "off": "Off",
+        "local": "Local only",
+        "localFirst": "Local first (falls back to cloud)",
+        "cloud": "Cloud only"
+      },
+      "cloudConfig": "Cloud configuration",
+      "cloudDisabledTitle": "Cloud access is disabled at deployment (LLM_CLOUD_ENABLED=false)",
+      "cloudDisabledDescription": "To enable it, ask a server-side developer to update the environment variable and restart the service.",
+      "complianceTitle": "Compliance notice",
+      "complianceDescription": "After cloud access is enabled, the platform sends only aggregate statistics and column metadata to the cloud. It never sends row-level patient data; this is enforced by the server. Evaluate medical-institution procurement and cross-border data compliance requirements independently.",
+      "cloudProvider": "Cloud provider",
+      "cloudProviderOptions": {
+        "openai": "OpenAI",
+        "anthropic": "Anthropic Claude"
+      },
+      "apiKeyConfigured": "{{provider}} API key (write-only; current value: {{preview}})",
+      "apiKeyNotConfigured": "{{provider}} API key (write-only; not currently configured)",
+      "apiKeyPlaceholders": {
+        "openai": "sk-...",
+        "anthropic": "sk-ant-..."
+      },
+      "clearKey": "Clear",
+      "save": "Save and apply"
+    }
+  }
+}

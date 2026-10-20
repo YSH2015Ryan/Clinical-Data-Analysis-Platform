@@ -6,6 +6,7 @@
 
 import { Alert, Card, Col, Collapse, Row, Space, Statistic, Table, Tag, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   getDatasetInsight,
   type ApiError,
@@ -16,33 +17,33 @@ import {
 } from "../api";
 import ChartPanel from "../components/ChartPanel";
 
-const TASK_LABEL: Record<string, string> = {
-  survival: "生存分析",
-  classification: "分类/风险预测",
-  regression: "回归/预后",
-  eda: "探索性分析",
+const TASK_KEY: Record<string, string> = {
+  survival: "dataset.insight.tasks.survival",
+  classification: "dataset.insight.tasks.classification",
+  regression: "dataset.insight.tasks.regression",
+  eda: "dataset.insight.tasks.eda",
 };
 
-const RESEARCH_TYPE_LABEL: Record<string, string> = {
-  cohort: "队列/生存研究",
-  case_control: "病例-对照研究",
-  cross_sectional: "横断面研究",
-  time_series: "时序研究",
+const RESEARCH_TYPE_KEY: Record<string, string> = {
+  cohort: "dataset.insight.researchTypes.cohort",
+  case_control: "dataset.insight.researchTypes.caseControl",
+  cross_sectional: "dataset.insight.researchTypes.crossSectional",
+  time_series: "dataset.insight.researchTypes.timeSeries",
 };
 
-const ACTION_LABEL: Record<string, string> = {
-  impute_missing: "缺失插补",
-  winsorize_outliers: "异常值截尾",
-  to_missing: "非法值置缺失",
+const ACTION_KEY: Record<string, string> = {
+  impute_missing: "dataset.insight.actions.imputeMissing",
+  winsorize_outliers: "dataset.insight.actions.winsorizeOutliers",
+  to_missing: "dataset.insight.actions.toMissing",
 };
 
 /** T6.14 缺口类型标签 */
-const DEFICIT_LABEL: Record<string, string> = {
-  epv: "样本量/EPV 不足",
-  imbalance: "类别不均衡",
-  survival_events: "生存事件不足",
-  variable_roles: "变量角色缺失",
-  power: "组间把握度不足",
+const DEFICIT_KEY: Record<string, string> = {
+  epv: "dataset.insight.deficits.epv",
+  imbalance: "dataset.insight.deficits.imbalance",
+  survival_events: "dataset.insight.deficits.survivalEvents",
+  variable_roles: "dataset.insight.deficits.variableRoles",
+  power: "dataset.insight.deficits.power",
 };
 
 function fmt(v: number | null | undefined, digits = 2): string {
@@ -57,6 +58,7 @@ function OpportunityList({
   title: string;
   items: ResearchOpportunityItem[];
 }) {
+  const { t } = useTranslation();
   if (items.length === 0) return null;
   return (
     <div style={{ marginBottom: 8 }}>
@@ -67,7 +69,7 @@ function OpportunityList({
             {it.text}
             <br />
             <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-              依据：{it.basis}
+              {t("dataset.insight.basis", { basis: it.basis })}
             </Typography.Text>
           </li>
         ))}
@@ -77,6 +79,7 @@ function OpportunityList({
 }
 
 function ResearchOpportunitiesBlock({ ro }: { ro: ResearchOpportunities }) {
+  const { t } = useTranslation();
   const total =
     ro.observed_patterns.length +
     ro.unexpected_associations.length +
@@ -89,18 +92,33 @@ function ResearchOpportunitiesBlock({ ro }: { ro: ResearchOpportunities }) {
       items={[
         {
           key: "ro",
-          label: `研究机会与假设生成（${total} 条）——Hypothesis-generating`,
+          label: t("dataset.insight.opportunitiesLabel", { count: total }),
           children: (
             <>
               <Alert type="info" message={ro.notice} style={{ marginBottom: 12 }} />
-              <OpportunityList title="观察到的模式" items={ro.observed_patterns} />
-              <OpportunityList title="意外关联（需核实同源测量/泄漏）" items={ro.unexpected_associations} />
-              <OpportunityList title="潜在亚组差异" items={ro.potential_subgroup_differences} />
-              <OpportunityList title="潜在预测任务" items={ro.potential_prediction_tasks} />
-              <OpportunityList title="潜在可检验假设" items={ro.potential_hypotheses} />
+              <OpportunityList
+                title={t("dataset.insight.opportunityTitles.observedPatterns")}
+                items={ro.observed_patterns}
+              />
+              <OpportunityList
+                title={t("dataset.insight.opportunityTitles.unexpectedAssociations")}
+                items={ro.unexpected_associations}
+              />
+              <OpportunityList
+                title={t("dataset.insight.opportunityTitles.subgroupDifferences")}
+                items={ro.potential_subgroup_differences}
+              />
+              <OpportunityList
+                title={t("dataset.insight.opportunityTitles.predictionTasks")}
+                items={ro.potential_prediction_tasks}
+              />
+              <OpportunityList
+                title={t("dataset.insight.opportunityTitles.hypotheses")}
+                items={ro.potential_hypotheses}
+              />
               {total === 0 && (
                 <Typography.Text type="secondary">
-                  当前数据未触发任何研究机会规则。
+                  {t("dataset.insight.noOpportunities")}
                 </Typography.Text>
               )}
             </>
@@ -167,6 +185,7 @@ function DistributionChart({ dist }: { dist: EdaDistribution }) {
 export default function DatasetInsightCard({ datasetId }: { datasetId: string }) {
   const [insight, setInsight] = useState<DatasetInsight | null>(null);
   const [pending, setPending] = useState(true);
+  const { t } = useTranslation();
 
   useEffect(() => {
     let stop = false;
@@ -197,7 +216,7 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
       <Alert
         type="info"
         showIcon
-        message="数据体检报告生成中…（自动修复 + 探索性分析，通常数秒）"
+        message={t("dataset.insight.pending")}
         style={{ marginBottom: 16 }}
       />
     ) : null;
@@ -213,11 +232,11 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
   const catPairs = eda.correlations.categorical.top_pairs;
 
   return (
-    <Card title="数据体检报告（自动生成）" style={{ marginBottom: 16 }}>
+    <Card title={t("dataset.insight.title")} style={{ marginBottom: 16 }}>
       {/* 体检结论（真实数值摘要） */}
       <Alert
         type={rec.can_start_modeling ? "success" : "warning"}
-        message="体检结论"
+        message={t("dataset.insight.conclusion")}
         description={
           <ul style={{ margin: "4px 0", paddingLeft: 20 }}>
             {summary.map((line, i) => (
@@ -231,12 +250,16 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
       {fixLog.length > 0 && (
         <Alert
           type="info"
-          message={`已自动完成 ${fixLog.length} 项安全修复（生成新版本，源文件不变）`}
+          message={t("dataset.insight.autoFixCompleted", { count: fixLog.length })}
           description={
             <Space size={4} wrap style={{ marginTop: 4 }}>
               {fixLog.map((e, i) => (
                 <Tag key={i}>
-                  {e.column}: {ACTION_LABEL[e.action] ?? e.action}（{e.affected_rows} 行）
+                  {t("dataset.insight.autoFixEntry", {
+                    column: e.column,
+                    action: ACTION_KEY[e.action] ? t(ACTION_KEY[e.action]) : e.action,
+                    count: e.affected_rows,
+                  })}
                 </Tag>
               ))}
             </Space>
@@ -250,16 +273,22 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
         <Alert
           type="warning"
           showIcon
-          message={`数据缺口建议（${supplement.items.length} 项）——补充数据可提升分析可靠性`}
+          message={t("dataset.insight.deficitSuggestions", {
+            count: supplement.items.length,
+          })}
           description={
             <ul style={{ margin: "4px 0", paddingLeft: 20 }}>
               {supplement.items.map((item, i) => (
                 <li key={i} style={{ marginBottom: 8 }}>
-                  <Tag color="orange">{DEFICIT_LABEL[item.deficit_type] ?? item.deficit_type}</Tag>
+                  <Tag color="orange">
+                    {DEFICIT_KEY[item.deficit_type]
+                      ? t(DEFICIT_KEY[item.deficit_type])
+                      : item.deficit_type}
+                  </Tag>
                   {item.suggestion}
                   <br />
                   <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                    依据：{item.basis}
+                    {t("dataset.insight.basis", { basis: item.basis })}
                   </Typography.Text>
                 </li>
               ))}
@@ -275,14 +304,14 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
       {/* 核心统计 */}
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col span={4}>
-          <Statistic title="行数" value={eda.row_count} />
+          <Statistic title={t("dataset.insight.rows")} value={eda.row_count} />
         </Col>
         <Col span={4}>
-          <Statistic title="列数" value={eda.column_count} />
+          <Statistic title={t("dataset.insight.columns")} value={eda.column_count} />
         </Col>
         <Col span={4}>
           <Statistic
-            title="完整病例比例"
+            title={t("dataset.insight.completeCaseRatio")}
             value={(eda.missing.complete_case_ratio * 100).toFixed(1)}
             suffix="%"
           />
@@ -290,7 +319,10 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
         {ss.n_events != null && (
           <>
             <Col span={4}>
-              <Statistic title={`事件数（${ss.event_column}）`} value={ss.n_events} />
+              <Statistic
+                title={t("dataset.insight.eventCount", { column: ss.event_column })}
+                value={ss.n_events}
+              />
             </Col>
             <Col span={4}>
               <Statistic
@@ -303,8 +335,12 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
         )}
         <Col span={4}>
           <Statistic
-            title="研究设计画像"
-            value={RESEARCH_TYPE_LABEL[rp.research_type] ?? rp.research_type}
+            title={t("dataset.insight.researchDesign")}
+            value={
+              RESEARCH_TYPE_KEY[rp.research_type]
+                ? t(RESEARCH_TYPE_KEY[rp.research_type])
+                : rp.research_type
+            }
           />
         </Col>
       </Row>
@@ -312,18 +348,18 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
       {/* 推荐任务与研究建议 */}
       <div style={{ marginBottom: 16 }}>
         <Space size={4} wrap>
-          <Typography.Text strong>推荐任务：</Typography.Text>
+          <Typography.Text strong>{t("dataset.insight.recommendedTasks")}</Typography.Text>
           {rec.recommended_tasks.length > 0 ? (
-            rec.recommended_tasks.map((t) => (
-              <Tag key={t} color="blue">
-                {TASK_LABEL[t] ?? t}
+            rec.recommended_tasks.map((task) => (
+              <Tag key={task} color="blue">
+                {TASK_KEY[task] ? t(TASK_KEY[task]) : task}
               </Tag>
             ))
           ) : (
-            <Tag>探索性分析</Tag>
+            <Tag>{t("dataset.insight.defaultTask")}</Tag>
           )}
           <Typography.Text strong style={{ marginLeft: 16 }}>
-            推荐模型：
+            {t("dataset.insight.recommendedModels")}
           </Typography.Text>
           {rp.recommended_models.map((m) => (
             <Tag key={m} color="geekblue">
@@ -341,7 +377,9 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
         items={[
           {
             key: "dist",
-            label: `变量分布（${eda.distributions.length} 列）`,
+            label: t("dataset.insight.distributionSection", {
+              count: eda.distributions.length,
+            }),
             children: (
               <Row gutter={[16, 16]}>
                 {eda.distributions.slice(0, 12).map((d) => (
@@ -353,7 +391,9 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
                           <span>{d.name}</span>
                           {d.semantic && <Tag color="geekblue">{d.semantic}</Tag>}
                           {d.missing > 0 && (
-                            <Tag color="orange">缺 {d.missing}</Tag>
+                            <Tag color="orange">
+                              {t("dataset.insight.missingCount", { count: d.missing })}
+                            </Tag>
                           )}
                         </Space>
                       }
@@ -361,8 +401,13 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
                       <DistributionChart dist={d} />
                       {d.stats && (
                         <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                          均值 {fmt(d.stats.mean)} / 标准差 {fmt(d.stats.std)} / 中位数{" "}
-                          {fmt(d.stats.median)} / 范围 {fmt(d.stats.min)}~{fmt(d.stats.max)}
+                          {t("dataset.insight.distributionStats", {
+                            mean: fmt(d.stats.mean),
+                            std: fmt(d.stats.std),
+                            median: fmt(d.stats.median),
+                            min: fmt(d.stats.min),
+                            max: fmt(d.stats.max),
+                          })}
                         </Typography.Text>
                       )}
                     </Card>
@@ -373,7 +418,7 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
           },
           {
             key: "missing",
-            label: `缺失模式（${topMissing.length} 列含缺失）`,
+            label: t("dataset.insight.missingSection", { count: topMissing.length }),
             children: (
               <>
                 {/* P1-11（§12）：缺失与结局相关 → 必须 WARNING */}
@@ -382,12 +427,14 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
                     type="warning"
                     showIcon
                     style={{ marginBottom: 8 }}
-                    message="缺失与结局相关（Possible MNAR）"
-                    description="单一插补可能引入系统性偏倚，建议多重插补（MICE）或缺失感知模型，并由研究者确认。"
+                    message={t("dataset.insight.outcomeMissingTitle")}
+                    description={t("dataset.insight.outcomeMissingDescription")}
                   />
                 )}
                 {topMissing.length === 0 ? (
-                  <Typography.Text type="secondary">无缺失</Typography.Text>
+                  <Typography.Text type="secondary">
+                    {t("dataset.insight.noMissing")}
+                  </Typography.Text>
                 ) : (
                   <Table
                     rowKey="name"
@@ -395,27 +442,21 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
                     dataSource={topMissing}
                     pagination={false}
                     columns={[
-                      { title: "列", dataIndex: "name" },
-                      { title: "缺失数", dataIndex: "missing" },
+                      { title: t("dataset.insight.missingColumns.column"), dataIndex: "name" },
+                      { title: t("dataset.insight.missingColumns.missing"), dataIndex: "missing" },
                       {
-                        title: "缺失率",
+                        title: t("dataset.insight.missingColumns.missingRate"),
                         dataIndex: "missing_rate",
                         render: (v: number) => `${(v * 100).toFixed(1)}%`,
                       },
                       {
-                        title: "机制（启发式）",
+                        title: t("dataset.insight.missingColumns.mechanism"),
                         key: "mechanism",
                         render: (_, r) => {
                           const mz = eda.missingness?.variables.find(
                             (v) => v.column === r.name,
                           );
                           if (!mz) return "—";
-                          const label = {
-                            likely_mcar: "Likely MCAR",
-                            likely_mar: "Likely MAR",
-                            possible_mnar: "Possible MNAR",
-                            undetermined: "Undetermined",
-                          }[mz.mechanism];
                           const color = {
                             likely_mcar: "green",
                             likely_mar: "gold",
@@ -424,7 +465,11 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
                           }[mz.mechanism];
                           return (
                             <Tooltip title={mz.imputation_advice}>
-                              <Tag color={color}>{label}</Tag>
+                              <Tag color={color}>
+                                {t(`dataset.insight.mechanisms.${mz.mechanism}`, {
+                                  defaultValue: mz.mechanism,
+                                })}
+                              </Tag>
                             </Tooltip>
                           );
                         },
@@ -437,13 +482,17 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
           },
           {
             key: "corr",
-            label: "相关性 Top 对",
+            label: t("dataset.insight.correlationSection"),
             children: (
               <Row gutter={16}>
                 <Col span={12}>
-                  <Typography.Text strong>连续变量（Pearson r）</Typography.Text>
+                  <Typography.Text strong>
+                    {t("dataset.insight.continuousCorrelation")}
+                  </Typography.Text>
                   {contPairs.length === 0 ? (
-                    <Typography.Paragraph type="secondary">无</Typography.Paragraph>
+                    <Typography.Paragraph type="secondary">
+                      {t("dataset.insight.noData")}
+                    </Typography.Paragraph>
                   ) : (
                     <ul style={{ paddingLeft: 20 }}>
                       {contPairs.map((p, i) => (
@@ -455,9 +504,13 @@ export default function DatasetInsightCard({ datasetId }: { datasetId: string })
                   )}
                 </Col>
                 <Col span={12}>
-                  <Typography.Text strong>分类变量（Cramér's V）</Typography.Text>
+                  <Typography.Text strong>
+                    {t("dataset.insight.categoricalCorrelation")}
+                  </Typography.Text>
                   {catPairs.length === 0 ? (
-                    <Typography.Paragraph type="secondary">无</Typography.Paragraph>
+                    <Typography.Paragraph type="secondary">
+                      {t("dataset.insight.noData")}
+                    </Typography.Paragraph>
                   ) : (
                     <ul style={{ paddingLeft: 20 }}>
                       {catPairs.map((p, i) => (

@@ -5,6 +5,7 @@ CI 区间用「透明底条 + 误差条」堆叠实现（避免 custom renderIte
  */
 
 import type { EChartsOption, SeriesOption } from "echarts";
+import type { TFunction } from "i18next";
 import type { ChartAsset } from "./api";
 
 export interface Panel {
@@ -13,7 +14,9 @@ export interface Panel {
   height?: number;
 }
 
-const TOOLBOX = { feature: { saveAsImage: { title: "导出 PNG" } } };
+function toolbox(t: TFunction) {
+  return { feature: { saveAsImage: { title: t("charts.exportPng") } } };
+}
 
 interface Series {
   model_key: string;
@@ -42,7 +45,7 @@ function lineSeries(name: string, xs: number[], ys: number[], extra: Record<stri
   } as SeriesOption;
 }
 
-function rocOption(data: Record<string, unknown>): EChartsOption {
+function rocOption(data: Record<string, unknown>, t: TFunction): EChartsOption {
   const series = seriesOf(data).map((s) =>
     lineSeries(
       `${s.model_key} (AUC=${s.auc != null ? num(s.auc).toFixed(3) : "—"})`,
@@ -50,18 +53,18 @@ function rocOption(data: Record<string, unknown>): EChartsOption {
       numArr(s.tpr),
     ),
   );
-  series.push(lineSeries("随机猜测", [0, 1], [0, 1], { lineStyle: { type: "dashed" } }));
+  series.push(lineSeries(t("charts.randomGuess"), [0, 1], [0, 1], { lineStyle: { type: "dashed" } }));
   return {
     tooltip: { trigger: "axis" },
     legend: {},
-    toolbox: TOOLBOX,
+    toolbox: toolbox(t),
     xAxis: { type: "value", name: "FPR", min: 0, max: 1 },
     yAxis: { type: "value", name: "TPR", min: 0, max: 1 },
     series,
   };
 }
 
-function prCurveOption(data: Record<string, unknown>): EChartsOption {
+function prCurveOption(data: Record<string, unknown>, t: TFunction): EChartsOption {
   const series = seriesOf(data).map((s) =>
     lineSeries(
       `${s.model_key} (AUPRC=${s.auprc != null ? num(s.auprc).toFixed(3) : "—"})`,
@@ -72,22 +75,25 @@ function prCurveOption(data: Record<string, unknown>): EChartsOption {
   const prevalence = typeof data.prevalence === "number" ? data.prevalence : null;
   if (prevalence != null) {
     series.push(
-      lineSeries(`随机猜测 (π=${prevalence.toFixed(2)})`, [0, 1], [prevalence, prevalence], {
-        lineStyle: { type: "dashed" },
-      }),
+      lineSeries(
+        t("charts.randomGuessPrevalence", { value: prevalence.toFixed(2) }),
+        [0, 1],
+        [prevalence, prevalence],
+        { lineStyle: { type: "dashed" } },
+      ),
     );
   }
   return {
     tooltip: { trigger: "axis" },
     legend: {},
-    toolbox: TOOLBOX,
-    xAxis: { type: "value", name: "召回率", min: 0, max: 1 },
-    yAxis: { type: "value", name: "精确率", min: 0, max: 1 },
+    toolbox: toolbox(t),
+    xAxis: { type: "value", name: t("charts.recall"), min: 0, max: 1 },
+    yAxis: { type: "value", name: t("charts.precision"), min: 0, max: 1 },
     series,
   };
 }
 
-function calibrationOption(data: Record<string, unknown>): EChartsOption {
+function calibrationOption(data: Record<string, unknown>, t: TFunction): EChartsOption {
   const series = seriesOf(data).map((s) =>
     lineSeries(
       `${s.model_key} (Brier=${s.brier != null ? num(s.brier).toFixed(3) : "—"})`,
@@ -96,41 +102,43 @@ function calibrationOption(data: Record<string, unknown>): EChartsOption {
       { showSymbol: true },
     ),
   );
-  series.push(lineSeries("理想校准", [0, 1], [0, 1], { lineStyle: { type: "dashed" } }));
+  series.push(
+    lineSeries(t("charts.idealCalibration"), [0, 1], [0, 1], { lineStyle: { type: "dashed" } }),
+  );
   return {
     tooltip: { trigger: "axis" },
     legend: {},
-    toolbox: TOOLBOX,
-    xAxis: { type: "value", name: "预测概率", min: 0, max: 1 },
-    yAxis: { type: "value", name: "实际频率", min: 0, max: 1 },
+    toolbox: toolbox(t),
+    xAxis: { type: "value", name: t("charts.predictedProbability"), min: 0, max: 1 },
+    yAxis: { type: "value", name: t("charts.actualFrequency"), min: 0, max: 1 },
     series,
   };
 }
 
-function dcaOption(data: Record<string, unknown>): EChartsOption {
+function dcaOption(data: Record<string, unknown>, t: TFunction): EChartsOption {
   const series = seriesOf(data).map((s) =>
     lineSeries(String(s.model_key), numArr(s.thresholds), numArr(s.net_benefit)),
   );
   const treatAll = (data.treat_all ?? {}) as Record<string, unknown>;
   series.push(
-    lineSeries("全部干预", numArr(treatAll.thresholds), numArr(treatAll.net_benefit), {
+    lineSeries(t("charts.treatAll"), numArr(treatAll.thresholds), numArr(treatAll.net_benefit), {
       lineStyle: { type: "dashed" },
     }),
   );
   series.push(
-    lineSeries("均不干预", [0, 1], [0, 0], { lineStyle: { type: "dotted" } }),
+    lineSeries(t("charts.treatNone"), [0, 1], [0, 0], { lineStyle: { type: "dotted" } }),
   );
   return {
     tooltip: { trigger: "axis" },
     legend: {},
-    toolbox: TOOLBOX,
-    xAxis: { type: "value", name: "阈值概率", min: 0, max: 1 },
-    yAxis: { type: "value", name: "净获益" },
+    toolbox: toolbox(t),
+    xAxis: { type: "value", name: t("charts.thresholdProbability"), min: 0, max: 1 },
+    yAxis: { type: "value", name: t("charts.netBenefit") },
     series,
   };
 }
 
-function confusionPanels(data: Record<string, unknown>): Panel[] {
+function confusionPanels(data: Record<string, unknown>, t: TFunction): Panel[] {
   const models = (Array.isArray(data.models) ? data.models : []) as Record<string, unknown>[];
   return models.map((m) => {
     const labels = (m.labels ?? []) as (string | number)[];
@@ -148,10 +156,15 @@ function confusionPanels(data: Record<string, unknown>): Panel[] {
       height: 300,
       option: {
         tooltip: {},
-        toolbox: TOOLBOX,
+        toolbox: toolbox(t),
         grid: { left: 80, bottom: 60 },
-        xAxis: { type: "category", name: "预测", data: labels.map(String) },
-        yAxis: { type: "category", name: "实际", data: labels.map(String), inverse: true },
+        xAxis: { type: "category", name: t("charts.predicted"), data: labels.map(String) },
+        yAxis: {
+          type: "category",
+          name: t("charts.actual"),
+          data: labels.map(String),
+          inverse: true,
+        },
         visualMap: {
           min: 0,
           max: Math.max(max, 1),
@@ -172,7 +185,7 @@ function confusionPanels(data: Record<string, unknown>): Panel[] {
   });
 }
 
-function kmOption(data: Record<string, unknown>): EChartsOption {
+function kmOption(data: Record<string, unknown>, t: TFunction): EChartsOption {
   const series = seriesOf(data).map((s) =>
     lineSeries(`${s.model_key}/${s.group}`, numArr(s.times), numArr(s.survival), {
       step: "end",
@@ -181,9 +194,9 @@ function kmOption(data: Record<string, unknown>): EChartsOption {
   return {
     tooltip: { trigger: "axis" },
     legend: {},
-    toolbox: TOOLBOX,
-    xAxis: { type: "value", name: "时间" },
-    yAxis: { type: "value", name: "生存概率", min: 0, max: 1 },
+    toolbox: toolbox(t),
+    xAxis: { type: "value", name: t("charts.time") },
+    yAxis: { type: "value", name: t("charts.survivalProbability"), min: 0, max: 1 },
     series,
   };
 }
@@ -196,6 +209,7 @@ function forestOption(
   points: number[],
   xName: string,
   logScale: boolean,
+  t: TFunction,
 ): EChartsOption {
   return {
     tooltip: {
@@ -205,7 +219,7 @@ function forestOption(
         return `${categories[i]}<br/>${xName}=${points[i].toFixed(4)}<br/>95% CI [${lows[i].toFixed(4)}, ${highs[i].toFixed(4)}]`;
       },
     },
-    toolbox: TOOLBOX,
+    toolbox: toolbox(t),
     grid: { left: 100 },
     xAxis: { type: logScale ? "log" : "value", name: xName },
     yAxis: { type: "category", data: categories, inverse: true },
@@ -237,7 +251,7 @@ function forestOption(
   };
 }
 
-function cindexForestOption(data: Record<string, unknown>): EChartsOption {
+function cindexForestOption(data: Record<string, unknown>, t: TFunction): EChartsOption {
   const rows = (Array.isArray(data.rows) ? data.rows : []) as Record<string, unknown>[];
   return forestOption(
     rows.map((r) => String(r.model_key)),
@@ -246,10 +260,11 @@ function cindexForestOption(data: Record<string, unknown>): EChartsOption {
     rows.map((r) => num(r.c_index)),
     "C-index",
     false,
+    t,
   );
 }
 
-function hrForestPanels(data: Record<string, unknown>): Panel[] {
+function hrForestPanels(data: Record<string, unknown>, t: TFunction): Panel[] {
   const models = (Array.isArray(data.models) ? data.models : []) as Record<string, unknown>[];
   return models.map((m) => {
     const rows = (Array.isArray(m.rows) ? m.rows : []) as Record<string, unknown>[];
@@ -260,6 +275,7 @@ function hrForestPanels(data: Record<string, unknown>): Panel[] {
       rows.map((r) => num(r.hr)),
       "HR (log)",
       true,
+      t,
     );
     const base = option.series;
     const baseSeries: SeriesOption[] = Array.isArray(base) ? base : base ? [base] : [];
@@ -280,7 +296,7 @@ function hrForestPanels(data: Record<string, unknown>): Panel[] {
   });
 }
 
-function featureImportanceOption(data: Record<string, unknown>): EChartsOption {
+function featureImportanceOption(data: Record<string, unknown>, t: TFunction): EChartsOption {
   const features = (Array.isArray(data.features) ? data.features : []).map(String);
   const series = seriesOf(data).map((s) => ({
     name: s.model_key,
@@ -290,15 +306,15 @@ function featureImportanceOption(data: Record<string, unknown>): EChartsOption {
   return {
     tooltip: { trigger: "axis" },
     legend: {},
-    toolbox: TOOLBOX,
+    toolbox: toolbox(t),
     grid: { left: 120 },
-    xAxis: { type: "value", name: "归一化重要性", max: 1 },
+    xAxis: { type: "value", name: t("charts.normalizedImportance"), max: 1 },
     yAxis: { type: "category", data: features, inverse: true },
     series: series as SeriesOption[],
   };
 }
 
-function scatterOption(data: Record<string, unknown>): EChartsOption {
+function scatterOption(data: Record<string, unknown>, t: TFunction): EChartsOption {
   const series = seriesOf(data);
   const all = series.flatMap((s) => [...numArr(s.y_true), ...numArr(s.y_pred)]);
   const lo = all.length ? Math.min(...all) : 0;
@@ -312,20 +328,22 @@ function scatterOption(data: Record<string, unknown>): EChartsOption {
       }) as SeriesOption,
   );
   lines.push(
-    lineSeries("理想预测", [lo, hi], [lo, hi], { lineStyle: { type: "dashed" } }),
+    lineSeries(t("charts.idealPrediction"), [lo, hi], [lo, hi], {
+      lineStyle: { type: "dashed" },
+    }),
   );
   return {
     tooltip: { trigger: "item" },
     legend: {},
-    toolbox: TOOLBOX,
-    xAxis: { type: "value", name: "真实值", min: lo, max: hi },
-    yAxis: { type: "value", name: "预测值", min: lo, max: hi },
+    toolbox: toolbox(t),
+    xAxis: { type: "value", name: t("charts.trueValue"), min: lo, max: hi },
+    yAxis: { type: "value", name: t("charts.predictedValue"), min: lo, max: hi },
     series: lines,
   };
 }
 
 /** P1-14（updateplan §44）：残差图（residual vs fitted）+ y=0 参考线。 */
-function residualOption(data: Record<string, unknown>): EChartsOption {
+function residualOption(data: Record<string, unknown>, t: TFunction): EChartsOption {
   const series = seriesOf(data);
   const lines: SeriesOption[] = series.map(
     (s) =>
@@ -339,44 +357,46 @@ function residualOption(data: Record<string, unknown>): EChartsOption {
   const lo = fittedAll.length ? Math.min(...fittedAll) : 0;
   const hi = fittedAll.length ? Math.max(...fittedAll) : 1;
   lines.push(
-    lineSeries("零参考线", [lo, hi], [0, 0], { lineStyle: { type: "dashed" } }),
+    lineSeries(t("charts.zeroReference"), [lo, hi], [0, 0], {
+      lineStyle: { type: "dashed" },
+    }),
   );
   return {
     tooltip: { trigger: "item" },
     legend: {},
-    toolbox: TOOLBOX,
-    xAxis: { type: "value", name: "拟合值" },
-    yAxis: { type: "value", name: "残差" },
+    toolbox: toolbox(t),
+    xAxis: { type: "value", name: t("charts.fittedValue") },
+    yAxis: { type: "value", name: t("charts.residual") },
     series: lines,
   };
 }
 
 /** ChartAsset → 面板列表（多数 kind 单面板；混淆矩阵/HR 森林按模型拆分）。 */
-export function buildPanels(chart: ChartAsset): Panel[] {
+export function buildPanels(chart: ChartAsset, t: TFunction): Panel[] {
   const d = chart.data;
   switch (chart.kind) {
     case "roc":
-      return [{ title: chart.title, option: rocOption(d) }];
+      return [{ title: chart.title, option: rocOption(d, t) }];
     case "pr_curve":
-      return [{ title: chart.title, option: prCurveOption(d) }];
+      return [{ title: chart.title, option: prCurveOption(d, t) }];
     case "calibration":
-      return [{ title: chart.title, option: calibrationOption(d) }];
+      return [{ title: chart.title, option: calibrationOption(d, t) }];
     case "dca":
-      return [{ title: chart.title, option: dcaOption(d) }];
+      return [{ title: chart.title, option: dcaOption(d, t) }];
     case "confusion_matrix":
-      return confusionPanels(d).map((p) => ({ ...p, title: `${chart.title} — ${p.title}` }));
+      return confusionPanels(d, t).map((p) => ({ ...p, title: `${chart.title} — ${p.title}` }));
     case "km":
-      return [{ title: chart.title, option: kmOption(d), height: 420 }];
+      return [{ title: chart.title, option: kmOption(d, t), height: 420 }];
     case "cindex_forest":
-      return [{ title: chart.title, option: cindexForestOption(d) }];
+      return [{ title: chart.title, option: cindexForestOption(d, t) }];
     case "hr_forest":
-      return hrForestPanels(d).map((p) => ({ ...p, title: `${chart.title} — ${p.title}` }));
+      return hrForestPanels(d, t).map((p) => ({ ...p, title: `${chart.title} — ${p.title}` }));
     case "feature_importance":
-      return [{ title: chart.title, option: featureImportanceOption(d), height: 420 }];
+      return [{ title: chart.title, option: featureImportanceOption(d, t), height: 420 }];
     case "prediction_scatter":
-      return [{ title: chart.title, option: scatterOption(d) }];
+      return [{ title: chart.title, option: scatterOption(d, t) }];
     case "residual_plot":
-      return [{ title: chart.title, option: residualOption(d) }];
+      return [{ title: chart.title, option: residualOption(d, t) }];
     default:
       return [];
   }

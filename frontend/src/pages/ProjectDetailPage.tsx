@@ -1,6 +1,7 @@
 import { Button, Progress, Space, Table, Tag, Typography, Upload, message } from "antd";
 import { CloseOutlined, UploadOutlined } from "@ant-design/icons";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   listDatasets,
@@ -11,7 +12,9 @@ import {
   type ApiError,
   type DatasetDetail,
 } from "../api";
+import LanguageSwitcher from "../components/LanguageSwitcher";
 import { RunStatusTag } from "../components/RunProgressBoard";
+import { formatDateTime } from "../i18n/locale";
 
 const STATUS_COLOR: Record<DatasetDetail["status"], string> = {
   UPLOADED: "default",
@@ -29,6 +32,7 @@ export default function ProjectDetailPage() {
   const [uploading, setUploading] = useState<{ name: string; percent: number } | null>(null);
   const uploadController = useRef<AbortController | null>(null);
   const navigate = useNavigate();
+  const { i18n, t } = useTranslation();
 
   const reload = useCallback(async () => {
     if (!id) return;
@@ -38,11 +42,11 @@ export default function ProjectDetailPage() {
       setItems(page.items);
       setRuns((await listProjectRuns(id)).items);
     } catch (e) {
-      message.error((e as ApiError).message || "加载失败");
+      message.error((e as ApiError).message || t("common.error.load"));
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => {
     void reload();
@@ -53,7 +57,7 @@ export default function ProjectDetailPage() {
   const onUpload = async (file: File) => {
     if (!id) return;
     if (file.size > MAX_UPLOAD_BYTES) {
-      message.error("文件超过 200 MB 上限，请压缩或拆分后重试");
+      message.error(t("common.error.fileTooLarge"));
       return;
     }
     const controller = new AbortController();
@@ -64,14 +68,14 @@ export default function ProjectDetailPage() {
         signal: controller.signal,
         onProgress: (percent) => setUploading({ name: file.name, percent }),
       });
-      message.success("上传成功，校验中");
+      message.success(t("projects.detail.uploadSuccess"));
       void reload();
       navigate(`/datasets/${resp.dataset_id}`, { state: { projectId: id } });
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
-        message.info("上传已取消");
+        message.info(t("projects.detail.uploadCanceled"));
       } else {
-        message.error((e as ApiError).message || "上传失败");
+        message.error((e as ApiError).message || t("projects.detail.uploadFailed"));
       }
     } finally {
       uploadController.current = null;
@@ -81,20 +85,25 @@ export default function ProjectDetailPage() {
 
   return (
     <div style={{ maxWidth: 960, margin: "24px auto", padding: "0 16px" }}>
-      <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}>
+      <Space wrap style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}>
         <Typography.Title level={3} style={{ margin: 0 }}>
-          数据集
+          {t("projects.detail.datasets")}
         </Typography.Title>
         <Space wrap>
-          <Button onClick={() => navigate(`/projects/${id}/preparation/new`)}>数据准备</Button>
-          <Button onClick={() => navigate(`/projects/${id}/analysis/new`)}>新建分析</Button>
+          <LanguageSwitcher />
+          <Button onClick={() => navigate(`/projects/${id}/preparation/new`)}>
+            {t("projects.detail.prepare")}
+          </Button>
+          <Button onClick={() => navigate(`/projects/${id}/analysis/new`)}>
+            {t("projects.detail.newAnalysis")}
+          </Button>
           <Upload
             accept=".csv,.xlsx,.xls,.tsv,.txt"
             disabled={uploading !== null}
             showUploadList={false}
             beforeUpload={(file) => {
               if (file.size > MAX_UPLOAD_BYTES) {
-                message.error("文件超过 200 MB 上限，请压缩或拆分后重试");
+                message.error(t("common.error.fileTooLarge"));
                 return Upload.LIST_IGNORE;
               }
               return true;
@@ -107,10 +116,10 @@ export default function ProjectDetailPage() {
               loading={uploading !== null}
               disabled={uploading !== null}
             >
-              {uploading ? "正在上传" : "上传数据集"}
+              {uploading ? t("projects.detail.uploading") : t("projects.detail.upload")}
             </Button>
           </Upload>
-          <Button onClick={() => navigate("/projects")}>返回项目</Button>
+          <Button onClick={() => navigate("/projects")}>{t("projects.detail.back")}</Button>
         </Space>
       </Space>
       {uploading && (
@@ -123,8 +132,8 @@ export default function ProjectDetailPage() {
               type="text"
               danger
               icon={<CloseOutlined />}
-              aria-label="取消上传"
-              title="取消上传"
+              aria-label={t("projects.detail.cancelUpload")}
+              title={t("projects.detail.cancelUpload")}
               onClick={() => uploadController.current?.abort()}
             />
           </Space>
@@ -141,41 +150,51 @@ export default function ProjectDetailPage() {
           style: { cursor: "pointer" },
         })}
         columns={[
-          { title: "名称", dataIndex: "name" },
-          { title: "编码", dataIndex: "encoding", render: (v: string | null) => v ?? "—" },
+          { title: t("projects.name"), dataIndex: "name" },
           {
-            title: "状态",
-            dataIndex: "status",
-            render: (v: DatasetDetail["status"]) => <Tag color={STATUS_COLOR[v]}>{v}</Tag>,
+            title: t("projects.detail.encoding"),
+            dataIndex: "encoding",
+            render: (v: string | null) => v ?? "—",
           },
           {
-            title: "行数",
+            title: t("projects.detail.status"),
+            dataIndex: "status",
+            render: (v: DatasetDetail["status"]) => (
+              <Tag color={STATUS_COLOR[v]}>{t(`common.datasetStatus.${v}`)}</Tag>
+            ),
+          },
+          {
+            title: t("projects.detail.rows"),
             render: (_, r) => r.preview?.total_rows ?? "—",
           },
         ]}
       />
 
       <Typography.Title level={4} style={{ marginTop: 32 }}>
-        分析运行
+        {t("projects.detail.runs")}
       </Typography.Title>
       <Table<AnalysisRun>
         rowKey="id"
         dataSource={runs}
         pagination={false}
-        locale={{ emptyText: "暂无分析运行" }}
+        locale={{ emptyText: t("projects.detail.noRuns") }}
         onRow={(record) => ({
           onClick: () => navigate(`/runs/${record.id}`),
           style: { cursor: "pointer" },
         })}
         columns={[
           {
-            title: "创建时间",
+            title: t("projects.createdAt"),
             dataIndex: "created_at",
-            render: (v: string) => new Date(v).toLocaleString(),
+            render: (v: string) => formatDateTime(v, i18n.language),
           },
-          { title: "任务类型", dataIndex: "task_type" },
           {
-            title: "状态",
+            title: t("projects.detail.taskType"),
+            dataIndex: "task_type",
+            render: (v: AnalysisRun["task_type"]) => t(`common.taskType.${v}`),
+          },
+          {
+            title: t("projects.detail.status"),
             dataIndex: "status",
             render: (v: AnalysisRun["status"]) => <RunStatusTag status={v} />,
           },

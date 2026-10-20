@@ -23,6 +23,7 @@ import {
   message,
 } from "antd";
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import {
   ApiError,
@@ -33,23 +34,25 @@ import {
   testLlmProvider,
   updateLlmSettings,
 } from "../api";
+import LanguageSwitcher from "../components/LanguageSwitcher";
 
-const SWITCH_LABELS: Record<LlmFeatureSwitch, string> = {
-  off: "关闭",
-  local: "仅本地",
-  local_first: "本地优先（失败降级云端）",
-  cloud: "仅云端",
+const SWITCH_MODE_KEYS: Record<LlmFeatureSwitch, string> = {
+  off: "admin.llm.form.switchModes.off",
+  local: "admin.llm.form.switchModes.local",
+  local_first: "admin.llm.form.switchModes.localFirst",
+  cloud: "admin.llm.form.switchModes.cloud",
 };
 
-const FEATURE_LABELS: Record<string, string> = {
-  research_profile: "研究画像（研究问题与设计建议）",
-  report_interpretation: "报告解读段落",
-  validation_explain: "校验报错人话解释",
-  iteration: "对话式迭代（重跑建议）",
+const FEATURE_LABEL_KEYS: Record<string, string> = {
+  research_profile: "admin.llm.form.features.researchProfile",
+  report_interpretation: "admin.llm.form.features.reportInterpretation",
+  validation_explain: "admin.llm.form.features.validationExplain",
+  iteration: "admin.llm.form.features.iteration",
 };
 
 export default function AdminLLMSettingsPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<LlmSettings | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
@@ -71,9 +74,9 @@ export default function AdminLLMSettingsPage() {
         feature_switches: s.config.feature_switches,
       });
     } catch (e) {
-      setLoadError((e as ApiError).message || "加载失败");
+      setLoadError((e as ApiError).message || t("admin.llm.errors.load"));
     }
-  }, [form]);
+  }, [form, t]);
 
   useEffect(() => {
     void refresh();
@@ -84,15 +87,28 @@ export default function AdminLLMSettingsPage() {
 
   const runTest = async (provider: "local" | "cloud") => {
     setTesting(provider);
+    const providerLabel = t(
+      provider === "local" ? "admin.llm.providers.local" : "admin.llm.providers.cloud",
+    );
     try {
       const r = await testLlmProvider(provider);
       if (r.ok) {
-        message.success(`${provider === "local" ? "本地" : "云端"}连接正常（${r.latency_ms}ms）`);
+        message.success(
+          t("admin.llm.messages.testSuccess", {
+            provider: providerLabel,
+            latency: r.latency_ms,
+          }),
+        );
       } else {
-        message.error(`${provider === "local" ? "本地" : "云端"}不可用：${r.detail}`);
+        message.error(
+          t("admin.llm.messages.testFailure", {
+            provider: providerLabel,
+            detail: r.detail,
+          }),
+        );
       }
     } catch (e) {
-      message.error((e as ApiError).message || "测试失败");
+      message.error((e as ApiError).message || t("admin.llm.errors.test"));
     } finally {
       setTesting(null);
     }
@@ -115,10 +131,10 @@ export default function AdminLLMSettingsPage() {
       });
       setNewOpenAIKey("");
       setNewAnthropicKey("");
-      message.success("已保存并即时生效");
+      message.success(t("admin.llm.messages.saved"));
       await refresh();
     } catch (e) {
-      message.error((e as ApiError).message || "保存失败");
+      message.error((e as ApiError).message || t("admin.llm.errors.save"));
     } finally {
       setSaving(false);
     }
@@ -127,13 +143,19 @@ export default function AdminLLMSettingsPage() {
   const clearKey = async (provider: "openai" | "anthropic") => {
     setSaving(true);
     try {
-      await updateLlmSettings({ 
-        [provider === "openai" ? "openai_api_key" : "anthropic_api_key"]: "" 
+      await updateLlmSettings({
+        [provider === "openai" ? "openai_api_key" : "anthropic_api_key"]: "",
       });
-      message.success(`${provider === "openai" ? "OpenAI" : "Anthropic"} key 已清除`);
+      message.success(
+        t("admin.llm.messages.keyCleared", {
+          provider: t(
+            provider === "openai" ? "admin.llm.providers.openai" : "admin.llm.providers.anthropic",
+          ),
+        }),
+      );
       await refresh();
     } catch (e) {
-      message.error((e as ApiError).message || "操作失败");
+      message.error((e as ApiError).message || t("admin.llm.errors.operation"));
     } finally {
       setSaving(false);
     }
@@ -141,52 +163,68 @@ export default function AdminLLMSettingsPage() {
 
   const status = settings?.status;
   const config = settings?.config;
+  const cloudProviderLabel =
+    config?.cloud_provider === "anthropic"
+      ? t("admin.llm.providers.anthropic")
+      : t("admin.llm.providers.openai");
 
   return (
     <div style={{ maxWidth: 960, margin: "24px auto", padding: "0 16px" }}>
-      <Card title="AI 设置" extra={<Button onClick={() => navigate("/projects")}>返回项目</Button>}>
+      <Card
+        title={t("admin.llm.title")}
+        extra={
+          <Space wrap>
+            <LanguageSwitcher />
+            <Button onClick={() => navigate("/projects")}>
+              {t("admin.llm.backToProjects")}
+            </Button>
+          </Space>
+        }
+      >
         {loadError && <Alert type="error" message={loadError} style={{ marginBottom: 16 }} />}
 
-        <Typography.Title level={5}>Provider 状态</Typography.Title>
+        <Typography.Title level={5}>{t("admin.llm.status.title")}</Typography.Title>
         <Space size="middle" wrap style={{ marginBottom: 8 }}>
           <Card size="small" style={{ minWidth: 260 }}>
             <Space direction="vertical" size={4}>
-              <Space>
-                <Typography.Text strong>本地（Ollama）</Typography.Text>
+              <Space wrap>
+                <Typography.Text strong>{t("admin.llm.status.localTitle")}</Typography.Text>
                 {status?.local.available ? (
-                  <Tag color="success">可用</Tag>
+                  <Tag color="success">{t("admin.llm.status.available")}</Tag>
                 ) : (
-                  <Tag color="default">不可用</Tag>
+                  <Tag color="default">{t("admin.llm.status.unavailable")}</Tag>
                 )}
               </Space>
               <Typography.Text type="secondary">
-                模型：{status?.local.model ?? config?.ollama_model ?? "-"}
+                {t("admin.llm.status.model", {
+                  model: status?.local.model ?? config?.ollama_model ?? "-",
+                })}
               </Typography.Text>
               <Button
                 size="small"
                 loading={testing === "local"}
                 onClick={() => void runTest("local")}
               >
-                连接测试
+                {t("admin.llm.status.testConnection")}
               </Button>
             </Space>
           </Card>
           <Card size="small" style={{ minWidth: 260 }}>
             <Space direction="vertical" size={4}>
-              <Space>
+              <Space wrap>
                 <Typography.Text strong>
-                  云端（{config?.cloud_provider === "anthropic" ? "Anthropic" : "OpenAI"}）
+                  {t("admin.llm.status.cloudTitle", { provider: cloudProviderLabel })}
                 </Typography.Text>
                 {config && !config.cloud_enabled ? (
-                  <Tag color="warning">部署层已禁用</Tag>
+                  <Tag color="warning">{t("admin.llm.status.deploymentDisabled")}</Tag>
                 ) : status?.cloud.available ? (
-                  <Tag color="success">可用</Tag>
+                  <Tag color="success">{t("admin.llm.status.available")}</Tag>
                 ) : (
-                  <Tag color="default">不可用</Tag>
+                  <Tag color="default">{t("admin.llm.status.unavailable")}</Tag>
                 )}
               </Space>
               <Typography.Text type="secondary">
-                模型：{status?.cloud.model ?? "-"}
+                {t("admin.llm.status.model", { model: status?.cloud.model ?? "-" })}
               </Typography.Text>
               <Button
                 size="small"
@@ -194,96 +232,116 @@ export default function AdminLLMSettingsPage() {
                 disabled={config ? !config.cloud_enabled : true}
                 onClick={() => void runTest("cloud")}
               >
-                连接测试
+                {t("admin.llm.status.testConnection")}
               </Button>
             </Space>
           </Card>
         </Space>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 24 }}>
-          降级链：按下方分功能开关逐功能决定「仅本地 / 本地优先（本地失败时降级云端）/
-          仅云端 / 关闭」。LLM 不可用时相关功能自动回退内置规则模板，主流程不阻塞。
+          {t("admin.llm.status.fallbackDescription")}
         </Typography.Paragraph>
 
         <Form form={form} layout="vertical" requiredMark={false} disabled={settings === null}>
-          <Form.Item name="model_choice" label="默认模型策略">
+          <Form.Item name="model_choice" label={t("admin.llm.form.defaultStrategy")}>
             <Radio.Group
+              style={{ display: "flex", flexWrap: "wrap", rowGap: 8 }}
               options={[
-                { value: "auto", label: "自动（本地优先，失败降级云端）" },
-                { value: "local", label: "仅本地" },
-                { value: "cloud", label: "仅云端" },
+                { value: "auto", label: t("admin.llm.form.strategies.auto") },
+                { value: "local", label: t("admin.llm.form.strategies.local") },
+                { value: "cloud", label: t("admin.llm.form.strategies.cloud") },
               ]}
             />
           </Form.Item>
 
           <Form.Item
             name="ollama_model"
-            label="本地模型（Ollama 已安装列表中选择）"
-            extra={ollamaModels.length === 0 ? "未获取到模型列表（Ollama 不可用），可手动输入" : undefined}
+            label={t("admin.llm.form.ollamaModel")}
+            extra={
+              ollamaModels.length === 0
+                ? t("admin.llm.form.ollamaModelsUnavailable")
+                : undefined
+            }
           >
             <AutoComplete
-              placeholder="选择或输入模型名"
-              options={ollamaModels.map((m) => ({ value: m, label: m }))}
+              placeholder={t("admin.llm.form.ollamaPlaceholder")}
+              options={ollamaModels.map((model) => ({ value: model, label: model }))}
               filterOption={(input, option) =>
                 String(option?.value ?? "").toLowerCase().includes(input.toLowerCase())
               }
             />
           </Form.Item>
 
-          <Form.Item name="temperature" label="生成温度（0–1，越低越稳定）">
+          <Form.Item name="temperature" label={t("admin.llm.form.temperature")}>
             <Slider min={0} max={1} step={0.05} marks={{ 0: "0", 0.3: "0.3", 1: "1" }} />
           </Form.Item>
 
-          <Typography.Title level={5}>分功能开关</Typography.Title>
-          {Object.entries(FEATURE_LABELS).map(([key, label]) => (
-            <Form.Item key={key} name={["feature_switches", key]} label={label}>
+          <Typography.Title level={5}>{t("admin.llm.form.featureSwitches")}</Typography.Title>
+          {Object.entries(FEATURE_LABEL_KEYS).map(([key, labelKey]) => (
+            <Form.Item key={key} name={["feature_switches", key]} label={t(labelKey)}>
               <Select
                 style={{ maxWidth: 360 }}
-                options={(
-                  Object.entries(SWITCH_LABELS) as [LlmFeatureSwitch, string][]
-                ).map(([value, text]) => ({ value, label: text }))}
+                options={(Object.entries(SWITCH_MODE_KEYS) as [LlmFeatureSwitch, string][]).map(
+                  ([value, textKey]) => ({ value, label: t(textKey) }),
+                )}
               />
             </Form.Item>
           ))}
 
-          <Typography.Title level={5}>云端配置</Typography.Title>
+          <Typography.Title level={5}>{t("admin.llm.form.cloudConfig")}</Typography.Title>
           {config && !config.cloud_enabled && (
             <Alert
               type="info"
               showIcon
               style={{ marginBottom: 12 }}
-              message="云端已由部署层禁用（LLM_CLOUD_ENABLED=false）"
-              description="如需启用，请服务器开发人员修改环境变量并重启服务。"
+              message={t("admin.llm.form.cloudDisabledTitle")}
+              description={t("admin.llm.form.cloudDisabledDescription")}
             />
           )}
           <Alert
             type="warning"
             showIcon
             style={{ marginBottom: 12 }}
-            message="合规提示"
-            description="开启云端后，平台只会向云端发送聚合统计结果与列元数据，绝不发送行级患者数据（服务端强制校验）。医疗机构采购与数据出境合规要求请自行评估。"
+            message={t("admin.llm.form.complianceTitle")}
+            description={t("admin.llm.form.complianceDescription")}
           />
-          
-          <Form.Item name="cloud_provider" label="云端提供商">
-            <Radio.Group disabled={!config?.cloud_enabled}>
-              <Radio.Button value="openai">OpenAI</Radio.Button>
-              <Radio.Button value="anthropic">Anthropic Claude</Radio.Button>
+
+          <Form.Item name="cloud_provider" label={t("admin.llm.form.cloudProvider")}>
+            <Radio.Group
+              disabled={!config?.cloud_enabled}
+              style={{ display: "flex", flexWrap: "wrap", rowGap: 8 }}
+            >
+              <Radio.Button value="openai">
+                {t("admin.llm.form.cloudProviderOptions.openai")}
+              </Radio.Button>
+              <Radio.Button value="anthropic">
+                {t("admin.llm.form.cloudProviderOptions.anthropic")}
+              </Radio.Button>
             </Radio.Group>
           </Form.Item>
 
           {config?.cloud_provider === "openai" && (
             <Form.Item
-              label={`OpenAI API Key（只写不读${config?.cloud_has_key ? `，当前：${config.cloud_key_preview}` : "，当前未配置"}）`}
+              label={
+                config.cloud_has_key
+                  ? t("admin.llm.form.apiKeyConfigured", {
+                      provider: t("admin.llm.providers.openai"),
+                      preview: config.cloud_key_preview,
+                    })
+                  : t("admin.llm.form.apiKeyNotConfigured", {
+                      provider: t("admin.llm.providers.openai"),
+                    })
+              }
             >
               <Space.Compact style={{ maxWidth: 480, width: "100%" }}>
                 <Input.Password
                   value={newOpenAIKey}
                   onChange={(e) => setNewOpenAIKey(e.target.value)}
-                  placeholder="sk-..."
+                  placeholder={t("admin.llm.form.apiKeyPlaceholders.openai")}
                   autoComplete="new-password"
                 />
-                {config?.cloud_has_key && (
+                {config.cloud_has_key && (
                   <Button danger loading={saving} onClick={() => void clearKey("openai")}>
-                    清除
+                    {t("admin.llm.form.clearKey")}
                   </Button>
                 )}
               </Space.Compact>
@@ -292,18 +350,27 @@ export default function AdminLLMSettingsPage() {
 
           {config?.cloud_provider === "anthropic" && (
             <Form.Item
-              label={`Anthropic API Key（只写不读${config?.cloud_has_key ? `，当前：${config.cloud_key_preview}` : "，当前未配置"}）`}
+              label={
+                config.cloud_has_key
+                  ? t("admin.llm.form.apiKeyConfigured", {
+                      provider: t("admin.llm.providers.anthropic"),
+                      preview: config.cloud_key_preview,
+                    })
+                  : t("admin.llm.form.apiKeyNotConfigured", {
+                      provider: t("admin.llm.providers.anthropic"),
+                    })
+              }
             >
               <Space.Compact style={{ maxWidth: 480, width: "100%" }}>
                 <Input.Password
                   value={newAnthropicKey}
                   onChange={(e) => setNewAnthropicKey(e.target.value)}
-                  placeholder="sk-ant-..."
+                  placeholder={t("admin.llm.form.apiKeyPlaceholders.anthropic")}
                   autoComplete="new-password"
                 />
-                {config?.cloud_has_key && (
+                {config.cloud_has_key && (
                   <Button danger loading={saving} onClick={() => void clearKey("anthropic")}>
-                    清除
+                    {t("admin.llm.form.clearKey")}
                   </Button>
                 )}
               </Space.Compact>
@@ -311,7 +378,7 @@ export default function AdminLLMSettingsPage() {
           )}
 
           <Button type="primary" loading={saving} onClick={() => void save()}>
-            保存并生效
+            {t("admin.llm.form.save")}
           </Button>
         </Form>
       </Card>

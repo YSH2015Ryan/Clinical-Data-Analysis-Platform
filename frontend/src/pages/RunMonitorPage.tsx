@@ -2,6 +2,7 @@
 
 import { Alert, Button, Card, Modal, Popconfirm, Space, Tag, Typography, message } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   cancelRun,
@@ -13,7 +14,9 @@ import {
   type ApiError,
   type RunProgress,
 } from "../api";
+import LanguageSwitcher from "../components/LanguageSwitcher";
 import RunProgressBoard, { RunStatusTag } from "../components/RunProgressBoard";
+import { formatNumber } from "../i18n/locale";
 
 const TERMINAL: RunProgress["status"][] = ["COMPLETED", "FAILED", "CANCELED"];
 const POLL_MS = 2000;
@@ -23,8 +26,10 @@ export default function RunMonitorPage() {
   const [run, setRun] = useState<AnalysisRunDetail | null>(null);
   const [progress, setProgress] = useState<RunProgress | null>(null);
   const [acting, setActing] = useState(false);
+  const [exploratoryOpen, setExploratoryOpen] = useState(false);
   const timer = useRef<number | null>(null);
   const navigate = useNavigate();
+  const { i18n, t } = useTranslation();
 
   const tick = useCallback(async () => {
     if (!id) return;
@@ -37,16 +42,16 @@ export default function RunMonitorPage() {
         setRun(await getRun(id));
         // P1-4：运行完成自动进入比较结果页（报告已由后端自动生成）
         if (p.status === "COMPLETED") {
-          message.success("分析完成，报告已自动生成");
+          message.success(t("run.monitor.completed"));
           navigate(`/runs/${id}/comparison`, { replace: true });
         }
       }
     } catch (e) {
       if (timer.current) window.clearInterval(timer.current);
       timer.current = null;
-      message.error((e as ApiError).message || "进度加载失败");
+      message.error((e as ApiError).message || t("run.monitor.progressFailed"));
     }
-  }, [id]);
+  }, [id, navigate, t]);
 
   useEffect(() => {
     void getRun(id!).then(setRun).catch(() => undefined);
@@ -62,10 +67,10 @@ export default function RunMonitorPage() {
     setActing(true);
     try {
       await cancelRun(id);
-      message.success("已取消");
+      message.success(t("run.monitor.canceled"));
       await tick();
     } catch (e) {
-      message.error((e as ApiError).message || "取消失败");
+      message.error((e as ApiError).message || t("run.monitor.cancelFailed"));
     } finally {
       setActing(false);
     }
@@ -76,11 +81,11 @@ export default function RunMonitorPage() {
     setActing(true);
     try {
       await rerunModel(id, modelKey);
-      message.success(`已重新入队：${modelKey}`);
+      message.success(t("run.monitor.rerunQueued", { model: modelKey }));
       await tick();
       if (!timer.current) timer.current = window.setInterval(() => void tick(), POLL_MS);
     } catch (e) {
-      message.error((e as ApiError).message || "重跑失败");
+      message.error((e as ApiError).message || t("run.monitor.rerunFailed"));
     } finally {
       setActing(false);
     }
@@ -93,74 +98,60 @@ export default function RunMonitorPage() {
         .map(([k]) => k)
     : [];
 
-  // §72 Critical Issue Gate：门禁拦截的失败运行 → 三选一（查看问题/继续探索性分析/返回数据清洗）
+  // §72 Critical Issue Gate：T9.4 前继续兼容旧后端中文控制流，后续改稳定 code。
   const gated = run?.status === "FAILED" && (run.error ?? "").includes("完整性门禁");
   const gateFindings = (run?.integrity?.findings ?? []).filter(
     (f) => f.severity === "blocker" || f.severity === "critical",
   );
 
-  const onConfirmExploratory = () => {
+  const onConfirmExploratory = async () => {
     if (!id) return;
-    Modal.confirm({
-      title: "继续探索性分析？",
-      width: 560,
-      content: (
-        <div>
-          <p>检测到重大数据或方法学问题。继续后本次运行将以探索性模式执行，报告强制标记 RED，并声明：</p>
-          <p style={{ fontWeight: 600 }}>
-            Results should not be interpreted as unbiased predictive performance.
-          </p>
-          <p>结果仅供方法学筛查参考，不得作为确认性结论。</p>
-        </div>
-      ),
-      okText: "继续探索性分析",
-      okButtonProps: { danger: true },
-      cancelText: "返回数据清洗",
-      onCancel: () => navigate(-1),
-      onOk: async () => {
-        setActing(true);
-        try {
-          await confirmExploratory(id);
-          message.success("已进入探索性模式，重新入队");
-          await tick();
-          if (!timer.current) timer.current = window.setInterval(() => void tick(), POLL_MS);
-        } catch (e) {
-          message.error((e as ApiError).message || "确认失败");
-        } finally {
-          setActing(false);
-        }
-      },
-    });
+    setActing(true);
+    try {
+      await confirmExploratory(id);
+      message.success(t("run.monitor.confirmExploratory"));
+      setExploratoryOpen(false);
+      await tick();
+      if (!timer.current) timer.current = window.setInterval(() => void tick(), POLL_MS);
+    } catch (e) {
+      message.error((e as ApiError).message || t("run.monitor.confirmFailed"));
+    } finally {
+      setActing(false);
+    }
   };
 
   return (
     <div style={{ maxWidth: 960, margin: "24px auto", padding: "0 16px" }}>
-      <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}>
+      <Space wrap style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }}>
         <Typography.Title level={3} style={{ margin: 0 }}>
-          运行监控 {run && <RunStatusTag status={run.status} />}
+          {t("run.monitor.title")} {run && <RunStatusTag status={run.status} />}
         </Typography.Title>
-        <Space>
+        <Space wrap>
+          <LanguageSwitcher />
           {progress?.status === "COMPLETED" && (
             <Button type="primary" onClick={() => navigate(`/runs/${id}/comparison`)}>
-              查看比较结果
+              {t("run.monitor.viewResults")}
             </Button>
           )}
           {cancellable && (
-            <Popconfirm title="确认取消该运行？" onConfirm={() => void onCancel()}>
+            <Popconfirm
+              title={t("run.monitor.cancelConfirm")}
+              onConfirm={() => void onCancel()}
+            >
               <Button danger loading={acting}>
-                取消运行
+                {t("run.monitor.cancelRun")}
               </Button>
             </Popconfirm>
           )}
-          <Button onClick={() => navigate(-1)}>返回</Button>
-          <Button onClick={() => navigate("/projects")}>返回主页</Button>
+          <Button onClick={() => navigate(-1)}>{t("run.monitor.back")}</Button>
+          <Button onClick={() => navigate("/projects")}>{t("run.monitor.backHome")}</Button>
         </Space>
       </Space>
 
       {run?.error && (
         <Alert
           type="error"
-          message={gated ? "方法学完整性门禁拦截（§72）" : "运行失败"}
+          message={gated ? t("run.monitor.gateTitle") : t("run.monitor.runFailed")}
           style={{ marginBottom: 16 }}
           description={
             <div>
@@ -171,11 +162,15 @@ export default function RunMonitorPage() {
                   {gateFindings.map((f) => (
                     <li key={f.code} style={{ marginBottom: 4 }}>
                       <Tag color={f.severity === "blocker" ? "red" : "volcano"}>
-                        {f.severity === "blocker" ? "阻断" : "严重"}
+                        {f.severity === "blocker"
+                          ? t("run.monitor.blocker")
+                          : t("run.monitor.critical")}
                       </Tag>
-                      <strong>{f.code}</strong>：{f.message}
+                      <strong>{f.code}</strong>: {f.message}
                       {f.recommended_action && (
-                        <div style={{ color: "#666" }}>建议：{f.recommended_action}</div>
+                        <div style={{ color: "#666" }}>
+                          {t("run.monitor.recommendedAction", { action: f.recommended_action })}
+                        </div>
                       )}
                     </li>
                   ))}
@@ -185,17 +180,17 @@ export default function RunMonitorPage() {
                 <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
                   {Object.entries(progress.errors).map(([key, err]) => (
                     <li key={key}>
-                      <strong>{key}</strong>：{err}
+                      <strong>{key}</strong>: {err}
                     </li>
                   ))}
                 </ul>
               )}
               {gated && (
                 <Space style={{ marginTop: 12 }}>
-                  <Button danger loading={acting} onClick={onConfirmExploratory}>
-                    继续探索性分析
+                  <Button danger loading={acting} onClick={() => setExploratoryOpen(true)}>
+                    {t("run.monitor.exploratoryAction")}
                   </Button>
-                  <Button onClick={() => navigate(-1)}>返回数据清洗</Button>
+                  <Button onClick={() => navigate(-1)}>{t("run.monitor.backToCleaning")}</Button>
                 </Space>
               )}
             </div>
@@ -208,8 +203,8 @@ export default function RunMonitorPage() {
         <Alert
           type="error"
           style={{ marginBottom: 16 }}
-          message="探索性分析模式（§72）"
-          description="本次运行是在存在 critical 级方法学问题的情况下经确认继续的探索性分析。Results should not be interpreted as unbiased predictive performance."
+          message={t("run.monitor.exploratoryTitle")}
+          description={t("run.monitor.exploratoryDescription")}
         />
       )}
 
@@ -219,23 +214,44 @@ export default function RunMonitorPage() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message="Large Dataset Mode（优化模式）"
-          description={`检测到 ${run.integrity.sampling.original_rows.toLocaleString()} 行，超过 100,000 行阈值；本次分析按结局分层采样至 ${run.integrity.sampling.sampled_rows.toLocaleString()} 行（seed=42，确定性可复现）。性能指标基于采样数据，全量数据的指标可能略有差异。`}
+          message={t("run.monitor.samplingTitle")}
+          description={t("run.monitor.samplingDescription", {
+            original: formatNumber(run.integrity.sampling.original_rows, i18n.language),
+            sampled: formatNumber(run.integrity.sampling.sampled_rows, i18n.language),
+          })}
         />
       )}
 
       <Card>
-        {progress ? <RunProgressBoard progress={progress} /> : "加载中…"}
+        {progress ? <RunProgressBoard progress={progress} /> : t("run.monitor.loading")}
         {failedModels.length > 0 && (
           <Space style={{ marginTop: 16 }} wrap>
             {failedModels.map((key) => (
               <Button key={key} size="small" disabled={acting} onClick={() => void onRerun(key)}>
-                重跑 {key}
+                {t("run.monitor.rerunModel", { model: key })}
               </Button>
             ))}
           </Space>
         )}
       </Card>
+
+      <Modal
+        open={exploratoryOpen}
+        title={t("run.monitor.modal.title")}
+        width={560}
+        okText={t("run.monitor.modal.ok")}
+        okButtonProps={{ danger: true, loading: acting }}
+        cancelText={t("run.monitor.modal.cancel")}
+        onOk={() => void onConfirmExploratory()}
+        onCancel={() => {
+          setExploratoryOpen(false);
+          navigate(-1);
+        }}
+      >
+        <p>{t("run.monitor.modal.body1")}</p>
+        <p style={{ fontWeight: 600 }}>{t("run.monitor.modal.statement")}</p>
+        <p>{t("run.monitor.modal.body2")}</p>
+      </Modal>
     </div>
   );
 }

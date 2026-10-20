@@ -1,5 +1,6 @@
 import { Button, Form, Input, Modal, Popconfirm, Space, Table, Typography, message } from "antd";
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   clearTokens,
   createProject,
@@ -10,6 +11,8 @@ import {
   type Project,
 } from "../api";
 import { useNavigate } from "react-router-dom";
+import LanguageSwitcher from "../components/LanguageSwitcher";
+import { formatDateTime } from "../i18n/locale";
 
 export default function ProjectsPage() {
   const [items, setItems] = useState<Project[]>([]);
@@ -17,6 +20,7 @@ export default function ProjectsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm<{ name: string; description: string }>();
   const navigate = useNavigate();
+  const { i18n, t } = useTranslation();
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -24,11 +28,11 @@ export default function ProjectsPage() {
       const page = await listProjects();
       setItems(page.items);
     } catch (e) {
-      message.error((e as ApiError).message || "加载失败");
+      message.error((e as ApiError).message || t("common.error.load"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void reload();
@@ -38,47 +42,53 @@ export default function ProjectsPage() {
     const values = await form.validateFields();
     try {
       await createProject(values.name, values.description ?? "");
-      message.success("项目已创建");
+      message.success(t("projects.created"));
       setModalOpen(false);
       form.resetFields();
       void reload();
     } catch (e) {
-      message.error((e as ApiError).message || "创建失败");
+      message.error((e as ApiError).message || t("projects.createFailed"));
     }
   };
 
   const onDelete = async (id: string) => {
     try {
       await deleteProject(id);
-      message.success("已删除");
+      message.success(t("projects.deleted"));
       void reload();
     } catch (e) {
-      message.error((e as ApiError).message || "删除失败");
+      message.error((e as ApiError).message || t("projects.deleteFailed"));
     }
   };
 
   return (
     <div className="cdap-fade" style={{ maxWidth: 960, margin: "24px auto", padding: "0 16px" }}>
       <div className="page-head">
-        <Space style={{ width: "100%", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <Space
+          wrap
+          style={{ width: "100%", justifyContent: "space-between", alignItems: "flex-end" }}
+        >
           <div>
-            <p className="page-eyebrow">工作台 · WORKSPACE</p>
+            <p className="page-eyebrow">{t("projects.eyebrow")}</p>
             <Typography.Title level={3} style={{ margin: 0 }}>
-              我的项目
+              {t("projects.title")}
             </Typography.Title>
             <p className="page-sub" style={{ margin: "6px 0 0" }}>
-              {loading ? "正在加载…" : `共 ${items.length} 个研究项目`}
+              {loading ? t("projects.loading") : t("projects.count", { count: items.length })}
             </p>
           </div>
-          <Space>
+          <Space wrap>
+            <LanguageSwitcher />
             {getRole() === "admin" && (
               <>
-                <Button onClick={() => navigate("/admin/plugins")}>插件管理</Button>
-                <Button onClick={() => navigate("/admin/ai-settings")}>AI 设置</Button>
+                <Button onClick={() => navigate("/admin/plugins")}>{t("projects.plugins")}</Button>
+                <Button onClick={() => navigate("/admin/ai-settings")}>
+                  {t("projects.aiSettings")}
+                </Button>
               </>
             )}
             <Button type="primary" onClick={() => setModalOpen(true)}>
-              新建项目
+              {t("projects.createProject")}
             </Button>
             <Button
               onClick={() => {
@@ -86,7 +96,7 @@ export default function ProjectsPage() {
                 navigate("/login");
               }}
             >
-              退出登录
+              {t("projects.logout")}
             </Button>
           </Space>
         </Space>
@@ -101,20 +111,23 @@ export default function ProjectsPage() {
           style: { cursor: "pointer" },
         })}
         columns={[
-          { title: "名称", dataIndex: "name" },
-          { title: "描述", dataIndex: "description" },
+          { title: t("projects.name"), dataIndex: "name" },
+          { title: t("projects.description"), dataIndex: "description" },
           {
-            title: "创建时间",
+            title: t("projects.createdAt"),
             dataIndex: "created_at",
-            render: (v: string) => new Date(v).toLocaleString(),
+            render: (v: string) => formatDateTime(v, i18n.language),
           },
           {
-            title: "操作",
+            title: t("projects.actions"),
             render: (_, record) => (
               <span onClick={(e) => e.stopPropagation()}>
-                <Popconfirm title="确认删除该项目？" onConfirm={() => void onDelete(record.id)}>
+                <Popconfirm
+                  title={t("projects.deleteConfirm")}
+                  onConfirm={() => void onDelete(record.id)}
+                >
                   <Button danger size="small">
-                    删除
+                    {t("common.action.delete")}
                   </Button>
                 </Popconfirm>
               </span>
@@ -123,22 +136,22 @@ export default function ProjectsPage() {
         ]}
       />
       <Modal
-        title="新建项目"
+        title={t("projects.createProject")}
         open={modalOpen}
         onOk={() => void onCreate()}
         onCancel={() => setModalOpen(false)}
-        okText="创建"
-        cancelText="取消"
+        okText={t("common.action.create")}
+        cancelText={t("common.action.cancel")}
       >
         <Form form={form} layout="vertical">
           <Form.Item
-            label="项目名称"
+            label={t("projects.projectName")}
             name="name"
-            rules={[{ required: true, max: 120, message: "请输入名称（≤120 字）" }]}
+            rules={[{ required: true, max: 120, message: t("projects.nameRequired") }]}
           >
             <Input />
           </Form.Item>
-          <Form.Item label="描述" name="description">
+          <Form.Item label={t("projects.description")} name="description">
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>

@@ -1,0 +1,53 @@
+{
+  "title": "结果比较",
+  "loadFailed": "比较结果加载失败",
+  "unavailable": "比较结果不可用",
+  "downloadManifest": "下载 Manifest",
+  "manifestFailed": "Manifest 下载失败",
+  "generateReport": "生成报告",
+  "backMonitor": "返回监控",
+  "loading": "加载中…",
+  "exploratoryTitle": "探索性分析模式（§72）：检测到重大数据或方法学问题，经研究者确认后继续",
+  "exploratoryBody": "以下结果仅供方法学筛查参考，不得作为确认性结论。",
+  "exploratoryStatement": "Results should not be interpreted as unbiased predictive performance.",
+  "samplingTitle": "Large Dataset Mode（优化模式）",
+  "samplingBody": "本次分析基于分层采样数据（{{original}} → {{sampled}} 行，seed=42）；下列指标为采样口径，论文中应如实声明。",
+  "tabs": {
+    "metrics": "性能表",
+    "charts": "对比图表",
+    "explain": "可解释性",
+    "models": "模型详情"
+  },
+  "table": {
+    "model": "模型",
+    "status": "状态",
+    "duration": "耗时"
+  },
+  "recommendation": {
+    "title": "排名与推荐理由",
+    "notRecommended": "不推荐 {{model}}",
+    "formula": "排名公式：{{formula}}"
+  },
+  "chartsEmpty": "暂无图表数据",
+  "details": {
+    "rerun": "重跑此模型",
+    "noMetrics": "无指标（模型未成功）"
+  },
+  "rerunQueued": "已重新入队：{{model}}，跳转运行监控",
+  "rerunFailed": "重跑失败",
+  "iterate": {
+    "title": "迭代问答",
+    "description": "例如「如果把某列当协变量会怎样」「去掉某列再跑一遍」。回答基于本次运行的真实指标，如有可执行的重跑建议会给出结构化方案。",
+    "placeholder": "输入你的问题…",
+    "ask": "提问",
+    "askFailed": "提问失败",
+    "answer": "回答",
+    "aiEnhanced": "AI 增强",
+    "ruleAnswer": "规则回答",
+    "suggestion": "重跑建议",
+    "addFeatures": "加入协变量：",
+    "dropFeatures": "剔除变量：",
+    "models": "模型集：",
+    "rerunSuggested": "按建议重跑（进入分析向导）"
+  }
+}

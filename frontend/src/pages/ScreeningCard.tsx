@@ -9,6 +9,7 @@
 
 import { Alert, Button, Card, Form, InputNumber, Select, Space, Table, Tag, Typography, message } from "antd";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   adjustedAssociation,
   leakageExperiment,
@@ -22,19 +23,19 @@ import {
   type TaskType,
   type UnivariateScreenResult,
 } from "../api";
+import { normalizeLocale } from "../i18n/locale";
 
-const TASK_LABEL: Record<TaskType, string> = {
-  survival: "生存分析",
-  classification: "分类",
-  regression: "回归",
-};
+const TASK_TYPES: TaskType[] = ["survival", "classification", "regression"];
 
 /** P1-13（§30）：多重比较校正选项。 */
-const CORRECTION_OPTIONS: { value: CorrectionMethod; label: string }[] = [
-  { value: "bh", label: "BH(FDR) 校正" },
-  { value: "bonferroni", label: "Bonferroni 校正" },
-  { value: "none", label: "不校正（有假阳性风险）" },
-];
+const CORRECTION_METHODS: CorrectionMethod[] = ["bh", "bonferroni", "none"];
+
+function formatList(values: string[], locale: string): string {
+  return new Intl.ListFormat(normalizeLocale(locale), {
+    style: "long",
+    type: "conjunction",
+  }).format(values);
+}
 
 const fmtP = (v: number | null | undefined) =>
   v == null ? "—" : v < 0.001 ? "<0.001" : v.toFixed(4);
@@ -58,8 +59,17 @@ export default function ScreeningCard({
   const [experimentForm] = Form.useForm();
   const [experimenting, setExperimenting] = useState(false);
   const [experimentResult, setExperimentResult] = useState<LeakageExperimentResult | null>(null);
+  const { i18n, t } = useTranslation();
 
   const columnOptions = columns.map((c) => ({ value: c, label: c }));
+  const taskOptions = TASK_TYPES.map((task) => ({
+    value: task,
+    label: t(`dataset.screening.taskTypes.${task}`),
+  }));
+  const correctionOptions = CORRECTION_METHODS.map((method) => ({
+    value: method,
+    label: t(`dataset.screening.corrections.${method}`),
+  }));
 
   const runScreen = async () => {
     const v = await screenForm.validateFields();
@@ -67,7 +77,7 @@ export default function ScreeningCard({
     try {
       setScreenResult(await univariateScreen(datasetId, v));
     } catch (e) {
-      message.error((e as ApiError).message || "筛选失败");
+      message.error((e as ApiError).message || t("dataset.screening.errors.screen"));
     } finally {
       setScreening(false);
     }
@@ -79,7 +89,7 @@ export default function ScreeningCard({
     try {
       setSubgroupResult(await subgroupAnalysis(datasetId, v));
     } catch (e) {
-      message.error((e as ApiError).message || "亚组分析失败");
+      message.error((e as ApiError).message || t("dataset.screening.errors.subgroup"));
     } finally {
       setSubgrouping(false);
     }
@@ -91,7 +101,7 @@ export default function ScreeningCard({
     try {
       setAdjustResult(await adjustedAssociation(datasetId, v));
     } catch (e) {
-      message.error((e as ApiError).message || "混杂校正失败");
+      message.error((e as ApiError).message || t("dataset.screening.errors.adjustment"));
     } finally {
       setAdjusting(false);
     }
@@ -103,7 +113,7 @@ export default function ScreeningCard({
     try {
       setExperimentResult(await leakageExperiment(datasetId, v));
     } catch (e) {
-      message.error((e as ApiError).message || "泄漏实验失败");
+      message.error((e as ApiError).message || t("dataset.screening.errors.leakage"));
     } finally {
       setExperimenting(false);
     }
@@ -116,26 +126,35 @@ export default function ScreeningCard({
           <>
             <Form.Item
               name="time_col"
-              label="随访时间列"
-              rules={[{ required: true, message: "选择随访时间列" }]}
+              label={t("dataset.screening.followupTime")}
+              rules={[{ required: true, message: t("dataset.screening.selectFollowupTime") }]}
             >
-              <Select options={columnOptions} placeholder="time" />
+              <Select
+                options={columnOptions}
+                placeholder={t("dataset.screening.timePlaceholder")}
+              />
             </Form.Item>
             <Form.Item
               name="event_col"
-              label="事件列"
-              rules={[{ required: true, message: "选择事件列" }]}
+              label={t("dataset.screening.eventColumn")}
+              rules={[{ required: true, message: t("dataset.screening.selectEventColumn") }]}
             >
-              <Select options={columnOptions} placeholder="event" />
+              <Select
+                options={columnOptions}
+                placeholder={t("dataset.screening.eventPlaceholder")}
+              />
             </Form.Item>
           </>
         ) : (
           <Form.Item
             name="label_col"
-            label="结局列"
-            rules={[{ required: true, message: "选择结局列" }]}
+            label={t("dataset.screening.outcomeColumn")}
+            rules={[{ required: true, message: t("dataset.screening.selectOutcomeColumn") }]}
           >
-            <Select options={columnOptions} placeholder="label" />
+            <Select
+              options={columnOptions}
+              placeholder={t("dataset.screening.outcomePlaceholder")}
+            />
           </Form.Item>
         )
       }
@@ -143,32 +162,30 @@ export default function ScreeningCard({
   );
 
   return (
-    <Card title="科研助手：单因素筛选与亚组分析" style={{ marginBottom: 16 }}>
-      <Typography.Title level={5}>单因素筛选（p &lt; α 入选供多因素建模）</Typography.Title>
+    <Card title={t("dataset.screening.title")} style={{ marginBottom: 16 }}>
+      <Typography.Title level={5}>{t("dataset.screening.screeningTitle")}</Typography.Title>
       <Form form={screenForm} layout="inline" style={{ marginBottom: 12 }}>
         <Form.Item
           name="task_type"
-          label="任务类型"
+          label={t("dataset.screening.taskType")}
           initialValue="classification"
           rules={[{ required: true }]}
         >
-          <Select
-            style={{ width: 120 }}
-            options={(Object.keys(TASK_LABEL) as TaskType[]).map((t) => ({
-              value: t,
-              label: TASK_LABEL[t],
-            }))}
-          />
+          <Select style={{ width: 120 }} options={taskOptions} />
         </Form.Item>
         {outcomeFields(screenForm)}
         <Form.Item name="alpha" label="α" initialValue={0.05}>
           <InputNumber min={0.0001} max={0.2} step={0.01} style={{ width: 90 }} />
         </Form.Item>
-        <Form.Item name="correction" label="多重比较" initialValue="bh">
-          <Select style={{ width: 190 }} options={CORRECTION_OPTIONS} />
+        <Form.Item
+          name="correction"
+          label={t("dataset.screening.multipleComparison")}
+          initialValue="bh"
+        >
+          <Select style={{ width: 190 }} options={correctionOptions} />
         </Form.Item>
         <Button type="primary" loading={screening} onClick={() => void runScreen()}>
-          开始筛选
+          {t("dataset.screening.start")}
         </Button>
       </Form>
       {screenResult && (
@@ -182,11 +199,15 @@ export default function ScreeningCard({
             />
           )}
           <Typography.Paragraph type="secondary">
-            入选特征（{screenResult.correction_label}校正后 p &lt; {screenResult.alpha}，共{" "}
-            {screenResult.n_tests} 项检验）：
-            {screenResult.selected_features.length > 0
-              ? screenResult.selected_features.join("、")
-              : "无"}
+            {t("dataset.screening.selectedFeaturesSummary", {
+              correction: screenResult.correction_label,
+              alpha: screenResult.alpha,
+              count: screenResult.n_tests,
+              features:
+                screenResult.selected_features.length > 0
+                  ? formatList(screenResult.selected_features, i18n.language)
+                  : t("dataset.screening.none"),
+            })}
           </Typography.Paragraph>
           <Table
             rowKey="feature"
@@ -195,77 +216,83 @@ export default function ScreeningCard({
             pagination={false}
             style={{ marginBottom: 24 }}
             columns={[
-              { title: "特征", dataIndex: "feature" },
-              { title: "检验", dataIndex: "test" },
+              { title: t("dataset.screening.table.feature"), dataIndex: "feature" },
+              { title: t("dataset.screening.table.test"), dataIndex: "test" },
               {
-                title: "效应量",
+                title: t("dataset.screening.table.effect"),
                 dataIndex: "effect",
                 render: (v: number | null) => v ?? "—",
               },
               {
-                title: "p 值（原始）",
+                title: t("dataset.screening.table.rawP"),
                 dataIndex: "p_value",
                 render: fmtP,
               },
               {
-                title: "校正后 p 值",
+                title: t("dataset.screening.table.adjustedP"),
                 dataIndex: "p_adjusted",
                 render: fmtP,
               },
               { title: "n", dataIndex: "n_used", width: 70 },
               {
-                title: "入选",
+                title: t("dataset.screening.table.selected"),
                 dataIndex: "selected",
                 width: 70,
                 render: (v: boolean) =>
-                  v ? <Tag color="green">入选</Tag> : <Tag>未入选</Tag>,
+                  v ? (
+                    <Tag color="green">{t("dataset.screening.selectedTag")}</Tag>
+                  ) : (
+                    <Tag>{t("dataset.screening.notSelectedTag")}</Tag>
+                  ),
               },
             ]}
           />
         </>
       )}
 
-      <Typography.Title level={5}>亚组分析（分层效应 + 交互作用）</Typography.Title>
+      <Typography.Title level={5}>{t("dataset.screening.subgroupTitle")}</Typography.Title>
       <Form form={subgroupForm} layout="inline" style={{ marginBottom: 12 }}>
         <Form.Item
           name="task_type"
-          label="任务类型"
+          label={t("dataset.screening.taskType")}
           initialValue="classification"
           rules={[{ required: true }]}
         >
-          <Select
-            style={{ width: 120 }}
-            options={(Object.keys(TASK_LABEL) as TaskType[]).map((t) => ({
-              value: t,
-              label: TASK_LABEL[t],
-            }))}
-          />
+          <Select style={{ width: 120 }} options={taskOptions} />
         </Form.Item>
         {outcomeFields(subgroupForm)}
         <Form.Item
           name="exposure"
-          label="暴露变量"
-          rules={[{ required: true, message: "选择暴露变量" }]}
+          label={t("dataset.screening.exposureVariable")}
+          rules={[{ required: true, message: t("dataset.screening.selectExposure") }]}
         >
-          <Select options={columnOptions} placeholder="exposure" style={{ minWidth: 120 }} />
+          <Select
+            options={columnOptions}
+            placeholder={t("dataset.screening.exposurePlaceholder")}
+            style={{ minWidth: 120 }}
+          />
         </Form.Item>
         <Form.Item
           name="subgroup_vars"
-          label="亚组变量"
-          rules={[{ required: true, message: "选择 1 个或多个亚组变量" }]}
+          label={t("dataset.screening.subgroupVariables")}
+          rules={[{ required: true, message: t("dataset.screening.selectSubgroups") }]}
         >
           <Select
             mode="multiple"
             options={columnOptions}
-            placeholder="分类变量（2-6 水平）"
+            placeholder={t("dataset.screening.subgroupPlaceholder")}
             style={{ minWidth: 200 }}
           />
         </Form.Item>
-        <Form.Item name="correction" label="多重比较" initialValue="bh">
-          <Select style={{ width: 190 }} options={CORRECTION_OPTIONS} />
+        <Form.Item
+          name="correction"
+          label={t("dataset.screening.multipleComparison")}
+          initialValue="bh"
+        >
+          <Select style={{ width: 190 }} options={correctionOptions} />
         </Form.Item>
         <Button type="primary" loading={subgrouping} onClick={() => void runSubgroup()}>
-          开始分析
+          {t("dataset.screening.startSubgroup")}
         </Button>
       </Form>
       {subgroupResult?.correction_warning && (
@@ -278,23 +305,28 @@ export default function ScreeningCard({
       )}
       {subgroupResult && subgroupResult.n_tests > 0 && (
         <Typography.Paragraph type="secondary">
-          交互作用显著性基于{subgroupResult.correction_label}校正后 p 值（共{" "}
-          {subgroupResult.n_tests} 项检验）。
+          {t("dataset.screening.interactionNote", {
+            correction: subgroupResult.correction_label,
+            count: subgroupResult.n_tests,
+          })}
         </Typography.Paragraph>
       )}
       {subgroupResult &&
         subgroupResult.subgroups.map((sub) => (
           <div key={sub.variable} style={{ marginBottom: 16 }}>
             <Typography.Text strong>
-              {sub.variable} 亚组
-              {sub.interaction_p != null &&
-                `（交互 p = ${fmtP(sub.interaction_p)}，校正后 p = ${fmtP(
-                  sub.interaction_p_adjusted,
-                )}${
-                  (sub.interaction_p_adjusted ?? sub.interaction_p) < 0.05
-                    ? "，存在效应修饰"
-                    : "，未见显著效应修饰"
-                }）`}
+              {sub.interaction_p == null
+                ? t("dataset.screening.subgroup.groupTitle", { variable: sub.variable })
+                : t(
+                    (sub.interaction_p_adjusted ?? sub.interaction_p) < 0.05
+                      ? "dataset.screening.subgroup.withEffectModification"
+                      : "dataset.screening.subgroup.withoutEffectModification",
+                    {
+                      variable: sub.variable,
+                      interactionP: fmtP(sub.interaction_p),
+                      adjustedP: fmtP(sub.interaction_p_adjusted),
+                    },
+                  )}
             </Typography.Text>
             <Table
               rowKey="level"
@@ -302,7 +334,7 @@ export default function ScreeningCard({
               dataSource={sub.levels}
               pagination={false}
               columns={[
-                { title: "亚组", dataIndex: "level" },
+                { title: t("dataset.screening.subgroup.level"), dataIndex: "level" },
                 { title: "n", dataIndex: "n", width: 70 },
                 {
                   title:
@@ -321,51 +353,51 @@ export default function ScreeningCard({
           </div>
         ))}
 
-      <Typography.Title level={5}>混杂校正关联分析（Unadjusted vs Adjusted）</Typography.Title>
+      <Typography.Title level={5}>{t("dataset.screening.adjustmentTitle")}</Typography.Title>
       <Form form={adjustForm} layout="inline" style={{ marginBottom: 12 }}>
         <Form.Item
           name="task_type"
-          label="任务类型"
+          label={t("dataset.screening.taskType")}
           initialValue="classification"
           rules={[{ required: true }]}
         >
-          <Select
-            style={{ width: 120 }}
-            options={(Object.keys(TASK_LABEL) as TaskType[]).map((t) => ({
-              value: t,
-              label: TASK_LABEL[t],
-            }))}
-          />
+          <Select style={{ width: 120 }} options={taskOptions} />
         </Form.Item>
         {outcomeFields(adjustForm)}
         <Form.Item
           name="exposure"
-          label="暴露变量"
-          rules={[{ required: true, message: "选择暴露变量" }]}
+          label={t("dataset.screening.exposureVariable")}
+          rules={[{ required: true, message: t("dataset.screening.selectExposure") }]}
         >
-          <Select options={columnOptions} placeholder="exposure" style={{ minWidth: 120 }} />
+          <Select
+            options={columnOptions}
+            placeholder={t("dataset.screening.exposurePlaceholder")}
+            style={{ minWidth: 120 }}
+          />
         </Form.Item>
         <Form.Item
           name="confounders"
-          label="混杂变量"
-          rules={[{ required: true, message: "指定 1 个或多个候选混杂变量" }]}
+          label={t("dataset.screening.confounders")}
+          rules={[{ required: true, message: t("dataset.screening.selectConfounders") }]}
         >
           <Select
             mode="multiple"
             options={columnOptions}
-            placeholder="由研究者指定（系统不猜测因果结构）"
+            placeholder={t("dataset.screening.confounderPlaceholder")}
             style={{ minWidth: 240 }}
           />
         </Form.Item>
         <Button type="primary" loading={adjusting} onClick={() => void runAdjust()}>
-          开始校正
+          {t("dataset.screening.startAdjustment")}
         </Button>
       </Form>
       {adjustResult && (
         <>
           <Typography.Paragraph type="secondary">
-            完整病例 n = {adjustResult.n_used}；校正清单：
-            {adjustResult.confounders.join("、")}
+            {t("dataset.screening.adjustedSummary", {
+              count: adjustResult.n_used,
+              confounders: formatList(adjustResult.confounders, i18n.language),
+            })}
           </Typography.Paragraph>
           <Table
             rowKey="kind"
@@ -373,8 +405,16 @@ export default function ScreeningCard({
             pagination={false}
             style={{ marginBottom: 8 }}
             dataSource={[
-              { kind: "unadjusted", label: "未校正", ...adjustResult.unadjusted },
-              { kind: "adjusted", label: "校正后", ...adjustResult.adjusted },
+              {
+                kind: "unadjusted",
+                label: t("dataset.screening.models.unadjusted"),
+                ...adjustResult.unadjusted,
+              },
+              {
+                kind: "adjusted",
+                label: t("dataset.screening.models.adjusted"),
+                ...adjustResult.adjusted,
+              },
             ] as {
               kind: string;
               label: string;
@@ -385,10 +425,10 @@ export default function ScreeningCard({
               p_value: number;
             }[]}
             columns={[
-              { title: "模型", dataIndex: "label", width: 90 },
-              { title: "效应量", dataIndex: "effect_label", width: 80 },
+              { title: t("dataset.screening.table.model"), dataIndex: "label", width: 90 },
+              { title: t("dataset.screening.table.effect"), dataIndex: "effect_label", width: 80 },
               {
-                title: "估计值",
+                title: t("dataset.screening.table.estimate"),
                 dataIndex: "effect",
                 render: (v: number) => v,
               },
@@ -400,7 +440,7 @@ export default function ScreeningCard({
                 ) => `${r.ci_lower} ~ ${r.ci_upper}`,
               },
               {
-                title: "p 值",
+                title: t("dataset.screening.table.pValue"),
                 dataIndex: "p_value",
                 render: fmtP,
               },
@@ -410,25 +450,19 @@ export default function ScreeningCard({
         </>
       )}
 
-      <Typography.Title level={5}>泄漏敏感性实验（A/B/C/D 变量集对比，§25）</Typography.Title>
+      <Typography.Title level={5}>{t("dataset.screening.leakageTitle")}</Typography.Title>
       <Form form={experimentForm} layout="inline" style={{ marginBottom: 12 }}>
         <Form.Item
           name="task_type"
-          label="任务类型"
+          label={t("dataset.screening.taskType")}
           initialValue="classification"
           rules={[{ required: true }]}
         >
-          <Select
-            style={{ width: 120 }}
-            options={(Object.keys(TASK_LABEL) as TaskType[]).map((t) => ({
-              value: t,
-              label: TASK_LABEL[t],
-            }))}
-          />
+          <Select style={{ width: 120 }} options={taskOptions} />
         </Form.Item>
         {outcomeFields(experimentForm)}
         <Button type="primary" loading={experimenting} onClick={() => void runExperiment()}>
-          开始实验
+          {t("dataset.screening.startLeakage")}
         </Button>
       </Form>
       {experimentResult && (
@@ -440,8 +474,12 @@ export default function ScreeningCard({
             style={{ marginBottom: 8 }}
             dataSource={experimentResult.sets}
             columns={[
-              { title: "变量集", dataIndex: "label" },
-              { title: "变量数", dataIndex: "n_features", width: 70 },
+              { title: t("dataset.screening.leakage.variableSet"), dataIndex: "label" },
+              {
+                title: t("dataset.screening.leakage.variableCount"),
+                dataIndex: "n_features",
+                width: 70,
+              },
               ...(experimentResult.task_type === "regression"
                 ? [
                     {
@@ -477,7 +515,7 @@ export default function ScreeningCard({
                           r.metrics?.pr_auc != null ? r.metrics.pr_auc.toFixed(4) : "—",
                       },
                       {
-                        title: "校准斜率",
+                        title: t("dataset.screening.leakage.calibrationSlope"),
                         render: (_: unknown, r: LeakageExperimentResult["sets"][number]) =>
                           r.metrics?.calibration_slope != null
                             ? r.metrics.calibration_slope.toFixed(4)
@@ -485,17 +523,20 @@ export default function ScreeningCard({
                       },
                     ]),
               {
-                title: "移除变量",
+                title: t("dataset.screening.leakage.removedVariables"),
                 dataIndex: "removed",
                 render: (v: string[]) =>
                   v.length > 0 ? (
-                    <Typography.Text type="secondary">{v.join("、")}</Typography.Text>
+                    <Typography.Text type="secondary">
+                      {formatList(v, i18n.language)}
+                    </Typography.Text>
                   ) : (
                     "—"
                   ),
               },
             ]}
           />
+          {/* Legacy control-flow check; T9.4 may replace it with a stable result code if useful. */}
           <Alert
             type={experimentResult.interpretation.includes("很可能由泄漏驱动") ? "error" : "info"}
             showIcon

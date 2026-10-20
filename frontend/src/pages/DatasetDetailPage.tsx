@@ -16,6 +16,7 @@ import {
 } from "antd";
 import { MinusOutlined, PlusOutlined, ThunderboltOutlined, RobotOutlined, CheckCircleOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   getDataset,
@@ -31,6 +32,8 @@ import {
   type QualityReport,
   type QuickFixAction,
 } from "../api";
+import LanguageSwitcher from "../components/LanguageSwitcher";
+import { normalizeLocale } from "../i18n/locale";
 import PreprocessPanel from "./PreprocessPanel";
 import TaskDetectCard from "./TaskDetectCard";
 import ScreeningCard from "./ScreeningCard";
@@ -43,13 +46,6 @@ const SEVERITY_COLOR: Record<Issue["severity"], string> = {
   info: "blue",
 };
 
-const SEVERITY_LABEL: Record<Issue["severity"], string> = {
-  blocker: "阻塞",
-  critical: "严重",
-  warning: "警告",
-  info: "信息",
-};
-
 /** 优先级：阻塞 > 严重 > 警告 > 信息（分组排序用） */
 const SEVERITY_RANK: Record<Issue["severity"], number> = {
   blocker: 0,
@@ -58,35 +54,18 @@ const SEVERITY_RANK: Record<Issue["severity"], number> = {
   info: 3,
 };
 
-/** 规则类型中文名（与 engines/validation.py 对应；未知规则回退显示规则号） */
-const RULE_LABEL: Record<string, string> = {
-  RV001: "文件解析失败",
-  RV002: "空表",
-  RV003: "重复列名",
-  RV101: "任务必需字段缺失",
-  RV102: "推荐字段缺失",
-  RV201: "缺失率过高",
-  RV301: "数值列混入非法值",
-  RV302: "日期格式不一致",
-  RV401: "重复行",
-  RV501: "异常值（IQR）",
-  RV502: "临床不合理范围",
-  RV601: "高基数分类",
-  RV701: "类别不平衡",
-  RV801: "长表结构",
-  RV802: "疑似药敏试验记录",
-  RV803: "同一项目多种单位",
-  RV804: "数值极端值",
-  AI_RECOMMEND: "AI 智能推荐",  // 新增
-};
+function formatNumber(value: number, locale: string): string {
+  return new Intl.NumberFormat(normalizeLocale(locale)).format(value);
+}
+
+function formatList(values: Array<string | number>, locale: string): string {
+  return new Intl.ListFormat(normalizeLocale(locale), {
+    style: "long",
+    type: "conjunction",
+  }).format(values.map(String));
+}
 
 const COLLAPSED_ROWS = 10;
-
-const REPORT_LABEL: Record<QualityReport["status"], string> = {
-  PASSED: "通过",
-  PASSED_WITH_WARNINGS: "有警告",
-  FAILED: "未通过",
-};
 
 const POLL_MS = 2000;
 
@@ -124,46 +103,6 @@ function fixActionFor(issue: Issue): QuickFixAction | null {
   return null;
 }
 
-/** 各修复动作的风险说明（docs/05 §5：确认弹窗必须载明风险 + 新版本机制） */
-const FIX_RISK: Record<QuickFixAction["type"], string> = {
-  drop_column: "该列将从新版本中彻底移除，其中的数据在新版本不可恢复（适用于确认无用的列）。",
-  drop_duplicates: "完全重复的数据行将被删除，仅保留一份；若重复本身是真实记录，会造成样本损失。",
-  to_missing: "无法识别的取值将被置为缺失，原取值在新版本不可恢复。",
-  remap_semantic: "该列的语义将被重新标记，影响任务识别与校验结论。",
-  rename_column: "列名将被重命名，需确保新列名与现有列不冲突。",
-  pivot_long_to_wide: "长表将被转换为宽表（每个患者一行），重复值将取平均，结构将发生重大改变。",
-  winsorize_outliers: "异常值将被截断到 1%-99% 分位数，极端值会被修改但不会被删除。",
-  impute_missing: "缺失值将被自动填充（数值列用中位数，分类列用众数），原始缺失状态不可恢复。",
-  drop_rows_with_pattern: "匹配指定模式的行将被永久删除，无法恢复。",
-  normalize_units: "单位将被标准化转换，原始单位和数值会被修改。",
-};
-
-/** 各修复动作的按钮文案 */
-const FIX_LABEL: Partial<Record<QuickFixAction["type"], string>> = {
-  impute_missing: "一键插补",
-  winsorize_outliers: "一键截尾",
-  drop_rows_with_pattern: "一键删除",
-};
-
-/** 无一键修复动作时的原因与出路（docs/05 §5：行内明示为何不能自动修复） */
-const NO_FIX_REASON: Record<string, string> = {
-  RV001: "文件编码错误无法读取。请用 Excel「另存为 → CSV UTF-8」或记事本「另存为 → UTF-8」转换后重新上传。",
-  RV002: "文件不含数据行。请检查文件内容后重新上传。",
-  RV003: "存在重复列名。请在 Excel 中将重复列重命名（如「血压」→「收缩压」、「血压.1」→「舒张压」）后重新上传。",
-  RV101: "缺少目标变量（要预测的结果）。若已有结果列但未识别，请在下方列画像」中标记为 Label/Event；否则需在 Excel 中添加结列。",
-  RV102: "建议补充推荐字段（如年龄、性别），但非强制。可在 Excel 中添加这些列以支持分层分析。",
-  RV302: "日期格式不一致。平台将自动统一为 YYYY-MM-DD 格式，无需手动修复。",
-  RV502: "超出临床合理范围，需人工核对是单位错误还是真实极端值。请检查单位是否正确（如 mg/dL vs mmol/L），或在 Excel 中修正录入错误。",
-  RV601: "类别过多可能是 ID 列或自由文本。如果是 ID 列，可点击「删除列」；如果需要保留，可考虑合并相似类别。",
-  RV701: "类别不平衡是数据特征。平台将自动使用类别权重和 PR-AUC 评估，无需手动修复。",
-  RV801: "长表结构（一行一条记录）。需要转换为宽表（一行一个患者）。可使用 Excel 数据透视表，或即将推出的平台向导。",
-  RV803: "同一检验项目有多种单位，需统一单位。请在 Excel 中使用公式转换（如 mmol/L × 18 = mg/dL），或等待平台「单位标准化」功能。",
-  RV804: "极端值需人工核对。可能是单位错误（多打几个 0）或录入错误，请在 Excel 中检查最大/最小值。",
-  RV705: "疑似同一患者多次记录。请确认是多次就诊（正常）还是重复录入（需删除）。",
-};
-
-const NO_FIX_DEFAULT = "该问题需人工判断，暂不支持自动修复：请按「建议」列的指引手动处理";
-
 /** 问题清单分组：按规则类型拆分、组内优先级排序、超 10 行折叠（展开按钮查看全部） */
 function IssueGroup({
   ruleId,
@@ -178,23 +117,38 @@ function IssueGroup({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [guide, setGuide] = useState<Issue | null>(null); // T6.1:富文案修复指引弹窗
+  const { i18n, t } = useTranslation();
   const severity = issues.reduce(
     (top, i) => (SEVERITY_RANK[i.severity] < SEVERITY_RANK[top] ? i.severity : top),
     issues[0].severity,
   );
   const shown = expanded ? issues : issues.slice(0, COLLAPSED_ROWS);
+  const affectedRowsTitle = (issue: Issue): string => {
+    const rows = formatList((issue.row_indices ?? []).map((i) => i + 2), i18n.language);
+    return (issue.affected_rows ?? 0) > (issue.row_indices?.length ?? 0)
+      ? t("dataset.quality.affectedRowsLimited", { rows })
+      : t("dataset.quality.affectedRows", { rows });
+  };
   return (
     <Card
       size="small"
       style={{ marginBottom: 12 }}
       title={
         <Space>
-          <Tag color={SEVERITY_COLOR[severity]}>{SEVERITY_LABEL[severity]}</Tag>
+          <Tag color={SEVERITY_COLOR[severity]}>{t(`dataset.quality.${severity}`)}</Tag>
           <Typography.Text code>{ruleId}</Typography.Text>
-          <span>{RULE_LABEL[ruleId] ?? "其他问题"}</span>
+          <span>
+            {t(`dataset.quality.rules.${ruleId}`, {
+              defaultValue: t("dataset.quality.otherIssue"),
+            })}
+          </span>
         </Space>
       }
-      extra={<Typography.Text type="secondary">{issues.length} 条</Typography.Text>}
+      extra={
+        <Typography.Text type="secondary">
+          {t("dataset.quality.itemCount", { count: issues.length })}
+        </Typography.Text>
+      }
     >
       <Table<Issue>
         rowKey={(r) => `${r.rule_id}-${r.column ?? ""}-${r.message}`}
@@ -203,33 +157,31 @@ function IssueGroup({
         pagination={false}
         columns={[
           {
-            title: "级别",
+            title: t("dataset.quality.columns.severity"),
             dataIndex: "severity",
             width: 80,
             render: (s: Issue["severity"]) => (
-              <Tag color={SEVERITY_COLOR[s]}>{SEVERITY_LABEL[s]}</Tag>
+              <Tag color={SEVERITY_COLOR[s]}>{t(`dataset.quality.${s}`)}</Tag>
             ),
           },
           {
-            title: "列",
+            title: t("dataset.quality.columns.column"),
             dataIndex: "column",
             width: 140,
             render: (c?: string) => (c ? <Tag>{c}</Tag> : "—"),
           },
           {
-            title: "问题",
+            title: t("dataset.quality.columns.problem"),
             dataIndex: "message",
             render: (msg: string, r) => (
               <Space size={4} wrap>
                 <span>{msg}</span>
                 {r.row_indices && r.row_indices.length > 0 && (
-                  <Tooltip
-                    title={`影响的行(Excel 行号):${r.row_indices
-                      .map((i) => i + 2)
-                      .join("、")}${(r.affected_rows ?? 0) > r.row_indices.length ? " …(仅列前 20 行)" : ""}`}
-                  >
+                  <Tooltip title={affectedRowsTitle(r)}>
                     <Tag color="orange" style={{ cursor: "help" }}>
-                      {r.affected_rows ?? r.row_indices.length} 行
+                      {t("dataset.quality.rowCount", {
+                        count: r.affected_rows ?? r.row_indices.length,
+                      })}
                     </Tag>
                   </Tooltip>
                 )}
@@ -237,14 +189,18 @@ function IssueGroup({
             ),
           },
           {
-            title: "建议",
+            title: t("dataset.quality.columns.suggestion"),
             render: (_, r) => {
               const suggestion = r.suggestion || r.detail || "—";
               return (
                 <Space direction="vertical" size={0}>
                   {suggestion.length > 100 ? (
                     <Typography.Paragraph
-                      ellipsis={{ rows: 2, expandable: true, symbol: "展开" }}
+                      ellipsis={{
+                        rows: 2,
+                        expandable: true,
+                        symbol: t("dataset.quality.expand"),
+                      }}
                       style={{ marginBottom: 0, fontSize: 12 }}
                     >
                       {suggestion}
@@ -254,7 +210,7 @@ function IssueGroup({
                   )}
                   {r.guidance && (
                     <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setGuide(r)}>
-                      查看详细修复指引
+                      {t("dataset.quality.viewGuide")}
                     </Button>
                   )}
                 </Space>
@@ -262,35 +218,39 @@ function IssueGroup({
             },
           },
           {
-            title: "修复方式",
+            title: t("dataset.quality.columns.fix"),
             width: 260,
             render: (_, r) => {
               const action = fixActionFor(r);
               if (!action)
                 return (
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {NO_FIX_REASON[r.rule_id] ?? NO_FIX_DEFAULT}
+                    {t(`dataset.quality.noFix.${r.rule_id}`, {
+                      defaultValue: t("dataset.quality.noFix.default"),
+                    })}
                   </Typography.Text>
                 );
               return (
                 <Popconfirm
-                  title="确认一键修复？"
+                  title={t("dataset.quality.confirmFixTitle")}
                   description={
                     <div style={{ maxWidth: 320 }}>
-                      <div>风险：{FIX_RISK[action.type]}</div>
-                      <div style={{ marginTop: 4 }}>
-                        修复将生成一个<strong>新的文件版本</strong>
-                        （保存在原数据集目录下），你上传的源文件不会被修改；
-                        也可以放弃自动修复，改为手动修改源文件后重新上传。
+                      <div>
+                        {t("dataset.quality.riskDescription", {
+                          risk: t(`dataset.quality.fixRisk.${action.type}`),
+                        })}
                       </div>
+                      <div style={{ marginTop: 4 }}>{t("dataset.quality.fixCreatesVersion")}</div>
                     </div>
                   }
-                  okText="确认修复"
-                  cancelText="取消"
+                  okText={t("dataset.quality.confirmFix")}
+                  cancelText={t("common.action.cancel")}
                   onConfirm={() => void onFix(action)}
                 >
                   <Button size="small" danger={r.severity === "blocker"} loading={fixing}>
-                    {FIX_LABEL[action.type] ?? "一键修复"}
+                    {t(`dataset.quality.fixLabels.${action.type}`, {
+                      defaultValue: t("dataset.quality.quickFix"),
+                    })}
                   </Button>
                 </Popconfirm>
               );
@@ -305,7 +265,9 @@ function IssueGroup({
           icon={expanded ? <MinusOutlined /> : <PlusOutlined />}
           onClick={() => setExpanded((v) => !v)}
         >
-          {expanded ? "收起" : `展开全部(共 ${issues.length} 条)`}
+          {expanded
+            ? t("dataset.quality.collapse")
+            : t("dataset.quality.expandAll", { count: issues.length })}
         </Button>
       )}
       <Modal
@@ -314,7 +276,11 @@ function IssueGroup({
           guide && (
             <Space>
               <Typography.Text code>{guide.rule_id}</Typography.Text>
-              <span>详细修复指引{guide.column ? ` — 列「${guide.column}」` : ""}</span>
+              <span>
+                {guide.column
+                  ? t("dataset.quality.guideTitleWithColumn", { column: guide.column })
+                  : t("dataset.quality.guideTitle")}
+              </span>
             </Space>
           )
         }
@@ -326,14 +292,16 @@ function IssueGroup({
           // P2-3 结构化闭环：问题 → 影响 → 修法（一键动作直接在此执行）
           <div>
             <Typography.Paragraph style={{ marginBottom: 8 }}>
-              <Typography.Text strong>问题：</Typography.Text>
-              {guide.fix_guidance.problem}
+              {t("dataset.quality.problemStatement", {
+                problem: guide.fix_guidance.problem,
+              })}
             </Typography.Paragraph>
             <Typography.Paragraph style={{ marginBottom: 12 }}>
-              <Typography.Text strong>对分析的影响：</Typography.Text>
-              {guide.fix_guidance.impact}
+              {t("dataset.quality.impactStatement", {
+                impact: guide.fix_guidance.impact,
+              })}
             </Typography.Paragraph>
-            <Typography.Text strong>修法（按推荐顺序）：</Typography.Text>
+            <Typography.Text strong>{t("dataset.quality.methodsHeading")}</Typography.Text>
             <Space direction="vertical" style={{ width: "100%", marginTop: 8 }}>
               {guide.fix_guidance.methods.map((m, i) => (
                 <Card key={i} size="small">
@@ -346,18 +314,19 @@ function IssueGroup({
                     </div>
                     {m.action && (
                       <Popconfirm
-                        title={`确认执行「${m.label}」？`}
+                        title={t("dataset.quality.confirmExecuteTitle", { label: m.label })}
                         description={
                           <div style={{ maxWidth: 320 }}>
-                            {m.risk && <div>风险：{m.risk}</div>}
+                            {m.risk && (
+                              <div>{t("dataset.quality.riskDescription", { risk: m.risk })}</div>
+                            )}
                             <div style={{ marginTop: 4 }}>
-                              修复将生成<strong>新的文件版本</strong>并自动重新校验，
-                              源文件不会被修改。
+                              {t("dataset.quality.executeCreatesVersion")}
                             </div>
                           </div>
                         }
-                        okText="确认执行"
-                        cancelText="取消"
+                        okText={t("dataset.quality.confirmExecute")}
+                        cancelText={t("common.action.cancel")}
                         onConfirm={async () => {
                           setGuide(null);
                           await onFix({
@@ -368,7 +337,7 @@ function IssueGroup({
                         }}
                       >
                         <Button size="small" type="primary" loading={fixing}>
-                          一键执行
+                          {t("dataset.quality.execute")}
                         </Button>
                       </Popconfirm>
                     )}
@@ -406,6 +375,7 @@ function groupIssues(issues: Issue[]): [string, Issue[]][] {
 
 /** AI 智能推荐卡片 */
 function AIRecommendationCard({ issues }: { issues: Issue[] }) {
+  const { t } = useTranslation();
   const aiIssue = issues.find((i) => i.rule_id === "AI_RECOMMEND");
   if (!aiIssue || !aiIssue.detail) return null;
 
@@ -426,29 +396,30 @@ function AIRecommendationCard({ issues }: { issues: Issue[] }) {
     can_start_modeling = false,
   } = detail;
 
-  const taskLabels: Record<string, string> = {
-    regression: "回归分析",
-    classification: "分类分析",
-    survival: "生存分析",
-    time_series: "时间序列",
-    eda: "探索性分析",
+  const taskKeys: Record<string, string> = {
+    regression: "dataset.ai.tasks.regression",
+    classification: "dataset.ai.tasks.classification",
+    survival: "dataset.ai.tasks.survival",
+    time_series: "dataset.ai.tasks.timeSeries",
+    eda: "dataset.ai.tasks.eda",
   };
+  const taskLabel = (task: string) => (taskKeys[task] ? t(taskKeys[task]) : task);
 
   return (
     <Alert
       type="info"
       icon={<RobotOutlined />}
-      message="AI 智能推荐"
+      message={t("dataset.ai.title")}
       description={
         <div style={{ marginTop: 8 }}>
           {/* 推荐的分析类型 */}
           {recommended_tasks.length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <Typography.Text strong>推荐分析类型：</Typography.Text>
+              <Typography.Text strong>{t("dataset.ai.recommendedTasks")}</Typography.Text>
               <Space size={4} style={{ marginTop: 4 }}>
                 {recommended_tasks.map((task: string) => (
                   <Tag key={task} color="blue">
-                    {taskLabels[task] || task}
+                    {taskLabel(task)}
                   </Tag>
                 ))}
               </Space>
@@ -458,12 +429,15 @@ function AIRecommendationCard({ issues }: { issues: Issue[] }) {
           {/* 推荐的目标列 */}
           {recommended_targets.length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <Typography.Text strong>推荐目标列：</Typography.Text>
+              <Typography.Text strong>{t("dataset.ai.recommendedTargets")}</Typography.Text>
               {recommended_targets.map((target: any, idx: number) => (
                 <div key={idx} style={{ marginTop: 4, marginLeft: 16 }}>
                   <Tag color="green">{target.column}</Tag>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {target.reason} ({taskLabels[target.task_type] || target.task_type})
+                    {t("dataset.ai.targetReason", {
+                      reason: target.reason,
+                      task: taskLabel(target.task_type),
+                    })}
                   </Typography.Text>
                 </div>
               ))}
@@ -473,7 +447,7 @@ function AIRecommendationCard({ issues }: { issues: Issue[] }) {
           {/* 探索性分析建议 */}
           {eda_suggestions.length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <Typography.Text strong>探索性分析建议：</Typography.Text>
+              <Typography.Text strong>{t("dataset.ai.edaSuggestions")}</Typography.Text>
               <div style={{ marginTop: 4, marginLeft: 16 }}>
                 {eda_suggestions.map((suggestion: string, idx: number) => (
                   <Tag key={idx} color="cyan" style={{ marginBottom: 4 }}>
@@ -487,12 +461,15 @@ function AIRecommendationCard({ issues }: { issues: Issue[] }) {
           {/* 不适合的分析类型 */}
           {Object.keys(unsuitable_tasks).length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <Typography.Text strong>不适合的分析：</Typography.Text>
+              <Typography.Text strong>{t("dataset.ai.unsuitableTasks")}</Typography.Text>
               {Object.entries(unsuitable_tasks).map(([task, reason]) => (
                 <div key={task} style={{ marginTop: 4, marginLeft: 16 }}>
                   <CloseCircleOutlined style={{ color: "#ff4d4f", marginRight: 4 }} />
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {taskLabels[task] || task}: {reason}
+                    {t("dataset.ai.unsuitableEntry", {
+                      task: taskLabel(task),
+                      reason,
+                    })}
                   </Typography.Text>
                 </div>
               ))}
@@ -525,6 +502,7 @@ export default function DatasetDetailPage() {
   const [fixingAll, setFixingAll] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { i18n, t } = useTranslation();
   const projectId = (location.state as { projectId?: string } | null)?.projectId;
 
   const reload = useCallback(async () => {
@@ -547,9 +525,9 @@ export default function DatasetDetailPage() {
         }
       }
     } catch (e) {
-      message.error((e as ApiError).message || "加载失败");
+      message.error((e as ApiError).message || t("common.error.load"));
     }
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => {
     void reload();
@@ -567,10 +545,15 @@ export default function DatasetDetailPage() {
     setFixing(true);
     try {
       const v = await quickFix(id, [action]);
-      message.success(`已生成新版本 v${v.version_no}（基于 v${currentVersion?.version_no ?? 1} 修复，原文件不变）`);
+      message.success(
+        t("dataset.quality.fixSuccess", {
+          newVersion: v.version_no,
+          baseVersion: currentVersion?.version_no ?? 1,
+        }),
+      );
       await reload();
     } catch (e) {
-      message.error((e as ApiError).message || "修复失败");
+      message.error((e as ApiError).message || t("dataset.quality.fixFailed"));
     } finally {
       setFixing(false);
     }
@@ -605,11 +588,15 @@ export default function DatasetDetailPage() {
     try {
       const v = await quickFix(id, allFixableActions);
       message.success(
-        `已一次性应用 ${allFixableActions.length} 项修复，生成新版本 v${v.version_no}（基于 v${currentVersion?.version_no ?? 1}，原文件不变）`,
+        t("dataset.quality.fixAllSuccess", {
+          count: allFixableActions.length,
+          newVersion: v.version_no,
+          baseVersion: currentVersion?.version_no ?? 1,
+        }),
       );
       await reload();
     } catch (e) {
-      message.error((e as ApiError).message || "批量修复失败");
+      message.error((e as ApiError).message || t("dataset.quality.fixAllFailed"));
     } finally {
       setFixingAll(false);
     }
@@ -622,13 +609,14 @@ export default function DatasetDetailPage() {
           {dataset.name}
         </Typography.Title>
         <Space>
+          <LanguageSwitcher />
           <Tooltip
             title={
               blocked
-                ? "存在阻塞级质量问题，禁止提交分析"
+                ? t("dataset.detail.blockedTooltip")
                 : projectId
                   ? undefined
-                  : "请从项目页进入以开始分析"
+                  : t("dataset.detail.projectRequiredTooltip")
             }
           >
             <Button
@@ -638,30 +626,43 @@ export default function DatasetDetailPage() {
                 projectId && navigate(`/projects/${projectId}/analysis/new?dataset=${id}`)
               }
             >
-              开始分析
+              {t("dataset.detail.startAnalysis")}
             </Button>
           </Tooltip>
-          <Button onClick={() => navigate(-1)}>返回</Button>
+          <Button onClick={() => navigate(-1)}>{t("dataset.detail.back")}</Button>
         </Space>
       </Space>
 
       <Descriptions bordered size="small" style={{ marginBottom: 16 }}>
-        <Descriptions.Item label="状态">{dataset.status}</Descriptions.Item>
-        <Descriptions.Item label="编码">{dataset.encoding ?? "—"}</Descriptions.Item>
-        <Descriptions.Item label="总行数">
-          {dataset.preview?.total_rows ?? "—"}
+        <Descriptions.Item label={t("dataset.detail.status")}>
+          {t(`common.datasetStatus.${dataset.status}`)}
+        </Descriptions.Item>
+        <Descriptions.Item label={t("dataset.detail.encoding")}>
+          {dataset.encoding ?? "—"}
+        </Descriptions.Item>
+        <Descriptions.Item label={t("dataset.detail.totalRows")}>
+          {dataset.preview?.total_rows != null
+            ? formatNumber(dataset.preview.total_rows, i18n.language)
+            : "—"}
           {/* §74 Large Dataset Mode：>100k 行进入优化模式（分析时自动分层采样） */}
           {(dataset.preview?.total_rows ?? 0) > 100000 && (
             <Tag color="blue" style={{ marginLeft: 8 }}>
-              Large Dataset Mode：{dataset.preview?.total_rows?.toLocaleString()} rows
-              detected，分析将采用 optimized mode（分层采样至 100,000 行）
+              {t("dataset.detail.largeDatasetMode", {
+                count: formatNumber(dataset.preview?.total_rows ?? 0, i18n.language),
+                sampleSize: formatNumber(100000, i18n.language),
+              })}
             </Tag>
           )}
         </Descriptions.Item>
       </Descriptions>
 
       {dataset.status === "VALIDATING" && (
-        <Alert type="info" showIcon message="数据校验中，请稍候…" style={{ marginBottom: 16 }} />
+        <Alert
+          type="info"
+          showIcon
+          message={t("dataset.detail.validating")}
+          style={{ marginBottom: 16 }}
+        />
       )}
 
       {dataset.status === "VALIDATED" && id && <DatasetInsightCard datasetId={id} />}
@@ -670,14 +671,25 @@ export default function DatasetDetailPage() {
         <>
           <Card style={{ marginBottom: 16 }}>
             <Space size="large">
-              <Statistic title="校验结果" value={REPORT_LABEL[report.status]} />
-              <Statistic title="阻塞" value={report.blockers} valueStyle={{ color: "#cf1322" }} />
               <Statistic
-                title="严重"
+                title={t("dataset.detail.reportStatus")}
+                value={t(`dataset.quality.report.${report.status}`)}
+              />
+              <Statistic
+                title={t("dataset.quality.blocker")}
+                value={report.blockers}
+                valueStyle={{ color: "#cf1322" }}
+              />
+              <Statistic
+                title={t("dataset.quality.critical")}
                 value={report.criticals ?? 0}
                 valueStyle={{ color: "#d4380d" }}
               />
-              <Statistic title="警告" value={report.warnings} valueStyle={{ color: "#d48806" }} />
+              <Statistic
+                title={t("dataset.quality.warning")}
+                value={report.warnings}
+                valueStyle={{ color: "#d48806" }}
+              />
             </Space>
           </Card>
 
@@ -687,37 +699,52 @@ export default function DatasetDetailPage() {
           <Card
             title={
               <Space style={{ width: "100%", justifyContent: "space-between" }}>
-                <span>问题清单</span>
+                <span>{t("dataset.detail.issueList")}</span>
                 <Space>
                   {currentVersion && (
                     <Typography.Text type="secondary" style={{ fontWeight: "normal", fontSize: 12 }}>
-                      当前基于第 <strong>v{currentVersion.version_no}</strong> 版数据
-                      {currentVersion.version_no === 1 ? "（原始上传版）" : "（已修复版）"}
+                      {t(
+                        currentVersion.version_no === 1
+                          ? "dataset.detail.currentVersionOriginal"
+                          : "dataset.detail.currentVersionFixed",
+                        { version: currentVersion.version_no },
+                      )}
                     </Typography.Text>
                   )}
                   {allFixableActions.length > 0 && (
                     <Popconfirm
-                      title="一键修复全部可修复问题"
+                      title={t("dataset.quality.fixAllTitle")}
                       description={
                         <div style={{ maxWidth: 360 }}>
-                          <p>将对以下 <strong>{allFixableActions.length}</strong> 项问题一次性修复，生成新版本：</p>
+                          <p>
+                            {t("dataset.quality.fixAllDescription", {
+                              count: allFixableActions.length,
+                            })}
+                          </p>
                           <ul style={{ paddingLeft: 16, margin: "4px 0" }}>
                             {allFixableActions.map((a, i) => (
                               <li key={i}>
-                                {a.type === "drop_column" && `删除列「${a.column}」（缺失率过高）`}
-                                {a.type === "drop_duplicates" && "删除重复行"}
-                                {a.type === "to_missing" && `将「${a.column}」非法值置为缺失`}
+                                {a.type === "drop_column" &&
+                                  t("dataset.quality.fixAllItems.dropColumn", {
+                                    column: a.column,
+                                  })}
+                                {a.type === "drop_duplicates" &&
+                                  t("dataset.quality.fixAllItems.dropDuplicates")}
+                                {a.type === "to_missing" &&
+                                  t("dataset.quality.fixAllItems.toMissing", {
+                                    column: a.column,
+                                  })}
                               </li>
                             ))}
                           </ul>
                           <p style={{ color: "#cf1322", marginTop: 8 }}>
-                            修复后原文件不变，数据变更在新版本中不可撤销。
+                            {t("dataset.quality.fixAllWarning")}
                           </p>
                         </div>
                       }
                       onConfirm={onFixAll}
-                      okText="确认修复全部"
-                      cancelText="取消"
+                      okText={t("dataset.quality.confirmFixAll")}
+                      cancelText={t("common.action.cancel")}
                       okButtonProps={{ danger: true }}
                     >
                       <Button
@@ -727,7 +754,9 @@ export default function DatasetDetailPage() {
                         disabled={fixing}
                         size="small"
                       >
-                        一键修复全部（{allFixableActions.length} 项）
+                        {t("dataset.quality.fixAllButton", {
+                          count: allFixableActions.length,
+                        })}
                       </Button>
                     </Popconfirm>
                   )}
@@ -737,7 +766,7 @@ export default function DatasetDetailPage() {
             style={{ marginBottom: 16 }}
           >
             {report.issues.length === 0 ? (
-              <Typography.Text type="secondary">未发现问题</Typography.Text>
+              <Typography.Text type="secondary">{t("dataset.detail.noIssues")}</Typography.Text>
             ) : (
               groupIssues(report.issues.filter(i => i.rule_id !== "AI_RECOMMEND")).map(([ruleId, issues]) => (
                 <IssueGroup
@@ -751,17 +780,17 @@ export default function DatasetDetailPage() {
             )}
           </Card>
 
-          <Card title="变量字典（列画像）" style={{ marginBottom: 16 }}>
+          <Card title={t("dataset.detail.dictionaryTitle")} style={{ marginBottom: 16 }}>
             <Table<ColumnProfile>
               rowKey="name"
               size="small"
               dataSource={report.column_profiles}
               pagination={false}
               columns={[
-                { title: "列名", dataIndex: "name" },
-                { title: "推断类型", dataIndex: "inferred_type" },
+                { title: t("dataset.detail.columns.columnName"), dataIndex: "name" },
+                { title: t("dataset.detail.columns.inferredType"), dataIndex: "inferred_type" },
                 {
-                  title: "语义",
+                  title: t("dataset.detail.columns.semantic"),
                   render: (_, r) => (
                     <Space size={4}>
                       {r.semantic ? (
@@ -775,7 +804,7 @@ export default function DatasetDetailPage() {
                       )}
                       <Select
                         size="small"
-                        placeholder="重映射"
+                        placeholder={t("dataset.detail.remapPlaceholder")}
                         style={{ width: 110 }}
                         options={SEMANTIC_OPTIONS.map((s) => ({ value: s, label: s }))}
                         onChange={(v) => void onRemap(r.name, v)}
@@ -784,44 +813,44 @@ export default function DatasetDetailPage() {
                   ),
                 },
                 {
-                  title: "单位",
+                  title: t("dataset.detail.columns.unit"),
                   dataIndex: "unit",
                   render: (v?: string | null) => v ?? "—",
                 },
                 {
-                  title: "临床角色",
+                  title: t("dataset.detail.columns.clinicalRole"),
                   dataIndex: "clinical_role",
                   render: (v?: string) =>
                     v ? (
                       <Tag color={v === "outcome" ? "volcano" : undefined}>
-                        {(
-                          {
-                            outcome: "结局",
-                            time: "时间/随访",
-                            baseline: "基线",
-                            covariate: "协变量",
-                            identifier: "标识",
-                          } as Record<string, string>
-                        )[v] ?? v}
+                        {t(`dataset.detail.clinicalRoles.${v}`, { defaultValue: v })}
                       </Tag>
                     ) : (
                       "—"
                     ),
                 },
-                { title: "时点", dataIndex: "timepoint", render: (v?: string) => v ?? "—" },
                 {
-                  title: "缺失率",
+                  title: t("dataset.detail.columns.timepoint"),
+                  dataIndex: "timepoint",
+                  render: (v?: string) => v ?? "—",
+                },
+                {
+                  title: t("dataset.detail.columns.missingRate"),
                   dataIndex: "missing_rate",
                   render: (v: number) => `${(v * 100).toFixed(1)}%`,
                 },
-                { title: "唯一值", dataIndex: "unique" },
-                { title: "异常值", dataIndex: "outliers", render: (v?: number) => v ?? "—" },
+                { title: t("dataset.detail.columns.unique"), dataIndex: "unique" },
                 {
-                  title: "范围",
+                  title: t("dataset.detail.columns.outliers"),
+                  dataIndex: "outliers",
+                  render: (v?: number) => v ?? "—",
+                },
+                {
+                  title: t("dataset.detail.columns.range"),
                   render: (_, r) => (r.min != null ? `${r.min} ~ ${r.max}` : "—"),
                 },
                 {
-                  title: "参考范围（来源）",
+                  title: t("dataset.detail.columns.referenceRange"),
                   render: (_, r) =>
                     r.reference_range ? (
                       <Space size={4}>
@@ -839,13 +868,9 @@ export default function DatasetDetailPage() {
                             )[r.reference_range.source]
                           }
                         >
-                          {(
-                            {
-                              domain_knowledge: "领域知识",
-                              dataset_inferred: "数据推断",
-                              user_defined: "用户定义",
-                            } as Record<string, string>
-                          )[r.reference_range.source] ?? r.reference_range.source}
+                          {t(`dataset.detail.referenceSources.${r.reference_range.source}`, {
+                            defaultValue: r.reference_range.source,
+                          })}
                         </Tag>
                       </Space>
                     ) : (
@@ -853,7 +878,7 @@ export default function DatasetDetailPage() {
                     ),
                 },
                 {
-                  title: "警告",
+                  title: t("dataset.detail.columns.warnings"),
                   render: (_, r) =>
                     r.warnings && r.warnings.length > 0 ? (
                       <Space size={4} wrap>
@@ -864,7 +889,7 @@ export default function DatasetDetailPage() {
                         ))}
                       </Space>
                     ) : (
-                      "无"
+                      t("dataset.detail.noWarnings")
                     ),
                 },
               ]}
@@ -886,7 +911,7 @@ export default function DatasetDetailPage() {
                 ? navigate(
                     `/projects/${projectId}/analysis/new?dataset=${id}&task=${taskType}`,
                   )
-                : message.warning("请从项目页进入以开始分析")
+                : message.warning(t("dataset.detail.projectRequiredTooltip"))
             }
           />
           <ScreeningCard
