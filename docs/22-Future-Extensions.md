@@ -50,4 +50,4 @@ flowchart LR
 - 多租户：organization 表 + 行级隔离（现 RBAC 层扩展点）。
 - SSO：OIDC 接入医院统一认证（core/security 抽象已留口）。
 - 审计报表：audit_logs 可视化与导出（合规检查）。
-- 国际化：报告模板多语言（模板 key 已含语言维度）。
+- 国际化：前端与 README 双语见 T9.1–T9.3；后续按 T9.4（API 稳定码与控制流去中文化）→ T9.5（异步语言上下文与持久化动态内容）→ T9.6（HTML/PDF/Markdown/DOCX 多语言报告）推进，报告模板 key 已含语言维度。

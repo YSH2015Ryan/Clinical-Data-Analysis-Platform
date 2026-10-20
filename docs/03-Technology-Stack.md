@@ -14,6 +14,7 @@
 | 缓存/消息 | Redis | 7 | 一身三任：broker/缓存/进度 | RabbitMQ 多一组件 |
 | 前端 | React 18 + TypeScript + Vite | — | 生态最大、TS 类型安全 | Vue 亦可，团队熟悉度优先 React |
 | UI 组件 | Ant Design 5 | — | 中文文档、表格/表单/上传组件齐全 | MUI 中文生态弱 |
+| 前端国际化 | i18next + react-i18next + i18next-browser-languagedetector + dayjs | — | 成熟 MIT 生态；支持语言检测、插值和动态切换，资源本地打包满足离线部署 | 自研语言上下文维护成本高 |
 | 图表 | ECharts(前端) + Plotly(后端报告图) | — | ECharts 交互强；Plotly 可静态导出进报告 | — |
 | 数据处理 | pandas / numpy / pyarrow | — | 标准 | Polars 生态待成熟 |
 | 机器学习 | scikit-learn | 1.4+ | 基线模型/预处理/指标 | — |
@@ -25,6 +26,7 @@
 | 报告 | Jinja2 + WeasyPrint + python-docx + Markdown | — | 单模板源多格式 | LaTeX 部署重 |
 | 校验 | Pydantic v2 + Pandera | — | API 校验 + DataFrame 校验 | great_expectations 偏重，P2 可评估 |
 | 测试 | pytest / pytest-asyncio / httpx / coverage / locust | — | 标准 | — |
+| 前端测试 | Vitest + jsdom + Testing Library | — | 成熟 MIT 生态；覆盖语言资源、组件和构建回归 | — |
 | 容器 | Docker + Docker Compose；K8s（后期） | — | 院内部署主流 | — |
 | 代码质量 | ruff + mypy + pre-commit | — | 快、一体化 | — |
 | CI | GitHub Actions | — | 标准 | — |

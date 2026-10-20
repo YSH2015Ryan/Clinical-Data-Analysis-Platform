@@ -78,7 +78,10 @@
 ## 8. 前端测试
 
 - 组件：Testing Library（QualityReportPanel 分级渲染、向导步骤流转）。
-- E2E：Playwright 跑 01 章场景 A/B/C（CI  nightly，本地 compose 环境）。
+- 国际化资源：中英文 key 层级一致、无空翻译、插值变量一致；图表标签覆盖两种语言。
+- 语言偏好：`zh-TW → zh-CN`、`en-US → en`、未知语言回退中文；显式选择持久化，localStorage 不可用不崩溃；AntD/dayjs/HTML 元数据同步。
+- 业务兼容：中英文界面提交的数据准备 value 完全一致；RV802 正则不变；旧门禁/泄漏中文控制流在 T9.4 前保持兼容。
+- E2E：Playwright 跑 01 章场景 A/B/C（CI nightly，本地 compose 环境）；双语路由 smoke 无 missing key、控制台错误或英文操作区裁切。
 
 ## 9. 覆盖率门槛
 

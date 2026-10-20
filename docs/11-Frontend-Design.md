@@ -88,7 +88,10 @@ flowchart TD
 
 ## 5. 交互与可用性要求
 
-- 全中文文案；所有异步操作有 loading 与空状态。
+- 界面支持简体中文（`zh-CN`）与英文（`en`）；首次访问按 `localStorage → navigator` 检测，未知语言回退中文，仅用户主动切换才持久化 `cdap.locale`。
+- 所有异步操作有 loading 与空状态；AntD、dayjs、ECharts、日期/数字和 HTML `lang/title` 必须随语言同步。
+- 表单 value、DSL、模型/任务/状态枚举和兼容旧后端的业务字符串不得随 UI 翻译改变。
+- T9.1–T9.3 仅覆盖前端静态文案；后端动态文本与报告产物在 T9.4–T9.6 完成前保持原语言，不得在前端机器翻译。
 - 点击到报告路径 ≤ 6 步（验收指标 G1）。
 - 表单变更即校验（Pydantic schema 同源生成 zod schema，P2）。
 
